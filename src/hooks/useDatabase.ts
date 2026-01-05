@@ -275,49 +275,49 @@ export const useDatabase = () => {
       )];
       
       // Buscar nomes dos postos em sis_empresa
-      const stationsMap = new Map<string, string>();
-      if (stationIds.length > 0) {
-        console.log('🔍 Buscando nomes de', stationIds.length, 'postos em sis_empresa...');
-        console.log('  📋 IDs originais:', stationIds);
-        
+        const stationsMap = new Map<string, string>();
+        if (stationIds.length > 0) {
+          console.log('🔍 Buscando nomes de', stationIds.length, 'postos em sis_empresa...');
+          console.log('  📋 IDs originais:', stationIds);
+          
         // Converter IDs para strings (id_empresa na tabela é text/varchar)
         const stringIds = stationIds.map(id => String(id)).filter(Boolean);
-        
+          
         console.log('  📋 IDs convertidos para strings:', stringIds);
-        
+          
         if (stringIds.length > 0) {
           console.log('  🔍 Executando RPC get_sis_empresa_by_ids com', stringIds.length, 'IDs...');
           // Usar função RPC para buscar empresas do schema cotacao
           const { data: sisEmpresaData, error: sisError } = await supabase.rpc('get_sis_empresa_by_ids', {
             p_ids: stringIds
           });
-          
-          if (sisError) {
+            
+              if (sisError) {
             console.error('❌ Erro ao buscar postos em sis_empresa via RPC:', sisError);
             console.error('  Query:', 'id_empresa IN', stringIds);
-          } else {
+              } else {
             console.log('  📊 Resultado da query RPC:', { 
-              encontrados: sisEmpresaData?.length || 0, 
+                  encontrados: sisEmpresaData?.length || 0, 
               esperados: stringIds.length,
-              dados: sisEmpresaData 
-            });
-            
-            if (sisEmpresaData && sisEmpresaData.length > 0) {
-              console.log('✅ Encontrados', sisEmpresaData.length, 'postos em sis_empresa');
-              sisEmpresaData.forEach((e: any) => {
-                const stationId = String(e.id_empresa);
+                  dados: sisEmpresaData 
+                });
+                
+                if (sisEmpresaData && sisEmpresaData.length > 0) {
+                  console.log('✅ Encontrados', sisEmpresaData.length, 'postos em sis_empresa');
+                  sisEmpresaData.forEach((e: any) => {
+                    const stationId = String(e.id_empresa);
                 const stationName = e.nome_empresa || 'Posto Desconhecido';
-                stationsMap.set(stationId, stationName);
-                console.log('  📍 Posto mapeado:', stationId, '->', stationName);
-              });
-            } else {
+                    stationsMap.set(stationId, stationName);
+                    console.log('  📍 Posto mapeado:', stationId, '->', stationName);
+                  });
+                } else {
               console.warn('⚠️ Nenhum posto encontrado em sis_empresa para os IDs:', stringIds);
+              }
             }
-          }
-        } else {
+          } else {
           console.warn('⚠️ Nenhum ID válido para buscar postos');
+          }
         }
-      }
         
       // Buscar nomes dos clientes em clientes (os IDs são numéricos, não UUIDs)
       const clientsMap = new Map<string, string>();

@@ -23,10 +23,11 @@ import ClientManagement from "./pages/ClientManagement";
 import PasswordChange from "./pages/PasswordChange";
 import AuditLogs from "./pages/AuditLogs";
 import Settings from "./pages/Settings";
+import ProfileSettings from "./pages/ProfileSettings";
 import Gestao from "./pages/Gestao";
 import ApprovalMarginConfig from "./pages/ApprovalMarginConfig";
 import ApprovalOrderConfig from "./pages/ApprovalOrderConfig";
-import DescontosIndevidos from "./pages/DescontosIndevidos";
+import MapaContatos from "./pages/MapaContatos";
 import Layout from "./components/Layout";
 import NotFound from "./pages/NotFound";
 
@@ -45,7 +46,7 @@ const queryClient = new QueryClient({
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   // console.log('ProtectedRoute render', { loading, hasUser: !!user, path: window.location.pathname });
-  
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -53,7 +54,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
-  
+
   if (!user) {
     return <Navigate to="/login" replace />;
   }
@@ -61,11 +62,11 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   // Check if user needs to change password
   const searchParams = new URLSearchParams(window.location.search);
   const needsPasswordChange = searchParams.get('change-password') === 'true';
-  
+
   if (needsPasswordChange) {
     return <Navigate to="/change-password" replace />;
   }
-  
+
   return (
     <PermissionsProvider>
       <NotificationsProvider>
@@ -78,39 +79,40 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <AuthProvider>
-              <Routes>
-                  <Route path="/login" element={<Login />} />
-                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                  <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-                  <Route path="/pricing-suggestion" element={<Navigate to="/solicitacao-preco" replace />} />
-                  <Route path="/solicitacao-preco" element={<ProtectedRoute><PriceRequest /></ProtectedRoute>} />
-                  <Route path="/approvals" element={<ProtectedRoute><Approvals /></ProtectedRoute>} />
-                  <Route path="/map" element={<ProtectedRoute><MapView /></ProtectedRoute>} />
-                  <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
-                <Route path="/price-history" element={<ProtectedRoute><PriceHistory /></ProtectedRoute>} />
-                <Route path="/portfolio-manager" element={<ProtectedRoute><PortfolioManager /></ProtectedRoute>} />
-                <Route path="/reference-registration" element={<ProtectedRoute><ReferenceRegistration /></ProtectedRoute>} />
-                <Route path="/tax-management" element={<ProtectedRoute><TaxManagement /></ProtectedRoute>} />
-                  <Route path="/station-management" element={<ProtectedRoute><StationManagement /></ProtectedRoute>} />
-                  <Route path="/client-management" element={<ProtectedRoute><ClientManagement /></ProtectedRoute>} />
-                  <Route path="/audit-logs" element={<ProtectedRoute><AuditLogs /></ProtectedRoute>} />
-                  <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-                  <Route path="/gestao" element={<ProtectedRoute><Gestao /></ProtectedRoute>} />
-                  <Route path="/approval-margin-config" element={<ProtectedRoute><ApprovalMarginConfig /></ProtectedRoute>} />
-                  <Route path="/approval-order-config" element={<ProtectedRoute><ApprovalOrderConfig /></ProtectedRoute>} />
-                  <Route path="/descontos-indevidos" element={<ProtectedRoute><DescontosIndevidos /></ProtectedRoute>} />
-                  <Route path="/change-password" element={<PasswordChange />} />
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
-            </AuthProvider>
-          </BrowserRouter>
-        </TooltipProvider>
-      </QueryClientProvider>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <AuthProvider>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+              <Route path="/pricing-suggestion" element={<Navigate to="/solicitacao-preco" replace />} />
+              <Route path="/solicitacao-preco" element={<ProtectedRoute><PriceRequest /></ProtectedRoute>} />
+              <Route path="/approvals" element={<ProtectedRoute><Approvals /></ProtectedRoute>} />
+              <Route path="/map" element={<ProtectedRoute><MapView /></ProtectedRoute>} />
+              <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
+              <Route path="/price-history" element={<ProtectedRoute><PriceHistory /></ProtectedRoute>} />
+              <Route path="/portfolio-manager" element={<ProtectedRoute><PortfolioManager /></ProtectedRoute>} />
+              <Route path="/reference-registration" element={<ProtectedRoute><ReferenceRegistration /></ProtectedRoute>} />
+              <Route path="/tax-management" element={<ProtectedRoute><TaxManagement /></ProtectedRoute>} />
+              <Route path="/station-management" element={<ProtectedRoute><StationManagement /></ProtectedRoute>} />
+              <Route path="/client-management" element={<ProtectedRoute><ClientManagement /></ProtectedRoute>} />
+              <Route path="/audit-logs" element={<ProtectedRoute><AuditLogs /></ProtectedRoute>} />
+              <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+              <Route path="/profile-settings" element={<ProtectedRoute><ProfileSettings /></ProtectedRoute>} />
+              <Route path="/gestao" element={<ProtectedRoute><Gestao /></ProtectedRoute>} />
+              <Route path="/approval-margin-config" element={<ProtectedRoute><ApprovalMarginConfig /></ProtectedRoute>} />
+              <Route path="/approval-order-config" element={<ProtectedRoute><ApprovalOrderConfig /></ProtectedRoute>} />
+              <Route path="/mapa-contatos" element={<ProtectedRoute><MapaContatos /></ProtectedRoute>} />
+              <Route path="/change-password" element={<PasswordChange />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </AuthProvider>
+        </BrowserRouter>
+      </TooltipProvider>
+    </QueryClientProvider>
   );
 };
 

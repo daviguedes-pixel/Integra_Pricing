@@ -9,7 +9,7 @@ import { Eye, Download, Check, X, User, Calendar, MessageSquare, DollarSign } fr
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { parseBrazilianDecimal } from "@/lib/utils";
+import { parseBrazilianDecimal, formatNameFromEmail } from "@/lib/utils";
 import { ImageViewerModal } from "@/components/ImageViewerModal";
 
 interface ApprovalHistory {
@@ -32,11 +32,11 @@ interface ApprovalDetailsModalProps {
   readOnly?: boolean;
 }
 
-export const ApprovalDetailsModal = ({ 
-  isOpen, 
-  onClose, 
-  suggestion, 
-  onApprove, 
+export const ApprovalDetailsModal = ({
+  isOpen,
+  onClose,
+  suggestion,
+  onApprove,
   onReject,
   onSuggestPrice,
   loading,
@@ -54,18 +54,18 @@ export const ApprovalDetailsModal = ({
   useEffect(() => {
     if (suggestion?.id && isOpen) {
       loadApprovalHistory();
-      
+
       // Buscar dados faltantes (stations, clients, payment_methods, observations)
       if (!suggestion.stations || !suggestion.clients || !suggestion.payment_methods || !suggestion.observations) {
         loadMissingData();
       }
     }
   }, [suggestion?.id, isOpen, suggestion]);
-  
+
   // Listener de real-time para atualizar histórico quando houver mudanças
   useEffect(() => {
     if (!suggestion?.id || !isOpen) return;
-    
+
     const channel = supabase
       .channel(`approval_history_${suggestion.id}`)
       .on(
@@ -85,50 +85,50 @@ export const ApprovalDetailsModal = ({
         }
       )
       .subscribe();
-    
+
     return () => {
       supabase.removeChannel(channel);
     };
   }, [suggestion?.id, isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
-  
+
   const loadMissingData = async () => {
     if (!suggestion) return;
-    
+
     // Se os IDs estiverem null, não podemos buscar nada
     if (!suggestion?.station_id && !suggestion?.client_id) {
       console.log('⚠️ Não há IDs para buscar - aprovacoes antigas');
       return;
     }
-    
+
     try {
       console.log('🔍 Buscando dados faltantes para suggestion:', suggestion.id);
-      
+
       // Buscar postos se necessário (múltiplos ou único)
-      const stationIds = suggestion.station_ids && Array.isArray(suggestion.station_ids) 
-        ? suggestion.station_ids 
+      const stationIds = suggestion.station_ids && Array.isArray(suggestion.station_ids)
+        ? suggestion.station_ids
         : (suggestion.station_id ? [suggestion.station_id] : []);
-      
+
       if (stationIds.length > 0 && (!suggestion.stations_list || suggestion.stations_list.length === 0)) {
         console.log('🔍 Buscando postos:', stationIds);
         const stationsList = [];
-        
+
         for (const stationId of stationIds) {
           if (!stationId) continue;
-          
+
           const { data: stationData } = await supabase
             .from('sis_empresa' as any)
             .select('nome_empresa, cnpj_cpf, id_empresa')
             .or(`cnpj_cpf.eq.${stationId},id.eq.${stationId},id_empresa.eq.${stationId}`)
             .maybeSingle();
-          
+
           if (stationData) {
-            stationsList.push({ 
-              name: (stationData as any).nome_empresa, 
-              code: (stationData as any).cnpj_cpf || (stationData as any).id_empresa 
+            stationsList.push({
+              name: (stationData as any).nome_empresa,
+              code: (stationData as any).cnpj_cpf || (stationData as any).id_empresa
             });
           }
         }
-        
+
         if (stationsList.length > 0) {
           setEnrichedSuggestion(prev => ({
             ...prev!,
@@ -137,7 +137,7 @@ export const ApprovalDetailsModal = ({
           }));
         }
       }
-      
+
       // Buscar cliente se necessário  
       if (!suggestion.clients && suggestion.client_id) {
         console.log('🔍 Buscando cliente:', suggestion.client_id);
@@ -146,7 +146,7 @@ export const ApprovalDetailsModal = ({
           .select('nome, id_cliente')
           .eq('id_cliente', suggestion.client_id)
           .maybeSingle();
-        
+
         if (clientData) {
           setEnrichedSuggestion(prev => ({
             ...prev!,
@@ -154,11 +154,11 @@ export const ApprovalDetailsModal = ({
           }));
         }
       }
-      
+
       // Buscar método de pagamento se necessário
       if (!suggestion.payment_methods && suggestion.payment_method_id) {
         console.log('🔍 Buscando método de pagamento:', suggestion.payment_method_id);
-        
+
         // Tentar buscar por ID, ID_POSTO ou CARTAO
         let paymentData = null;
         const { data: paymentById } = await supabase
@@ -166,7 +166,7 @@ export const ApprovalDetailsModal = ({
           .select('CARTAO, TAXA, PRAZO, ID_POSTO')
           .eq('id', suggestion.payment_method_id)
           .maybeSingle();
-        
+
         if (paymentById) {
           paymentData = paymentById;
         } else {
@@ -177,12 +177,12 @@ export const ApprovalDetailsModal = ({
             .maybeSingle();
           paymentData = paymentByCard;
         }
-        
+
         if (paymentData) {
           console.log('✅ Método de pagamento encontrado:', paymentData);
           setEnrichedSuggestion(prev => ({
             ...prev!,
-            payment_methods: { 
+            payment_methods: {
               name: (paymentData as any).CARTAO,
               CARTAO: (paymentData as any).CARTAO,
               TAXA: (paymentData as any).TAXA,
@@ -193,7 +193,7 @@ export const ApprovalDetailsModal = ({
           console.log('❌ Método de pagamento NÃO encontrado para:', suggestion.payment_method_id);
         }
       }
-      
+
       // Buscar observações se não estiverem presentes
       if (!suggestion.observations && suggestion.id) {
         console.log('🔍 Buscando observações para suggestion:', suggestion.id);
@@ -202,7 +202,7 @@ export const ApprovalDetailsModal = ({
           .select('observations')
           .eq('id', suggestion.id)
           .maybeSingle();
-        
+
         if (suggestionData && suggestionData.observations) {
           console.log('✅ Observações encontradas:', suggestionData.observations);
           setEnrichedSuggestion(prev => ({
@@ -220,7 +220,7 @@ export const ApprovalDetailsModal = ({
 
   const loadApprovalHistory = async () => {
     if (!suggestion?.id) return;
-    
+
     setLoadingHistory(true);
     try {
       const { data, error } = await supabase
@@ -243,9 +243,9 @@ export const ApprovalDetailsModal = ({
   }, [suggestion]);
 
   if (!suggestion) return null;
-  
+
   const dataToShow = enrichedSuggestion || suggestion;
-  
+
   console.log('🎯 ApprovalDetailsModal - dataToShow:', dataToShow);
   console.log('🎯 station_id:', dataToShow.station_id);
   console.log('🎯 client_id:', dataToShow.client_id);
@@ -281,8 +281,8 @@ export const ApprovalDetailsModal = ({
 
   const formatPrice = (price: number | null, decimals: number = 2) => {
     if (!price) return 'R$ 0,00';
-    return price.toLocaleString('pt-BR', { 
-      style: 'currency', 
+    return price.toLocaleString('pt-BR', {
+      style: 'currency',
       currency: 'BRL',
       minimumFractionDigits: decimals,
       maximumFractionDigits: decimals
@@ -305,7 +305,7 @@ export const ApprovalDetailsModal = ({
 
   const formatPriceDynamic = (price: number | null) => {
     if (!price) return 'R$ 0,00';
-    
+
     // Formatar com 4 casas decimais
     const formatted = price.toLocaleString('pt-BR', {
       style: 'currency',
@@ -313,7 +313,7 @@ export const ApprovalDetailsModal = ({
       minimumFractionDigits: 4,
       maximumFractionDigits: 4
     });
-    
+
     // Remover zeros à direita, mas manter pelo menos 2 casas se houver parte decimal
     const parts = formatted.split(',');
     if (parts.length === 2) {
@@ -328,7 +328,7 @@ export const ApprovalDetailsModal = ({
       }
       return parts[0] + ',' + decimal;
     }
-    
+
     return formatted;
   };
 
@@ -343,17 +343,23 @@ export const ApprovalDetailsModal = ({
   };
 
   // Converte valores possivelmente em centavos para reais, tratando vírgulas corretamente
+  // IMPORTANTE: Após a migração, todos os valores devem estar em reais
+  // Esta função mantém compatibilidade com valores antigos que possam estar em centavos
   const fromMaybeCents = (v: number | string | null | undefined) => {
     if (!v) return 0;
-    
+
     // Se for string, usar parseBrazilianDecimal para tratar vírgulas
     if (typeof v === 'string') {
       return parseBrazilianDecimal(v);
     }
-    
-    // Se for número, verificar se está em centavos (>= 20)
+
+    // Se for número, verificar se está em centavos
+    // Valores >= 100 provavelmente estão em centavos (ex: 539.43 centavos = 5.3943 reais)
+    // Valores < 100 provavelmente já estão em reais
     const n = Number(v);
-    return n >= 20 ? n / 100 : n;
+    // Usar threshold mais alto para evitar converter valores que são realmente em reais
+    // Exemplo: 20.00 reais não deve ser convertido para 0.20
+    return n >= 100 ? n / 100 : n;
   };
 
   const handleApprove = () => {
@@ -384,7 +390,7 @@ export const ApprovalDetailsModal = ({
         <DialogHeader>
           <DialogTitle className="text-lg sm:text-2xl">Detalhes da Solicitação de Preço</DialogTitle>
         </DialogHeader>
-        
+
         <div className="space-y-6">
           {/* Status e Informações Básicas */}
           <Card>
@@ -402,8 +408,8 @@ export const ApprovalDetailsModal = ({
                     </div>
                   ) : (
                     <p className="font-medium text-lg">
-                      {dataToShow.stations?.name 
-                        || dataToShow.station_id 
+                      {dataToShow.stations?.name
+                        || dataToShow.station_id
                         || (dataToShow.station_id === null ? '⚠️ Aprovação antiga (sem posto)' : 'N/A')}
                     </p>
                   )}
@@ -411,8 +417,8 @@ export const ApprovalDetailsModal = ({
                 <div>
                   <h4 className="font-medium text-sm text-muted-foreground">Cliente</h4>
                   <p className="font-medium text-lg">
-                    {dataToShow.clients?.name 
-                      || dataToShow.client_id 
+                    {dataToShow.clients?.name
+                      || dataToShow.client_id
                       || (dataToShow.client_id === null ? '⚠️ Aprovação antiga (sem cliente)' : 'N/A')}
                   </p>
                 </div>
@@ -438,16 +444,24 @@ export const ApprovalDetailsModal = ({
                   {getStatusBadge(dataToShow.status)}
                 </div>
               </div>
-              
+
               {/* Informações de Aprovação */}
-              {(dataToShow.current_approver_name || dataToShow.current_approver_id) && (
-                <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-600">
-                  <h4 className="font-medium text-sm text-muted-foreground">Em aprovação com</h4>
+              <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-600 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {(dataToShow.current_approver_name || dataToShow.current_approver_id) && (
+                  <div>
+                    <h4 className="font-medium text-sm text-muted-foreground">Em aprovação com</h4>
+                    <p className="font-medium text-lg">
+                      {formatNameFromEmail(dataToShow.current_approver_name || dataToShow.current_approver_id || 'N/A')}
+                    </p>
+                  </div>
+                )}
+                <div>
+                  <h4 className="font-medium text-sm text-muted-foreground">Enviado por</h4>
                   <p className="font-medium text-lg">
-                    {dataToShow.current_approver_name || dataToShow.current_approver_id || 'N/A'}
+                    {formatNameFromEmail(dataToShow.requester?.name || dataToShow.requester?.email || dataToShow.requested_by || 'N/A')}
                   </p>
                 </div>
-              )}
+              </div>
             </CardContent>
           </Card>
 
@@ -457,8 +471,9 @@ export const ApprovalDetailsModal = ({
               <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Análise de Preço</h3>
               {(() => {
                 const taxa = dataToShow.payment_methods?.TAXA || 0;
-                const purchaseCost = dataToShow.purchase_cost || 0;
-                const freightCost = dataToShow.freight_cost || 0;
+                // Usar os valores salvos diretamente (já estão em reais)
+                const purchaseCost = fromMaybeCents(dataToShow.purchase_cost) || 0;
+                const freightCost = fromMaybeCents(dataToShow.freight_cost) || 0;
                 const baseCost = purchaseCost + freightCost;
                 const finalCost = taxa > 0 ? baseCost * (1 + taxa / 100) : baseCost;
                 const hasOrigin = dataToShow.price_origin_base || dataToShow.price_origin_bandeira || dataToShow.price_origin_delivery;
@@ -467,7 +482,7 @@ export const ApprovalDetailsModal = ({
                 const finalPrice = fromMaybeCents(dataToShow.final_price);
                 const adjustment = finalPrice - currentPrice;
                 const margin = finalPrice - finalCost;
-                
+
                 return (
                   <>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
@@ -494,7 +509,7 @@ export const ApprovalDetailsModal = ({
                           </>
                         )}
                       </div>
-                      
+
                       {/* Coluna Direita - Preços e Pagamento */}
                       <div className="space-y-3">
                         <div className="flex justify-between items-center py-2 border-b border-slate-200 dark:border-slate-700">
@@ -514,7 +529,7 @@ export const ApprovalDetailsModal = ({
                         </div>
                       </div>
                     </div>
-                    
+
                     {/* Informações de Pagamento Destacadas */}
                     {dataToShow.payment_methods && (
                       <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg border-2 border-slate-300 dark:border-slate-600 mb-6">
@@ -548,7 +563,7 @@ export const ApprovalDetailsModal = ({
                         </div>
                       </div>
                     )}
-                    
+
                     {/* Cards Destacados - Custo Final e Margem */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                       <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg border-2 border-slate-300 dark:border-slate-600">
@@ -575,7 +590,7 @@ export const ApprovalDetailsModal = ({
                           </div>
                         )}
                       </div>
-                      
+
                       <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg border-2 border-slate-300 dark:border-slate-600">
                         <h4 className="font-semibold text-sm text-slate-700 dark:text-slate-300 mb-2">Margem</h4>
                         <p className={`text-2xl font-bold ${margin >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>
@@ -629,7 +644,10 @@ export const ApprovalDetailsModal = ({
                     </div>
                     <div className="space-y-4">
                       <div>
-                        <h4 className="font-medium text-sm text-muted-foreground">Preço de Venda ARLA</h4>
+                        <div className="flex items-center justify-between mb-1">
+                          <h4 className="font-medium text-sm text-muted-foreground">Preço de Venda ARLA</h4>
+                          <span className="text-xs text-muted-foreground font-medium">Consumo: 5% do volume</span>
+                        </div>
                         <p className="text-lg font-bold">{formatPriceDynamic(fromMaybeCents(dataToShow.arla_purchase_price) || 0)}</p>
                       </div>
                       <div>
@@ -695,7 +713,7 @@ export const ApprovalDetailsModal = ({
                                 </>
                               );
                             })()}
-                      </div>
+                          </div>
                         </>
                       )}
                     </div>
@@ -711,8 +729,9 @@ export const ApprovalDetailsModal = ({
                     <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg border-2 border-slate-300 dark:border-slate-600">
                       {(() => {
                         // Lucro líquido = Lucro Total Projetado (com taxa) + Lucro ARLA 5%
-                        const purchaseCost = dataToShow.purchase_cost || 0;
-                        const freightCost = dataToShow.freight_cost || 0;
+                        // Usar os valores salvos diretamente
+                        const purchaseCost = fromMaybeCents(dataToShow.purchase_cost) || 0;
+                        const freightCost = fromMaybeCents(dataToShow.freight_cost) || 0;
                         const baseCost = purchaseCost + freightCost;
                         const taxa = dataToShow.payment_methods?.TAXA || 0;
                         const taxValue = baseCost * (taxa / 100);
@@ -722,7 +741,7 @@ export const ApprovalDetailsModal = ({
                         // Converter volume de m³ para litros (1 m³ = 1000 litros)
                         const volumeProjetadoLitros = (dataToShow.volume_projected || 0) * 1000;
                         const lucroTotalProjetado = marginWithTax * volumeProjetadoLitros;
-                        
+
                         // Converter preços de centavos para reais se necessário
                         const arlaSalePrice = fromMaybeCents(dataToShow.arla_purchase_price) || 0;
                         const arlaCostPrice = fromMaybeCents(dataToShow.arla_cost_price) || 0;
@@ -730,9 +749,9 @@ export const ApprovalDetailsModal = ({
                         // Converter volume de m³ para litros e calcular 5% do volume
                         const consumoArla5Litros = (dataToShow.volume_projected || 0) * 1000 * 0.05;
                         const lucroArla5 = marginArla * consumoArla5Litros;
-                        
+
                         const lucroLiquidoTotal5 = lucroTotalProjetado + lucroArla5;
-                        
+
                         return (
                           <>
                             <h4 className="font-semibold text-sm text-slate-700 dark:text-slate-300 mb-2">Lucro Total Líquido + ARLA 5%</h4>
@@ -744,13 +763,14 @@ export const ApprovalDetailsModal = ({
                             </p>
                           </>
                         );
-                        })()}
+                      })()}
                     </div>
                     <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg border-2 border-slate-300 dark:border-slate-600">
-                        {(() => {
+                      {(() => {
                         // Lucro líquido = Lucro Total Projetado (com taxa) + Lucro ARLA 10%
-                        const purchaseCost = dataToShow.purchase_cost || 0;
-                        const freightCost = dataToShow.freight_cost || 0;
+                        // Usar os valores salvos diretamente
+                        const purchaseCost = fromMaybeCents(dataToShow.purchase_cost) || 0;
+                        const freightCost = fromMaybeCents(dataToShow.freight_cost) || 0;
                         const baseCost = purchaseCost + freightCost;
                         const taxa = dataToShow.payment_methods?.TAXA || 0;
                         const taxValue = baseCost * (taxa / 100);
@@ -760,7 +780,7 @@ export const ApprovalDetailsModal = ({
                         // Converter volume de m³ para litros (1 m³ = 1000 litros)
                         const volumeProjetadoLitros = (dataToShow.volume_projected || 0) * 1000;
                         const lucroTotalProjetado = marginWithTax * volumeProjetadoLitros;
-                        
+
                         // Converter preços de centavos para reais se necessário
                         const arlaSalePrice = fromMaybeCents(dataToShow.arla_purchase_price) || 0;
                         const arlaCostPrice = fromMaybeCents(dataToShow.arla_cost_price) || 0;
@@ -768,9 +788,9 @@ export const ApprovalDetailsModal = ({
                         // Converter volume de m³ para litros e calcular 10% do volume
                         const consumoArla10Litros = (dataToShow.volume_projected || 0) * 1000 * 0.10;
                         const lucroArla10 = marginArla * consumoArla10Litros;
-                        
+
                         const lucroLiquidoTotal10 = lucroTotalProjetado + lucroArla10;
-                        
+
                         return (
                           <>
                             <h4 className="font-semibold text-sm text-slate-700 dark:text-slate-300 mb-2">Lucro Total Líquido + ARLA 10%</h4>
@@ -782,7 +802,7 @@ export const ApprovalDetailsModal = ({
                             </p>
                           </>
                         );
-                        })()}
+                      })()}
                     </div>
                   </div>
                 </CardContent>
@@ -798,8 +818,9 @@ export const ApprovalDetailsModal = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg border-2 border-slate-300 dark:border-slate-600">
                     {(() => {
-                      const purchaseCost = dataToShow.purchase_cost || 0;
-                      const freightCost = dataToShow.freight_cost || 0;
+                      // Usar os valores salvos diretamente
+                      const purchaseCost = fromMaybeCents(dataToShow.purchase_cost) || 0;
+                      const freightCost = fromMaybeCents(dataToShow.freight_cost) || 0;
                       const baseCost = purchaseCost + freightCost;
                       const taxa = dataToShow.payment_methods?.TAXA || 0;
                       const taxValue = baseCost * (taxa / 100);
@@ -809,7 +830,7 @@ export const ApprovalDetailsModal = ({
                       // Converter volume de m³ para litros (1 m³ = 1000 litros)
                       const volumeProjetadoLitros = (dataToShow.volume_projected || 0) * 1000;
                       const lucroTotalProjetado = marginWithTax * volumeProjetadoLitros;
-                      
+
                       return (
                         <>
                           <h4 className="font-semibold text-sm text-slate-700 dark:text-slate-300 mb-2">Lucro Total Projetado</h4>
@@ -825,8 +846,9 @@ export const ApprovalDetailsModal = ({
                   </div>
                   <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg border-2 border-slate-300 dark:border-slate-600">
                     {(() => {
-                      const purchaseCost = dataToShow.purchase_cost || 0;
-                      const freightCost = dataToShow.freight_cost || 0;
+                      // Usar os valores salvos diretamente
+                      const purchaseCost = fromMaybeCents(dataToShow.purchase_cost) || 0;
+                      const freightCost = fromMaybeCents(dataToShow.freight_cost) || 0;
                       const baseCost = purchaseCost + freightCost;
                       const taxa = dataToShow.payment_methods?.TAXA || 0;
                       const taxValue = baseCost * (taxa / 100);
@@ -836,7 +858,7 @@ export const ApprovalDetailsModal = ({
                       // Converter volume de m³ para litros (1 m³ = 1000 litros)
                       const volumeProjetadoLitros = (dataToShow.volume_projected || 0) * 1000;
                       const lucroPorLitro = marginWithTax;
-                      
+
                       return (
                         <>
                           <h4 className="font-semibold text-sm text-slate-700 dark:text-slate-300 mb-2">Margem por Litro</h4>
@@ -935,13 +957,13 @@ export const ApprovalDetailsModal = ({
                   {dataToShow.attachments.map((url: string, index: number) => {
                     const fileName = url.split('/').pop() || `Anexo ${index + 1}`;
                     const isImage = url.match(/\.(jpg|jpeg|png|gif|webp)$/i);
-                    
+
                     return (
                       <div key={index} className="border rounded-lg p-3">
                         {isImage ? (
                           <div className="space-y-2">
-                            <img 
-                              src={url} 
+                            <img
+                              src={url}
                               alt={fileName}
                               className="w-full h-32 object-cover rounded cursor-pointer hover:opacity-80 transition-opacity"
                               onClick={() => {
@@ -950,9 +972,9 @@ export const ApprovalDetailsModal = ({
                               }}
                             />
                             <div className="flex gap-2">
-                              <Button 
-                                size="sm" 
-                                variant="outline" 
+                              <Button
+                                size="sm"
+                                variant="outline"
                                 className="flex-1"
                                 onClick={() => {
                                   setSelectedImage(url);
@@ -969,9 +991,9 @@ export const ApprovalDetailsModal = ({
                             <div className="h-32 bg-secondary/20 rounded flex items-center justify-center">
                               <Download className="h-8 w-8 text-muted-foreground" />
                             </div>
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
+                            <Button
+                              size="sm"
+                              variant="outline"
                               className="w-full"
                               onClick={() => viewAttachment(url)}
                             >
@@ -1034,23 +1056,23 @@ export const ApprovalDetailsModal = ({
                         value={suggestedPrice}
                         onChange={(e) => {
                           let value = e.target.value.replace(/[^\d,]/g, '');
-                          
+
                           // Se não tem vírgula e tem mais de 2 dígitos, adicionar vírgula antes dos últimos 2
                           if (!value.includes(',') && value.length > 2) {
                             value = value.slice(0, -2) + ',' + value.slice(-2);
                           }
-                          
+
                           // Garantir apenas uma vírgula
                           const parts = value.split(',');
                           if (parts.length > 2) {
                             value = parts[0] + ',' + parts.slice(1).join('');
                           }
-                          
+
                           // Limitar a 2 casas decimais após a vírgula
                           if (parts.length === 2 && parts[1].length > 2) {
                             value = parts[0] + ',' + parts[1].slice(0, 2);
                           }
-                          
+
                           setSuggestedPrice(value);
                         }}
                         onBlur={(e) => {
@@ -1064,7 +1086,7 @@ export const ApprovalDetailsModal = ({
                                 return;
                               }
                             }
-                            
+
                             const numValue = parseBrazilianDecimal(value);
                             if (!isNaN(numValue) && numValue > 0) {
                               // Formatar com vírgula e 2 casas decimais
@@ -1112,7 +1134,7 @@ export const ApprovalDetailsModal = ({
                       </Button>
                     )}
                   </div>
-                  
+
                   {!observations.trim() && (
                     <p className="text-xs sm:text-sm text-amber-600 text-center">
                       Por favor, adicione uma observação antes de aprovar ou rejeitar

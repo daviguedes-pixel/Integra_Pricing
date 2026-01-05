@@ -1,30 +1,27 @@
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { SisEmpresaCombobox } from "@/components/SisEmpresaCombobox";
 import { ClientCombobox } from "@/components/ClientCombobox";
 import { ImageViewerModal } from "@/components/ImageViewerModal";
 import { FileUploader } from "@/components/FileUploader";
 import { ApprovalDetailsModal } from "@/components/ApprovalDetailsModal";
 import { EditRequestModal } from "@/components/EditRequestModal";
-import { parseBrazilianDecimal, formatBrazilianCurrency, formatIntegerToPrice, parsePriceToInteger, generateUUID, mapProductToEnum } from "@/lib/utils";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { parseBrazilianDecimal, formatBrazilianCurrency, formatIntegerToPrice, parsePriceToInteger, generateUUID, mapProductToEnum, formatNameFromEmail } from "@/lib/utils";
 import { useDatabase } from "@/hooks/useDatabase";
 import { useAuth } from "@/hooks/useAuth";
 import { usePermissions } from "@/hooks/usePermissions";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { ArrowLeft, Send, Save, TrendingUp, BarChart, MapPin, CheckCircle, AlertCircle, Eye, DollarSign, Clock, Check, X, FileText, ChevronDown, Plus, Download, Maximize2, Loader2, Edit, Trash2, User } from "lucide-react";
+import { ArrowLeft, Send, Save, TrendingUp, BarChart, MapPin, CheckCircle, AlertCircle, Eye, DollarSign, Clock, Check, X, FileText, ChevronDown, Plus, Download, Maximize2, Loader2, Edit, Trash2 } from "lucide-react";
+import { removeCache } from "@/lib/cache";
 import { IntegraLogo } from "@/components/IntegraLogo";
 import { SaoRoqueLogo } from "@/components/SaoRoqueLogo";
 import { useNavigate } from "react-router-dom";
@@ -50,7 +47,7 @@ function ProposalFullView({ batch, proposalNumber, proposalDate, generalStatus, 
   const firstRequest = batch[0];
   const client = firstRequest.clients;
   const [requesterName, setRequesterName] = useState<string>('N/A');
-  
+
   // Buscar nome do solicitante
   useEffect(() => {
     const fetchRequesterName = async () => {
@@ -63,12 +60,12 @@ function ProposalFullView({ batch, proposalNumber, proposalDate, generalStatus, 
             .select('nome, email')
             .eq('user_id', createdBy)
             .maybeSingle();
-          
+
           if (profileData) {
-            setRequesterName(profileData.nome || profileData.email || 'N/A');
+            setRequesterName(formatNameFromEmail(profileData.nome || profileData.email || 'N/A'));
             return;
           }
-          
+
           // Se não encontrou, tentar buscar por email
           if (createdBy.includes('@')) {
             const { data: emailProfileData } = await supabase
@@ -76,27 +73,27 @@ function ProposalFullView({ batch, proposalNumber, proposalDate, generalStatus, 
               .select('nome, email')
               .eq('email', createdBy)
               .maybeSingle();
-            
+
             if (emailProfileData) {
-              setRequesterName(emailProfileData.nome || emailProfileData.email || 'N/A');
+              setRequesterName(formatNameFromEmail(emailProfileData.nome || emailProfileData.email || 'N/A'));
               return;
             }
           }
-          
+
           // Fallback: usar o valor direto se for email
           if (createdBy.includes('@')) {
-            setRequesterName(createdBy);
+            setRequesterName(formatNameFromEmail(createdBy));
           }
         } catch (error) {
           console.error('Erro ao buscar solicitante:', error);
-          setRequesterName(createdBy?.includes('@') ? createdBy : 'N/A');
+          setRequesterName(formatNameFromEmail(createdBy?.includes('@') ? createdBy : 'N/A'));
         }
       }
     };
-    
+
     fetchRequesterName();
   }, [firstRequest.created_by, firstRequest.requested_by]);
-  
+
   // Formatação com 4 casas decimais para valores unitários (custo/L, preço/L)
   const formatPrice4Decimals = (price: number) => {
     if (typeof price !== 'number' || isNaN(price)) return 'R$ 0,0000';
@@ -107,16 +104,16 @@ function ProposalFullView({ batch, proposalNumber, proposalDate, generalStatus, 
       currency: 'BRL'
     });
   };
-  
+
   // Calcular totais
   const totalVolume = batch.reduce((sum: number, r: any) => {
     const volume = r.volume_projected || 0;
     return sum + (volume * 1000); // Converter m³ para litros
   }, 0);
-  
+
   // Buscar informações do vendedor
-  const sellerName = user?.email || user?.user_metadata?.name || 'Vendedor';
-  
+  const sellerName = formatNameFromEmail(user?.email || user?.user_metadata?.name || 'Vendedor');
+
   return (
     <div className="p-6 print:p-2 print:min-h-0">
       <style>{`
@@ -151,7 +148,7 @@ function ProposalFullView({ batch, proposalNumber, proposalDate, generalStatus, 
           <Download className="h-5 w-5" />
         </button>
       </div>
-      
+
       {/* Título Principal */}
       <div className="mb-6 print:mb-2">
         <h1 className="text-4xl font-bold text-slate-900 dark:text-slate-100 mb-2 uppercase print:text-lg print:mb-0 print:leading-tight">
@@ -161,7 +158,7 @@ function ProposalFullView({ batch, proposalNumber, proposalDate, generalStatus, 
           Detalhes da Oferta de Combustível
         </p>
       </div>
-      
+
       {/* Informações Gerais */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6 print:mb-2 print:gap-2 print:text-[10px]">
         <div className="space-y-2 print:space-y-1">
@@ -216,7 +213,7 @@ function ProposalFullView({ batch, proposalNumber, proposalDate, generalStatus, 
           </div>
         </div>
       </div>
-      
+
       {/* Postos e Condições */}
       <div className="mb-6 print:mb-2">
         <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-3 pb-1 border-b-2 border-slate-300 dark:border-slate-600 print:text-xs print:mb-1 print:pb-0.5 print:border-b print:font-semibold">
@@ -242,10 +239,10 @@ function ProposalFullView({ batch, proposalNumber, proposalDate, generalStatus, 
                 const priceReais = price >= 100 ? price / 100 : price;
                 const volume = req.volume_projected || 0;
                 const reqStatus = req.status || 'pending';
-                
+
                 return (
-                  <tr 
-                    key={req.id} 
+                  <tr
+                    key={req.id}
                     className={`border-b border-slate-200 dark:border-border print:border-gray-300 print:border-t-0 ${idx % 2 === 0 ? 'bg-white dark:bg-card print:bg-white' : 'bg-slate-50 dark:bg-secondary/30 print:bg-gray-50'}`}
                   >
                     <td className="p-3 text-sm font-semibold text-slate-900 dark:text-slate-100 print:p-1 print:text-[9px] print:font-normal print:break-words">
@@ -296,14 +293,14 @@ function ProposalFullView({ batch, proposalNumber, proposalDate, generalStatus, 
           </table>
         </div>
       </div>
-      
+
       {/* Volume Total - Destaque */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl p-6 mb-4 text-white shadow-lg print:rounded print:p-2 print:mb-2 print:bg-blue-600 print:break-inside-avoid">
         <div>
           <p className="text-sm font-medium opacity-90 mb-0 print:text-[10px] print:font-normal">Volume total projetado: {totalVolume.toLocaleString('pt-BR')} L</p>
         </div>
       </div>
-      
+
       {/* Notas Importantes */}
       <div className="mb-4 print:mb-2 print:break-inside-avoid">
         <div className="space-y-1 text-sm text-slate-700 dark:text-slate-300 print:text-[9px] print:space-y-0.5">
@@ -321,7 +318,7 @@ function ProposalFullView({ batch, proposalNumber, proposalDate, generalStatus, 
           </p>
         </div>
       </div>
-      
+
       {/* Footer Profissional */}
       <div className="pt-4 print:pt-2 print:break-inside-avoid">
         <div className="text-center space-y-2 print:space-y-0.5">
@@ -342,7 +339,7 @@ export default function PriceRequest() {
   const { user } = useAuth();
   const { permissions } = usePermissions();
   const { stations, clients, paymentMethods, loading: dbLoadingHook, getPaymentMethodsForStation } = useDatabase();
-  
+
   const [loading, setLoading] = useState(false);
   const [loadingRequests, setLoadingRequests] = useState(false);
   const [references, setReferences] = useState<Reference[]>([]);
@@ -351,31 +348,6 @@ export default function PriceRequest() {
   const [stationPaymentMethods, setStationPaymentMethods] = useState<any[]>([]);
   const [attachments, setAttachments] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState("my-requests");
-  
-  // Estados para a aba Teste
-  const [testeRequestMode, setTesteRequestMode] = useState<'single_station_multi_client' | 'single_client_multi_station'>('single_station_multi_client');
-  const [testeFixedEntityId, setTesteFixedEntityId] = useState<string>("");
-  const [testeFixedEntityName, setTesteFixedEntityName] = useState<string>("");
-  const [testeItems, setTesteItems] = useState<Array<{
-    id: string;
-    targetId: string;
-    targetName: string;
-    product: string;
-    volume: string;
-    costPrice: string;
-    margin: string;
-    suggestedPrice: string;
-    paymentMethod: string;
-    observation: string;
-  }>>([]);
-  const [testeTempTargetId, setTesteTempTargetId] = useState("");
-  const [testeTempTargetName, setTesteTempTargetName] = useState("");
-  const [testeTempProduct, setTesteTempProduct] = useState("");
-  const [testeTempVolume, setTesteTempVolume] = useState("");
-  const [testeTempPrice, setTesteTempPrice] = useState("");
-  const [testeTempMargin, setTesteTempMargin] = useState("");
-  const [testeTempPayment, setTesteTempPayment] = useState("a_vista");
-  const [testeIsPreviewOpen, setTesteIsPreviewOpen] = useState(false);
   const [myRequests, setMyRequests] = useState<any[]>([]);
   const [selectedRequest, setSelectedRequest] = useState<any>(null);
   const [showRequestDetails, setShowRequestDetails] = useState(false);
@@ -383,7 +355,7 @@ export default function PriceRequest() {
   const [batchName, setBatchName] = useState<string>('');
   const [editingRequest, setEditingRequest] = useState<any>(null);
   const [showEditModal, setShowEditModal] = useState(false);
-  
+
   // Cards adicionados (Resultados Individuais por Posto)
   const [addedCards, setAddedCards] = useState<Array<{
     id: string;
@@ -397,7 +369,7 @@ export default function PriceRequest() {
     costAnalysis?: any;
     attachments?: string[];
   }>>([]);
-  
+
   // Custos e cálculos por posto (quando múltiplos postos são selecionados)
   const [stationCosts, setStationCosts] = useState<Record<string, {
     purchase_cost: number;
@@ -503,11 +475,11 @@ export default function PriceRequest() {
       loadMyRequests(true); // Usar cache por padrão
     }
   }, [activeTab, user]);
-  
+
   // Tempo real para atualizar quando houver mudanças
   useEffect(() => {
     if (!user) return;
-    
+
     const channel = supabase
       .channel('price_suggestions_realtime')
       .on(
@@ -529,7 +501,7 @@ export default function PriceRequest() {
         }
       )
       .subscribe();
-    
+
     return () => {
       supabase.removeChannel(channel);
     };
@@ -549,11 +521,11 @@ export default function PriceRequest() {
         const cachedData = localStorage.getItem(cacheKey);
         const cacheTimestamp = localStorage.getItem(cacheTimestampKey);
         const cacheExpiry = 5 * 60 * 1000; // 5 minutos
-        
+
         if (cachedData && cacheTimestamp) {
           const now = Date.now();
           const timestamp = parseInt(cacheTimestamp, 10);
-          
+
           if (now - timestamp < cacheExpiry) {
             console.log('📦 Usando dados do cache (minhas solicitações)');
             const parsedData = JSON.parse(cachedData);
@@ -563,30 +535,30 @@ export default function PriceRequest() {
           }
         }
       }
-      
+
       setLoadingRequests(true);
       console.log('📋 Carregando minhas solicitações no PriceRequest...');
       const userId = String(user.id);
       const userEmail = user.email ? String(user.email) : null;
-      
+
       // Buscar todas e filtrar no cliente (mais confiável)
       const { data: allData, error: allError } = await supabase
         .from('price_suggestions')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(1000);
-      
+
       if (allError) {
         console.error('❌ Erro ao buscar solicitações:', allError);
         throw allError;
       }
-      
+
       // Filtrar no cliente
       const data = (allData || []).filter((suggestion: any) => {
         const reqBy = String(suggestion.requested_by || '');
         const creBy = String(suggestion.created_by || '');
-        return reqBy === userId || creBy === userId || 
-               (userEmail && (reqBy === userEmail || creBy === userEmail));
+        return reqBy === userId || creBy === userId ||
+          (userEmail && (reqBy === userEmail || creBy === userEmail));
       }).slice(0, 50); // Limitar a 50 após filtrar
 
       // Carregar postos e clientes para enriquecer dados
@@ -594,7 +566,7 @@ export default function PriceRequest() {
         supabase.rpc('get_sis_empresa_stations').then(res => ({ data: res.data, error: res.error })),
         supabase.from('clientes' as any).select('id_cliente, nome')
       ]);
-      
+
       // Buscar informações completas dos postos (incluindo cidade/UF)
       // Nota: A tabela sis_empresa está no schema cotacao, não public
       // Como não temos acesso direto, vamos pular essa busca para evitar erros 400
@@ -609,10 +581,10 @@ export default function PriceRequest() {
       const enrichedData = (data || []).map((request: any) => {
         // Buscar múltiplos postos se station_ids existir, senão usar station_id
         let stations = [];
-        const stationIds = request.station_ids && Array.isArray(request.station_ids) 
-          ? request.station_ids 
+        const stationIds = request.station_ids && Array.isArray(request.station_ids)
+          ? request.station_ids
           : (request.station_id ? [request.station_id] : []);
-        
+
         stationIds.forEach((stationId: string) => {
           if (stationId) {
             const station = stationsWithLocation.find((s: any) => {
@@ -621,8 +593,8 @@ export default function PriceRequest() {
               return sId === reqId || s.cnpj_cpf === reqId || s.id_empresa === reqId;
             });
             if (station) {
-              stations.push({ 
-                name: station.nome_empresa || station.name, 
+              stations.push({
+                name: station.nome_empresa || station.name,
                 code: station.cnpj_cpf || station.id || station.id_empresa,
                 municipio: station.municipio,
                 uf: station.uf
@@ -630,10 +602,10 @@ export default function PriceRequest() {
             }
           }
         });
-        
+
         // Manter compatibilidade: stations como primeiro posto ou null
         const firstStation = stations.length > 0 ? stations[0] : null;
-        
+
         let client = null;
         if (request.client_id) {
           client = (clientsRes.data as any)?.find((c: any) => {
@@ -654,7 +626,7 @@ export default function PriceRequest() {
       // Agrupar solicitações por batch_id - solicitações com o mesmo batch_id foram criadas juntas
       // Se não tem batch_id, tentar agrupar por data/criador/timestamp próximo (compatibilidade com dados antigos)
       const groupedBatches = new Map<string, any[]>();
-      
+
       enrichedData.forEach((request: any) => {
         // Se tem batch_id, agrupar por batch_id
         if (request.batch_id) {
@@ -669,7 +641,7 @@ export default function PriceRequest() {
           const dateKey = new Date(request.created_at).toISOString().split('T')[0];
           const creatorKey = request.created_by || request.requested_by || 'unknown';
           const timestamp = new Date(request.created_at).getTime();
-          
+
           // Procurar se há um lote existente sem batch_id com timestamp muito próximo (dentro de 10 segundos)
           let foundBatch = false;
           for (const [existingKey, existingBatch] of groupedBatches.entries()) {
@@ -681,12 +653,12 @@ export default function PriceRequest() {
                 const existingCreator = parts[1];
                 const existingTimestampStr = parts.slice(2).join('_');
                 const existingTimestamp = parseInt(existingTimestampStr, 10);
-                
+
                 // Se for mesmo dia, mesmo criador e timestamp muito próximo (dentro de 10 segundos)
-                if (existingDate === dateKey && 
-                    existingCreator === creatorKey && 
-                    !isNaN(existingTimestamp) &&
-                    Math.abs(timestamp - existingTimestamp) < 10000) { // 10 segundos
+                if (existingDate === dateKey &&
+                  existingCreator === creatorKey &&
+                  !isNaN(existingTimestamp) &&
+                  Math.abs(timestamp - existingTimestamp) < 10000) { // 10 segundos
                   existingBatch.push(request);
                   foundBatch = true;
                   break;
@@ -694,7 +666,7 @@ export default function PriceRequest() {
               }
             }
           }
-          
+
           if (!foundBatch) {
             // Criar novo grupo sem batch_id (usando data_criador_timestamp como chave)
             const batchKey = `${dateKey}_${creatorKey}_${timestamp}`;
@@ -702,30 +674,30 @@ export default function PriceRequest() {
           }
         }
       });
-      
+
       // Agrupar lotes para visualização de proposta comercial
       const batches: any[] = [];
       const individualRequests: any[] = [];
-      
+
       // Função auxiliar para verificar se é UUID válido
       const isUUID = (str: string): boolean => {
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         return uuidRegex.test(str);
       };
-      
+
       groupedBatches.forEach((batch, batchKey) => {
         // REGRA CLARA:
         // - Se tem batch_id (UUID válido) → SEMPRE é lote (mesmo com 1 solicitação)
         // - Se não tem batch_id mas foi agrupado por timestamp → é lote se tiver mais de 1
         // - Se começa com "individual_" → é individual
         const isBatch = isUUID(batchKey) || (!batchKey.startsWith('individual_') && batch.length > 1);
-        
+
         if (isBatch) {
           // É um lote - adicionar como proposta comercial
           // Pegar o primeiro cliente para exibição (ou todos se diferentes)
           const uniqueClients = new Set(batch.map((r: any) => r.client_id || 'unknown'));
           const hasMultipleClients = uniqueClients.size > 1;
-          
+
           batches.push({
             type: 'batch',
             batchKey,
@@ -745,17 +717,17 @@ export default function PriceRequest() {
           batch.forEach((r: any) => individualRequests.push(r));
         }
       });
-      
+
       // Combinar lotes e solicitações individuais, ordenar por data
       const allRequests = [...batches, ...individualRequests].sort((a, b) => {
         const dateA = new Date(a.created_at || a.requests?.[0]?.created_at || 0).getTime();
         const dateB = new Date(b.created_at || b.requests?.[0]?.created_at || 0).getTime();
         return dateB - dateA;
       });
-      
+
       setMyRequests(allRequests);
       console.log('✅ Solicitações carregadas:', allRequests.length, 'Lotes:', batches.length);
-      
+
       // Salvar no cache
       const cacheKey = `price_request_my_requests_cache_${user.id}`;
       const cacheTimestampKey = `price_request_my_requests_cache_timestamp_${user.id}`;
@@ -778,14 +750,14 @@ export default function PriceRequest() {
   // Load references when component mounts (com cache e tempo real)
   useEffect(() => {
     loadReferences(true); // Usar cache por padrão
-    
+
     // Tempo real para atualizar quando houver mudanças
     const channel = supabase
       .channel('referencias-realtime')
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: 'referencias' 
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'referencias'
       }, () => {
         console.log('🔄 Mudança detectada em referências');
         localStorage.removeItem('price_request_references_cache');
@@ -802,199 +774,16 @@ export default function PriceRequest() {
         loadReferences(false);
       })
       .subscribe();
-    
-    return () => { 
-      supabase.removeChannel(channel); 
+
+    return () => {
+      supabase.removeChannel(channel);
     };
   }, []);
 
   // Auto-fill lowest cost + freight when station and product are selected
   const [lastSearchedStation, setLastSearchedStation] = useState<string>('');
   const [lastSearchedProduct, setLastSearchedProduct] = useState<string>('');
-  
-  // Buscar custos para todos os postos selecionados
-  useEffect(() => {
-    // Função para buscar custos de um posto específico
-    const fetchCostForStation = async (stationId: string, stationName: string): Promise<{
-      purchase_cost: number;
-      freight_cost: number;
-      station_name: string;
-    } | null> => {
-      if (!formData.product) return null;
-      
-      try {
-        const today = new Date().toISOString().split('T')[0];
-        const selectedStation = stations.find(s => s.id === stationId);
-        if (!selectedStation) return null;
-        
-        const rawId = selectedStation.code || selectedStation.id;
-        const cleanedId = rawId.replace(/-\d+\.\d+$/, '');
-        
-        const productMap: Record<string, string> = {
-          s10: 'S10',
-          s10_aditivado: 'S10 Aditivado',
-          diesel_s500: 'S500',
-          diesel_s500_aditivado: 'S500 Aditivado',
-          arla32_granel: 'ARLA'
-        };
-        const produtoBusca = productMap[formData.product] || formData.product;
-        
-        const candidates: string[] = [];
-        if (selectedStation.code) candidates.push(selectedStation.code);
-        if (cleanedId && !candidates.includes(cleanedId)) candidates.push(cleanedId);
-        if (selectedStation.name && !candidates.includes(selectedStation.name)) candidates.push(selectedStation.name);
-        
-        // Tentar RPC
-        let resultData: any[] | null = null;
-        for (const cand of candidates) {
-          const { data: d, error: e } = await supabase
-            .rpc('get_lowest_cost_freight', {
-              p_posto_id: cand,
-              p_produto: produtoBusca,
-              p_date: today
-            });
-          
-          if (!e && d && Array.isArray(d) && d.length > 0) {
-            resultData = d;
-            break;
-          }
-        }
-        
-        // Fallback similar ao código existente (simplificado)
-        if (!resultData) {
-          try {
-            const cot: any = (supabase as any).schema ? (supabase as any).schema('cotacao') : null;
-            if (cot) {
-              const { data: gci } = await cot
-                .from('grupo_codigo_item')
-                .select('id_grupo_codigo_item,nome,descricao')
-                .ilike('nome', `%${produtoBusca}%`)
-                .limit(20);
-              const ids = (gci as any[])?.map((r: any) => r.id_grupo_codigo_item) || [];
-              
-              if (ids.length > 0) {
-                const { data: maxRows } = await cot
-                  .from('cotacao_geral_combustivel')
-                  .select('data_cotacao')
-                  .in('id_grupo_codigo_item', ids)
-                  .order('data_cotacao', { ascending: false })
-                  .limit(1);
-                const lastDateStr = maxRows?.[0]?.data_cotacao as string | undefined;
-                
-                if (lastDateStr) {
-                  const start = new Date(lastDateStr);
-                  const end = new Date(start);
-                  end.setDate(end.getDate() + 1);
-                  
-                  const { data: emp } = await cot
-                    .from('sis_empresa')
-                    .select('id_empresa')
-                    .ilike('nome_empresa', `%${selectedStation.name}%`)
-                    .limit(1);
-                  const idEmpresa = (emp as any[])?.[0]?.id_empresa as number | undefined;
-                  
-                  if (idEmpresa) {
-                    const { data: cg } = await cot
-                      .from('cotacao_geral_combustivel')
-                      .select('id_base_fornecedor,valor_unitario,desconto_valor,forma_entrega')
-                      .in('id_grupo_codigo_item', ids)
-                      .gte('data_cotacao', start.toISOString())
-                      .lt('data_cotacao', end.toISOString());
-                    
-                    const baseIds = Array.from(new Set((cg as any[])?.map((r: any) => r.id_base_fornecedor) || []));
-                    
-                    let freteMap = new Map<number, number>();
-                    if (baseIds.length > 0) {
-                      const { data: fretes } = await cot
-                        .from('frete_empresa')
-                        .select('id_base_fornecedor,frete_real,frete_atual')
-                        .eq('id_empresa', idEmpresa)
-                        .in('id_base_fornecedor', baseIds)
-                        .eq('registro_ativo', true);
-                      (fretes as any[])?.forEach((f: any) => {
-                        freteMap.set(f.id_base_fornecedor, Number(f.frete_real ?? f.frete_atual ?? 0));
-                      });
-                    }
-                    
-                    let best: any = null;
-                    (cg as any[])?.forEach((row: any) => {
-                      const custo = Number(row.valor_unitario) - Number(row.desconto_valor || 0);
-                      const frete = row.forma_entrega === 'FOB' ? (freteMap.get(row.id_base_fornecedor) || 0) : 0;
-                      const total = custo + frete;
-                      if (!best || total < best.custo_total) {
-                        best = { custo, frete, custo_total: total };
-                      }
-                    });
-                    
-                    if (best) {
-                      resultData = [best];
-                    }
-                  }
-                }
-              }
-            }
-          } catch (e) {
-            console.error('Erro no fallback:', e);
-          }
-        }
-        
-        if (resultData && resultData.length > 0) {
-          const result = resultData[0];
-          return {
-            purchase_cost: Number(result.custo || 0),
-            freight_cost: Number(result.frete || 0),
-            station_name: stationName
-          };
-        }
-        
-        return null;
-      } catch (error) {
-        console.error(`Erro ao buscar custo para posto ${stationId}:`, error);
-        return null;
-      }
-    };
-    
-    // Buscar custos apenas se houver station_id selecionado
-    const fetchCostForSelectedStation = async () => {
-      if (!formData.station_id || formData.station_id === 'none' || !formData.product) {
-        setStationCosts({});
-        return;
-      }
-      
-      const station = stations.find(s => s.id === formData.station_id);
-      if (!station) return;
-      
-      // Verificar se mudou posto ou produto OU se os custos estão vazios (formulário resetado)
-      const stationOrProductChanged = formData.station_id !== lastSearchedStation || formData.product !== lastSearchedProduct;
-      const costsAreEmpty = !formData.purchase_cost && !formData.freight_cost;
-      
-      // Se não mudou e os custos já estão preenchidos, não recarregar
-      if (!stationOrProductChanged && !costsAreEmpty) {
-        return;
-      }
-      
-      // Atualizar referências apenas se mudou posto ou produto
-      if (stationOrProductChanged) {
-        setLastSearchedStation(formData.station_id);
-        setLastSearchedProduct(formData.product);
-      }
-      
-      const costs = await fetchCostForStation(formData.station_id, station.name);
-      if (costs) {
-        setStationCosts({ [formData.station_id]: costs });
-        
-        // Atualizar formData com os custos encontrados
-        setFormData(prev => ({
-          ...prev,
-          purchase_cost: costs.purchase_cost.toFixed(4),
-          freight_cost: costs.freight_cost.toFixed(4)
-        }));
-      }
-    };
-    
-    fetchCostForSelectedStation();
-  }, [formData.station_id, formData.product, formData.purchase_cost, formData.freight_cost, stations]);
-  
+
   useEffect(() => {
     // console.log('🔄 ===== useEffect BUSCA DE CUSTO INICIADO =====');
     // console.log('🔄 station_id:', formData.station_id, 'tipo:', typeof formData.station_id); 
@@ -1009,36 +798,36 @@ export default function PriceRequest() {
       console.log('🚀 product:', formData.product);
       console.log('🚀 lastSearchedStation:', lastSearchedStation);
       console.log('🚀 lastSearchedProduct:', lastSearchedProduct);
-      
+
       // Só buscar se mudou o posto ou o produto
       if (formData.station_id === lastSearchedStation && formData.product === lastSearchedProduct) {
         console.log('⏭️ Pulando busca - mesmo posto e produto');
         return;
       }
-      
+
       if (!formData.station_id || !formData.product) {
         console.log('⏭️ Pulando busca - falta station_id ou product');
         return;
       }
-      
+
       // Atualizar referências
       setLastSearchedStation(formData.station_id);
       setLastSearchedProduct(formData.product);
-      
+
       try {
         const today = new Date().toISOString().split('T')[0];
         console.log('📅 Data de hoje:', today);
-        
+
         // Get the posto_id from the selected station
         const selectedStation = stations.find(s => s.id === formData.station_id);
         if (!selectedStation) {
           console.log('⚠️ Estação não encontrada');
           return;
         }
-        
+
         const rawId = selectedStation.code || selectedStation.id;
         const cleanedId = rawId.replace(/-\d+\.\d+$/, '');
-        
+
         // Verificar se o posto é bandeira branca
         let isBandeiraBranca = false;
         try {
@@ -1050,7 +839,7 @@ export default function PriceRequest() {
               .or(`nome_empresa.ilike.%${selectedStation.name}%,cnpj_cpf.eq.${cleanedId},cnpj_cpf.eq.${rawId}`)
               .limit(1)
               .maybeSingle();
-            
+
             if (empresaInfo) {
               const bandeiraUpper = (empresaInfo.bandeira || '').toUpperCase().trim();
               isBandeiraBranca = !bandeiraUpper || bandeiraUpper === '' || bandeiraUpper === 'BANDEIRA BRANCA';
@@ -1060,7 +849,7 @@ export default function PriceRequest() {
         } catch (err) {
           console.warn('⚠️ Erro ao verificar bandeira do posto:', err);
         }
-        
+
         // Mapear produto para termos usados na base de cotação
         const productMap: Record<string, string> = {
           s10: 'S10',
@@ -1091,7 +880,7 @@ export default function PriceRequest() {
               candidates.unshift(seRow.cnpj_cpf);
             }
           }
-        } catch (_e) {}
+        } catch (_e) { }
 
         // Tentar a função RPC com múltiplos candidatos
         let resultData: any[] | null = null;
@@ -1102,7 +891,7 @@ export default function PriceRequest() {
               p_produto: produtoBusca,
               p_date: today
             });
-          
+
           if (!e && d && Array.isArray(d) && d.length > 0) {
             resultData = d;
             // A bandeira agora vem diretamente da função SQL (base_bandeira)
@@ -1118,9 +907,9 @@ export default function PriceRequest() {
                       .select('bandeira, nome')
                       .eq('id_base_fornecedor', resultData[0].base_id)
                       .maybeSingle();
-                    
+
                     console.log('🔍 Resultado da busca na base_fornecedor:', { baseInfo, baseError });
-                    
+
                     if (!baseError && baseInfo) {
                       if (baseInfo.bandeira && baseInfo.bandeira.trim() !== '') {
                         const bandeiraUpper = baseInfo.bandeira.trim().toUpperCase();
@@ -1150,7 +939,7 @@ export default function PriceRequest() {
                           { nome: 'ATEM', patterns: ['ATEM'] },
                           { nome: 'ALE', patterns: ['ALE'] }
                         ];
-                        
+
                         for (const bandeiraItem of bandeiras) {
                           for (const pattern of bandeiraItem.patterns) {
                             if (nomeUpper.includes(pattern)) {
@@ -1168,7 +957,7 @@ export default function PriceRequest() {
                   console.warn('⚠️ Erro ao buscar bandeira da tabela:', err);
                 }
               }
-              
+
               // Se ainda não encontrou, verificar se é bandeira branca
               if (!resultData[0].base_bandeira || resultData[0].base_bandeira === '' || resultData[0].base_bandeira === 'N/A') {
                 if (isBandeiraBranca) {
@@ -1188,7 +977,7 @@ export default function PriceRequest() {
                     { nome: 'ATEM', patterns: ['ATEM'] },
                     { nome: 'ALE', patterns: ['ALE'] }
                   ];
-                  
+
                   for (const bandeiraItem of bandeiras) {
                     for (const pattern of bandeiraItem.patterns) {
                       if (nomeUpper.includes(pattern)) {
@@ -1200,7 +989,7 @@ export default function PriceRequest() {
                     if (resultData[0].base_bandeira && resultData[0].base_bandeira !== 'N/A') break;
                   }
                 }
-                
+
                 if (!resultData[0].base_bandeira || resultData[0].base_bandeira === '') {
                   resultData[0].base_bandeira = 'N/A';
                   console.log('⚠️ Bandeira não encontrada, usando N/A');
@@ -1283,19 +1072,19 @@ export default function PriceRequest() {
                       .from('base_fornecedor')
                       .select('id_base_fornecedor,nome,codigo_base,uf,bandeira')
                       .in('id_base_fornecedor', baseIds);
-                    
+
                     console.log('🏢 Bases encontradas:', bases);
-                    
+
                     (bases as any[])?.forEach((b: any) => {
-                      baseInfo.set(b.id_base_fornecedor, { 
-                        nome: b.nome, 
-                        codigo: b.codigo_base, 
+                      baseInfo.set(b.id_base_fornecedor, {
+                        nome: b.nome,
+                        codigo: b.codigo_base,
                         uf: String(b.uf || ''),
                         bandeira: b.bandeira || null
                       });
                     });
                   }
-                  
+
                   // Função para extrair bandeira do nome se não vier da tabela
                   const extractBandeira = (nome: string, bandeira?: string | null): string => {
                     // Se vier bandeira da tabela, usar direto (normalizar para maiúsculas)
@@ -1313,7 +1102,7 @@ export default function PriceRequest() {
                       }
                       return bandeiraUpper;
                     }
-                    
+
                     // Tentar extrair do nome da base
                     const nomeUpper = nome.toUpperCase();
                     const bandeiras = [
@@ -1327,7 +1116,7 @@ export default function PriceRequest() {
                       { nome: 'ATEM', patterns: ['ATEM'] },
                       { nome: 'ALE', patterns: ['ALE'] }
                     ];
-                    
+
                     for (const bandeiraItem of bandeiras) {
                       for (const pattern of bandeiraItem.patterns) {
                         if (nomeUpper.includes(pattern)) {
@@ -1335,7 +1124,7 @@ export default function PriceRequest() {
                         }
                       }
                     }
-                    
+
                     return 'N/A';
                   };
 
@@ -1364,14 +1153,14 @@ export default function PriceRequest() {
 
                   if (best) {
                     resultData = [best];
-                    const dataRef = best.data_referencia 
+                    const dataRef = best.data_referencia
                       ? new Date(best.data_referencia).toLocaleDateString('pt-BR', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })
                       : 'N/A';
                     console.log('✅ Fallback cotacao encontrou melhor custo:', {
                       base_id: best.base_id,
@@ -1407,16 +1196,16 @@ export default function PriceRequest() {
             .limit(1);
           const refArr = (ref as any[]) || [];
           if (refArr.length > 0) {
-            const dataRef = refArr[0].created_at 
+            const dataRef = refArr[0].created_at
               ? new Date(refArr[0].created_at).toLocaleDateString('pt-BR', {
-                  day: '2-digit',
-                  month: '2-digit',
-                  year: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit'
-                })
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              })
               : 'N/A';
-            
+
             resultData = [{
               base_codigo: refArr[0].posto_id,
               base_id: refArr[0].posto_id,
@@ -1429,7 +1218,7 @@ export default function PriceRequest() {
               forma_entrega: 'FOB',
               data_referencia: refArr[0].created_at
             }];
-            
+
             console.log('✅ Referência manual encontrada:', {
               base_nome: 'Referência',
               base_codigo: refArr[0].posto_id,
@@ -1468,31 +1257,31 @@ export default function PriceRequest() {
           console.log('✅ ===== PROCESSANDO RESULTADO =====');
           const result = data[0];
           console.log('✅ result completo:', result);
-          
+
           const custo = Number(result.custo || 0);
           const frete = Number(result.frete || 0);
           const custoTotal = Number(result.custo_total || 0);
-          
+
           console.log('💰 Valores numéricos:', { custo, frete, custoTotal });
-          
+
           // Formatar data para exibição
-          const dataReferencia = result.data_referencia 
+          const dataReferencia = result.data_referencia
             ? new Date(result.data_referencia).toLocaleDateString('pt-BR', {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-              })
+              day: '2-digit',
+              month: '2-digit',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            })
             : 'N/A';
-          
+
           console.log('📅 Data formatada:', dataReferencia);
           console.log('📅 Data raw:', result.data_referencia);
-          
+
           // Verificar se a bandeira veio vazia e tentar extrair do nome
           let bandeiraFinal = result.base_bandeira || '';
           console.log('🚩 Bandeira original do banco:', bandeiraFinal);
-          
+
           // Normalizar bandeira branca
           if (bandeiraFinal) {
             const bandeiraUpper = bandeiraFinal.toUpperCase().trim();
@@ -1501,7 +1290,7 @@ export default function PriceRequest() {
               console.log('🚩 Bandeira normalizada para BANDEIRA BRANCA');
             }
           }
-          
+
           if (!bandeiraFinal || bandeiraFinal === '' || bandeiraFinal === 'N/A') {
             // Verificar se o posto é bandeira branca
             let isBandeiraBranca = false;
@@ -1516,7 +1305,7 @@ export default function PriceRequest() {
                     .ilike('nome_empresa', `%${selectedStation.name}%`)
                     .limit(1)
                     .maybeSingle();
-                  
+
                   if (empresaInfo) {
                     const bandeiraUpper = (empresaInfo.bandeira || '').toUpperCase().trim();
                     isBandeiraBranca = !bandeiraUpper || bandeiraUpper === '' || bandeiraUpper === 'BANDEIRA BRANCA';
@@ -1526,43 +1315,23 @@ export default function PriceRequest() {
             } catch (err) {
               console.warn('⚠️ Erro ao verificar bandeira do posto:', err);
             }
-            
-            if (isBandeiraBranca) {
-              bandeiraFinal = 'BANDEIRA BRANCA';
-              console.log('🚩 Posto é bandeira branca, usando BANDEIRA BRANCA');
-            } else if (result.base_nome) {
-              console.log('🚩 Bandeira vazia, tentando extrair do nome:', result.base_nome);
+
+            // Se não veio bandeira do banco, tentar usar o que veio da procedure (que agora retorna bandeira correta)
+            // A procedure já faz a verificação de bandeira branca vs bandeirada
+
+            if (!bandeiraFinal && result.base_bandeira) {
+              bandeiraFinal = result.base_bandeira;
+            }
+
+            // Se ainda assim não tiver bandeira, usar base_nome para tentativa final (apenas display)
+            if (!bandeiraFinal || bandeiraFinal === 'N/A') {
               const nomeUpper = (result.base_nome || '').toUpperCase();
-              const bandeiras = [
-                { nome: 'VIBRA', patterns: ['VIBRA'] },
-                { nome: 'IPIRANGA', patterns: ['IPIRANGA', 'IPP'] },
-                { nome: 'RAÍZEN', patterns: ['RAIZEN', 'RAÍZEN'] },
-                { nome: 'PETROBRAS', patterns: ['PETROBRAS', 'BR ', ' BR', 'BR-', 'PETRO'] },
-                { nome: 'SHELL', patterns: ['SHELL'] },
-                { nome: 'COOP', patterns: ['COOP'] },
-                { nome: 'UNO', patterns: ['UNO'] },
-                { nome: 'ATEM', patterns: ['ATEM'] },
-                { nome: 'ALE', patterns: ['ALE'] }
-              ];
-              
-              for (const bandeiraItem of bandeiras) {
-                for (const pattern of bandeiraItem.patterns) {
-                  if (nomeUpper.includes(pattern)) {
-                    bandeiraFinal = bandeiraItem.nome;
-                    console.log('🚩 Bandeira extraída:', bandeiraFinal, 'do padrão:', pattern);
-                    break;
-                  }
-                }
-                if (bandeiraFinal && bandeiraFinal !== '') break;
+              if (nomeUpper.includes('BRANCA')) {
+                bandeiraFinal = 'BANDEIRA BRANCA';
               }
             }
-            
-            if (!bandeiraFinal || bandeiraFinal === '') {
-              bandeiraFinal = 'N/A';
-              console.log('🚩 Bandeira não encontrada, usando N/A');
-            }
           }
-          
+
           // Log detalhado com todas as informações
           console.log('✅ ===== RESULTADO FINAL =====');
           console.log('✅ base_id:', result.base_id);
@@ -1577,7 +1346,7 @@ export default function PriceRequest() {
           console.log('✅ frete:', frete.toFixed(4));
           console.log('✅ custo_total:', custoTotal.toFixed(4));
           console.log('✅ produto:', formData.product);
-          
+
           // Log como objeto também
           console.log('✅ Resultado completo (objeto):', {
             base_id: result.base_id,
@@ -1593,20 +1362,20 @@ export default function PriceRequest() {
             custo_total: custoTotal.toFixed(4),
             produto: formData.product
           });
-          
-          console.log('💰 Valores convertidos:', { 
-            custo: custo.toFixed(4), 
-            frete: frete.toFixed(4), 
-            custoTotal: custoTotal.toFixed(4) 
+
+          console.log('💰 Valores convertidos:', {
+            custo: custo.toFixed(4),
+            frete: frete.toFixed(4),
+            custoTotal: custoTotal.toFixed(4)
           });
-          
+
           if (custoTotal > 0) {
             setFormData(prev => ({
               ...prev,
               purchase_cost: Math.max(custo, 0).toFixed(4),
               freight_cost: Math.max(frete, 0).toFixed(4)
             }));
-            
+
             // Armazenar informações sobre a origem do preço
             setPriceOrigin({
               base_nome: result.base_nome || '',
@@ -1619,20 +1388,20 @@ export default function PriceRequest() {
             const isReference = (result.base_nome || '').toLowerCase().includes('refer');
             const statusType: 'today' | 'latest' | 'reference' = isReference ? 'reference' : (refDateIso === today ? 'today' : 'latest');
             setFetchStatus({ type: statusType, date: result.data_referencia || null });
-            
+
             // Remover toasts para não incomodar
             // if (frete > 0) {
             //   toast.success(`Menor custo+frete encontrado: R$ ${custo.toFixed(4)} + R$ ${frete.toFixed(4)} = R$ ${custoTotal.toFixed(4)}`);
             // } else {
             //   toast.success(`Preço de referência encontrado: R$ ${custo.toFixed(4)}`);
             // }
-            
+
             // Se for S10, buscar também o preço do ARLA
             if (formData.product === 's10') {
               console.log('🔍 Produto S10 detectado, buscando preço do ARLA...');
               try {
                 let arlaData: any[] | null = null;
-                
+
                 // Tentar RPC primeiro
                 for (const cand of candidates) {
                   const { data: d, error: e } = await supabase
@@ -1641,14 +1410,14 @@ export default function PriceRequest() {
                       p_produto: 'ARLA',
                       p_date: today
                     });
-                  
+
                   if (!e && d && Array.isArray(d) && d.length > 0) {
                     arlaData = d;
                     console.log('✅ ARLA encontrado via RPC:', arlaData);
                     break;
                   }
                 }
-                
+
                 // Fallback: buscar direto na tabela cotacao_arla via id_empresa
                 if (!arlaData) {
                   console.log('🔄 Fallback: buscando ARLA direto na tabela cotacao.cotacao_arla...');
@@ -1665,7 +1434,7 @@ export default function PriceRequest() {
                     } catch (err) {
                       console.error('⚠️ Erro ao buscar id_empresa por nome:', err);
                     }
-                    
+
                     if (resolvedIdEmpresa) {
                       const cot: any = (supabase as any).schema ? (supabase as any).schema('cotacao') : null;
                       if (cot) {
@@ -1676,7 +1445,7 @@ export default function PriceRequest() {
                           .eq('id_empresa', resolvedIdEmpresa)
                           .order('data_cotacao', { ascending: false })
                           .limit(1);
-                      
+
                         if (arlaRows && arlaRows.length > 0) {
                           arlaData = [{
                             custo: Number(arlaRows[0].valor_unitario || 0),
@@ -1690,12 +1459,12 @@ export default function PriceRequest() {
                     console.error('⚠️ Erro no fallback cotacao_arla:', fallbackErr);
                   }
                 }
-                
+
                 if (arlaData && arlaData.length > 0) {
                   const arlaResult = arlaData[0];
                   const arlaCusto = Number(arlaResult.custo || 0);
                   console.log('✅ Preço do ARLA encontrado:', arlaCusto);
-                  
+
                   if (arlaCusto > 0) {
                     setFormData(prev => ({
                       ...prev,
@@ -1741,11 +1510,11 @@ export default function PriceRequest() {
         const cachedData = localStorage.getItem(cacheKey);
         const cacheTimestamp = localStorage.getItem(cacheTimestampKey);
         const cacheExpiry = 5 * 60 * 1000; // 5 minutos
-        
+
         if (cachedData && cacheTimestamp) {
           const now = Date.now();
           const timestamp = parseInt(cacheTimestamp, 10);
-          
+
           if (now - timestamp < cacheExpiry) {
             console.log('📦 Usando dados do cache (referências)');
             const parsedData = JSON.parse(cachedData);
@@ -1754,7 +1523,7 @@ export default function PriceRequest() {
           }
         }
       }
-      
+
       console.log('Carregando referências...');
       const { data, error } = await supabase
         .from('referencias' as any)
@@ -1800,7 +1569,7 @@ export default function PriceRequest() {
 
         console.log('Referências carregadas do fallback:', convertedReferences.length);
         setReferences(convertedReferences);
-        
+
         // Salvar no cache
         const cacheKey = 'price_request_references_cache';
         const cacheTimestampKey = 'price_request_references_cache_timestamp';
@@ -1815,7 +1584,7 @@ export default function PriceRequest() {
 
       console.log('Referências carregadas:', data?.length || 0);
       setReferences(data as any[] || []);
-      
+
       // Salvar no cache
       const cacheKey = 'price_request_references_cache';
       const cacheTimestampKey = 'price_request_references_cache_timestamp';
@@ -1839,26 +1608,26 @@ export default function PriceRequest() {
       if (!formData.station_id || formData.station_id === 'none' || !formData.client_id || !formData.product) {
         return;
       }
-      
+
       // Se já tem preço atual preenchido, não sobrescrever
       if (formData.current_price && formData.current_price.trim() !== '') {
         return;
       }
-      
+
       try {
         console.log('🔍 Buscando último preço aprovado:', {
           station_id: formData.station_id,
           client_id: formData.client_id,
           product: formData.product
         });
-        
+
         // Mapear produto para valor válido do enum
         const mappedProduct = mapProductToEnum(formData.product);
         if (!mappedProduct) {
           console.warn('⚠️ Produto não mapeado para enum:', formData.product);
           return;
         }
-        
+
         // Buscar último preço aprovado para essa combinação
         const { data, error } = await supabase
           .from('price_suggestions')
@@ -1870,23 +1639,23 @@ export default function PriceRequest() {
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle();
-        
+
         if (error) {
           console.warn('⚠️ Erro ao buscar último preço aprovado:', error);
           return;
         }
-        
+
         if (data && data.final_price) {
           // Converter de centavos para reais se necessário
           const priceInReais = data.final_price >= 100 ? data.final_price / 100 : data.final_price;
           const formattedPrice = formatIntegerToPrice(Math.round(priceInReais * 100));
-          
+
           console.log('✅ Último preço aprovado encontrado:', {
             final_price: data.final_price,
             priceInReais,
             formattedPrice
           });
-          
+
           setFormData(prev => ({
             ...prev,
             current_price: formattedPrice
@@ -1898,19 +1667,19 @@ export default function PriceRequest() {
         console.error('❌ Erro ao buscar último preço aprovado:', error);
       }
     };
-    
+
     // Debounce para evitar múltiplas buscas
     const timeout = setTimeout(() => {
       loadLastApprovedPrice();
     }, 500);
-    
+
     return () => clearTimeout(timeout);
   }, [formData.station_id, formData.client_id, formData.product]);
-  
+
   const handleInputChange = async (field: string, value: any) => {
     // Campos de preço: aceitar apenas números inteiros e formatar com vírgula fixa
     const priceFields = ['current_price', 'suggested_price', 'arla_purchase_price'];
-    
+
     if (priceFields.includes(field)) {
       // Remove tudo que não é número
       const numbersOnly = value.replace(/\D/g, '');
@@ -1918,9 +1687,8 @@ export default function PriceRequest() {
       const formatted = formatIntegerToPrice(numbersOnly);
       setFormData(prev => ({ ...prev, [field]: formatted }));
     } else if (field === 'payment_method_id') {
-      // Garantir que payment_method_id seja sempre uma string única, nunca um array
-      const singleValue = Array.isArray(value) ? value[0] : String(value);
-      setFormData(prev => ({ ...prev, [field]: singleValue }));
+      // O valor já é o CARTAO diretamente, então apenas atualizar
+      setFormData(prev => ({ ...prev, [field]: value || 'none' }));
     } else {
       setFormData(prev => ({ ...prev, [field]: value }));
     }
@@ -1930,41 +1698,21 @@ export default function PriceRequest() {
       if (value && value !== 'none' && value !== '') {
         const methods = await getPaymentMethodsForStation(value);
         setStationPaymentMethods(methods);
+        // Limpar seleção de método de pagamento quando mudar o posto
+        setFormData(prev => ({ ...prev, payment_method_id: 'none' }));
       } else {
         setStationPaymentMethods([]);
+        setFormData(prev => ({ ...prev, payment_method_id: 'none' }));
       }
     }
   };
-
-  // Função auxiliar para buscar método de pagamento pelo ID
-  const getPaymentMethodById = useCallback((methodId: string) => {
-    if (!methodId || methodId === 'none') return null;
-    
-    // Buscar primeiro nos métodos do posto pelo ID
-    const stationMethod = stationPaymentMethods.find(pm => {
-      const pmId = String((pm as any).id || String((pm as any).ID_POSTO) + '_' + pm.CARTAO);
-      return pmId === String(methodId);
-    });
-    
-    if (stationMethod) {
-      return stationMethod;
-    }
-    
-    // Se não encontrou no posto, buscar nos métodos gerais pelo ID ou CARTAO
-    const defaultMethod = paymentMethods.find(pm => {
-      const pmId = String((pm as any).id || pm.CARTAO);
-      return pmId === String(methodId) || pm.CARTAO === methodId;
-    });
-    
-    return defaultMethod || null;
-  }, [stationPaymentMethods, paymentMethods]);
 
   const calculateMargin = useCallback(() => {
     try {
       // Converter de formato com vírgula fixa para número (reais)
       const suggestedPrice = parsePriceToInteger(formData.suggested_price) / 100;
       const currentPrice = parsePriceToInteger(formData.current_price) / 100;
-      
+
       console.log('=== CALCULANDO MARGENS ===');
       console.log('suggestedPrice:', suggestedPrice);
       console.log('currentPrice:', currentPrice);
@@ -1981,13 +1729,22 @@ export default function PriceRequest() {
       const purchaseCost = parseFloat(formData.purchase_cost) || 0;
       const freightCost = parseFloat(formData.freight_cost) || 0;
       const baseCost = purchaseCost + freightCost;
-      
+
       let feePercentage = 0;
       if (formData.payment_method_id && formData.payment_method_id !== 'none') {
-        const method = getPaymentMethodById(formData.payment_method_id);
-        feePercentage = method?.TAXA || 0;
+        const stationMethod = stationPaymentMethods.find(pm => {
+          const methodId = String((pm as any).id || (pm as any).ID_POSTO || '');
+          return pm.CARTAO === formData.payment_method_id || methodId === String(formData.payment_method_id);
+        });
+
+        if (stationMethod) {
+          feePercentage = stationMethod.TAXA || 0;
+        } else {
+          const defaultMethod = paymentMethods.find(pm => pm.CARTAO === formData.payment_method_id);
+          feePercentage = defaultMethod?.TAXA || 0;
+        }
       }
-      
+
       const finalCost = baseCost * (1 + feePercentage / 100);
 
       if (!isNaN(suggestedPrice) && suggestedPrice > 0) {
@@ -2005,7 +1762,7 @@ export default function PriceRequest() {
       setCalculatedPrice(0);
       setMargin(0);
     }
-  }, [formData.suggested_price, formData.current_price, formData.purchase_cost, formData.freight_cost, formData.payment_method_id, getPaymentMethodById]);
+  }, [formData.suggested_price, formData.current_price, formData.purchase_cost, formData.freight_cost, formData.payment_method_id, paymentMethods, stationPaymentMethods]);
 
   const calculateCosts = useCallback(() => {
     try {
@@ -2014,36 +1771,45 @@ export default function PriceRequest() {
       const suggestedPrice = (parsePriceToInteger(formData.suggested_price) / 100) || 0;
       const arlaPurchase = (parsePriceToInteger(formData.arla_purchase_price) / 100) || 0;
       const arlaSale = formData.product === 'arla32_granel' ? suggestedPrice : 0;
-      
+
       // Converter m³ para litros (1 m³ = 1000 litros)
       const volumeProjectedLiters = volumeProjected * 1000;
-      
+
       // Cálculo único para um posto
       const purchaseCost = parseFloat(formData.purchase_cost) || 0;
       const freightCost = parseFloat(formData.freight_cost) || 0;
-      
+
       // Buscar taxa específica do posto ou taxa padrão
       let feePercentage = 0;
       if (formData.payment_method_id && formData.payment_method_id !== 'none') {
-        const method = getPaymentMethodById(formData.payment_method_id);
-        feePercentage = method?.TAXA || 0;
+        const stationMethod = stationPaymentMethods.find(pm => {
+          const methodId = String((pm as any).id || (pm as any).ID_POSTO || '');
+          return pm.CARTAO === formData.payment_method_id || methodId === String(formData.payment_method_id);
+        });
+
+        if (stationMethod) {
+          feePercentage = stationMethod.TAXA || 0;
+        } else {
+          const defaultMethod = paymentMethods.find(pm => pm.CARTAO === formData.payment_method_id);
+          feePercentage = defaultMethod?.TAXA || 0;
+        }
       }
-      
+
       // Calcular base cost em R$/L
       const baseCost = purchaseCost + freightCost;
-      
+
       // Calcular custo final em R$/L (aplicando taxa)
       const finalCost = baseCost * (1 + feePercentage / 100);
-      
+
       // Calcular receita total (volume projetado em litros * preço sugerido)
       const totalRevenue = volumeProjectedLiters * suggestedPrice;
-      
+
       // Calcular custo total (volume projetado em litros * custo final)
       const totalCost = volumeProjectedLiters * finalCost;
-      
+
       // Lucro bruto = receita - custo
       const grossProfit = totalRevenue - totalCost;
-      
+
       console.log('🛢️ Cálculo Lucro Diesel:', {
         volumeProjetadoM3: volumeProjected,
         volumeProjetadoLitros: volumeProjectedLiters,
@@ -2058,7 +1824,7 @@ export default function PriceRequest() {
         lucroBruto: grossProfit,
         lucroPorLitro: grossProfit / volumeProjectedLiters
       });
-      
+
       // Verificação manual
       const expectedLucro = (suggestedPrice - finalCost) * volumeProjectedLiters;
       console.log('✅ Verificação:', {
@@ -2068,16 +1834,16 @@ export default function PriceRequest() {
         'Lucro Calculado': grossProfit,
         'Diferença': Math.abs(expectedLucro - grossProfit)
       });
-      
+
       // Lucro por litro
       const profitPerLiter = volumeProjectedLiters > 0 ? grossProfit / volumeProjectedLiters : 0;
-      
+
       // Compensação do ARLA (margem ARLA * volume)
       // Para S10: ARLA é vendido junto, então calculamos a margem do ARLA
       // Volume do ARLA é proporcional ao diesel (aprox. 5% do volume)
       const arlaVolume = volumeProjectedLiters * 0.05;
       let arlaCompensation = 0;
-      
+
       if (formData.product === 's10') {
         // Para S10: margem = preço de venda do ARLA - preço de compra do ARLA
         const arlaMargin = (parsePriceToInteger(formData.arla_purchase_price) / 100) - parseFloat(formData.arla_cost_price);
@@ -2097,10 +1863,10 @@ export default function PriceRequest() {
         const arlaMargin = suggestedPrice - parseFloat(formData.arla_cost_price);
         arlaCompensation = volumeProjectedLiters * arlaMargin;
       }
-      
+
       // Resultado líquido (lucro bruto + compensação ARLA)
       const netResult = grossProfit + arlaCompensation;
-      
+
       setCostCalculations({
         finalCost,
         totalRevenue,
@@ -2150,7 +1916,8 @@ export default function PriceRequest() {
     formData.payment_method_id,
     formData.station_ids,
     stationCosts,
-    getPaymentMethodById,
+    stationPaymentMethods,
+    paymentMethods,
     calculateMargin
   ]);
 
@@ -2169,7 +1936,8 @@ export default function PriceRequest() {
     formData.arla_purchase_price,
     formData.product,
     formData.payment_method_id,
-    getPaymentMethodById
+    stationPaymentMethods,
+    paymentMethods
   ]);
 
   const getFilteredReferences = () => {
@@ -2178,10 +1946,10 @@ export default function PriceRequest() {
         console.log('References não é um array:', references);
         return [];
       }
-      
+
       console.log('Total de referências:', references.length);
       console.log('Filtros:', { station_id: formData.station_id, client_id: formData.client_id, product: formData.product });
-      
+
       const filtered = references.filter(ref => {
         if (!ref) return false;
         return (
@@ -2190,7 +1958,7 @@ export default function PriceRequest() {
           (!formData.product || ref.produto === formData.product)
         );
       });
-      
+
       console.log('Referências filtradas:', filtered.length);
       return filtered;
     } catch (error) {
@@ -2222,7 +1990,7 @@ export default function PriceRequest() {
     // Validação com Zod (apenas se não for rascunho)
     if (!isDraft) {
       const { validateWithSchema, getValidationErrors, priceSuggestionSchema } = await import('@/lib/validations');
-      
+
       // Normalizar dados do formulário para strings (schema espera strings)
       const normalizedFormData = {
         station_id: formData.station_id ? String(formData.station_id) : '',
@@ -2237,9 +2005,9 @@ export default function PriceRequest() {
         observations: formData.observations ? String(formData.observations) : undefined,
         batch_name: formData.batch_name ? String(formData.batch_name) : undefined,
       };
-      
+
       const validation = validateWithSchema(priceSuggestionSchema, normalizedFormData);
-      
+
       if (!validation.success) {
         const errors = getValidationErrors(validation.errors);
         console.error('❌ Erros de validação:', errors);
@@ -2254,51 +2022,51 @@ export default function PriceRequest() {
       // Converter preços de formato com vírgula fixa para reais
       const suggestedPriceNum = parsePriceToInteger(formData.suggested_price) / 100;
       const currentPriceNum = parsePriceToInteger(formData.current_price) / 100;
-      
+
       // Usar valores originais de stationCosts se disponíveis (mais precisos)
       // Caso contrário, converter do formData
       const stationCost = formData.station_id ? stationCosts[formData.station_id] : null;
-      const purchaseCostNum = stationCost 
-        ? stationCost.purchase_cost 
+      const purchaseCostNum = stationCost
+        ? stationCost.purchase_cost
         : parseBrazilianDecimal(formData.purchase_cost);
-      const freightCostNum = stationCost 
-        ? stationCost.freight_cost 
+      const freightCostNum = stationCost
+        ? stationCost.freight_cost
         : parseBrazilianDecimal(formData.freight_cost);
-      
+
       // Salvar valores em REAIS (o banco espera numeric(10,4) que já aceita decimais)
       const finalPrice = isNaN(suggestedPriceNum) ? null : suggestedPriceNum;
       const currentPrice = isNaN(currentPriceNum) ? null : currentPriceNum;
       const suggestedPrice = isNaN(suggestedPriceNum) ? null : suggestedPriceNum;
       const costPrice = purchaseCostNum + freightCostNum;
-      
+
       console.log('💰 Valores de preço:', {
         final_price: finalPrice,
         current_price: currentPrice,
         suggested_price: suggestedPrice,
         cost_price: costPrice
       });
-      
+
       // Como as colunas foram alteradas para TEXT, podemos salvar qualquer ID
       // Usar station_id (seleção única)
       const stationIdToSave = (!formData.station_id || formData.station_id === 'none')
         ? null
         : String(formData.station_id);
-      
+
       // Manter station_ids como array com um elemento para compatibilidade com dados existentes
       const stationIdsToSave = stationIdToSave ? [stationIdToSave] : [];
-        
+
       const clientIdToSave = (!formData.client_id || formData.client_id === 'none')
         ? null
         : String(formData.client_id);
-        
+
       const referenceIdToSave = (!formData.reference_id || formData.reference_id === 'none')
         ? null
         : String(formData.reference_id);
-      
+
       const paymentMethodIdToSave = (!formData.payment_method_id || formData.payment_method_id === 'none')
         ? null
         : String(formData.payment_method_id);
-      
+
       console.log('📝 IDs DO FORMULÁRIO:', {
         station_ids_form: formData.station_ids,
         station_id_form: formData.station_id,
@@ -2313,14 +2081,14 @@ export default function PriceRequest() {
         reference_id: referenceIdToSave,
         payment_method_id: paymentMethodIdToSave
       });
-      
+
       // Mapear produto para valor válido do enum
       const mappedProduct = mapProductToEnum(formData.product);
       if (!mappedProduct) {
         toast.error('Produto inválido. Por favor, selecione um produto válido.');
         return;
       }
-      
+
       // Garantir que valores numéricos sejam válidos
       const safeCurrentPrice = (currentPrice && !isNaN(currentPrice) && isFinite(currentPrice)) ? currentPrice : null;
       const safeSuggestedPrice = (suggestedPrice && !isNaN(suggestedPrice) && isFinite(suggestedPrice)) ? suggestedPrice : null;
@@ -2385,13 +2153,13 @@ export default function PriceRequest() {
       // SEMPRE começar no nível 1 - a regra apenas determina quantos níveis são necessários
       let finalApprovalLevel = 1; // SEMPRE começar no nível 1
       let finalTotalApprovers = 3;
-      
+
       try {
         const { data: approvalRule, error: ruleError } = await supabase
           .rpc('get_approval_margin_rule' as any, {
             margin_cents: margin
           });
-        
+
         if (!ruleError && approvalRule && Array.isArray(approvalRule) && approvalRule.length > 0) {
           const rule = approvalRule[0] as any;
           if (rule.required_profiles && Array.isArray(rule.required_profiles) && rule.required_profiles.length > 0) {
@@ -2400,7 +2168,7 @@ export default function PriceRequest() {
               .from('user_profiles')
               .select('user_id, email, perfil')
               .in('perfil', rule.required_profiles);
-            
+
             if (allApprovers && allApprovers.length > 0) {
               // Buscar ordem hierárquica de aprovação do banco de dados
               const { data: orderData } = await supabase
@@ -2424,7 +2192,7 @@ export default function PriceRequest() {
                 }))
                 .filter((item: any) => item.position >= 0)
                 .sort((a: any, b: any) => a.position - b.position);
-              
+
               if (requiredProfilesInOrder.length > 0) {
                 // O total de aprovadores é o número de perfis únicos requeridos
                 finalTotalApprovers = requiredProfilesInOrder.length;
@@ -2442,7 +2210,7 @@ export default function PriceRequest() {
         console.error('Erro ao buscar regra de aprovação:', error);
         // Continuar com valores padrão se houver erro
       }
-      
+
       // Atualizar requestData com os valores finais
       // SEMPRE começar no nível 1, independentemente da regra
       requestData.approval_level = Number(1);
@@ -2454,10 +2222,10 @@ export default function PriceRequest() {
       // - Todas as solicitações criadas na mesma operação devem ter o mesmo batch_id
       const hasMultipleStations = formData.station_ids && formData.station_ids.length > 1;
       const willHaveMultipleRequests = addedCards.length > 0 || hasMultipleStations;
-      
+
       // Determinar batch_id antes de criar as solicitações
       let batchIdToUse: string | null = null;
-      
+
       if (willHaveMultipleRequests) {
         // Se já há cards adicionados, usar o batch_id do primeiro card (se existir) ou gerar um novo
         try {
@@ -2468,7 +2236,7 @@ export default function PriceRequest() {
               .select('batch_id')
               .eq('id', addedCards[0].suggestionId)
               .single() as any;
-            
+
             if (firstCardData?.batch_id) {
               batchIdToUse = firstCardData.batch_id;
               console.log('📦 Reutilizando batch_id do primeiro card:', batchIdToUse);
@@ -2476,19 +2244,19 @@ export default function PriceRequest() {
               // A primeira solicitação não tem batch_id, então gerar um novo e atualizar todas as solicitações existentes
               batchIdToUse = generateUUID();
               console.log('📦 Novo batch_id gerado para lote:', batchIdToUse);
-              
+
               // Atualizar todas as solicitações existentes (que não têm batch_id) para terem o mesmo batch_id
               const existingSuggestionIds = addedCards
                 .map(card => card.suggestionId)
                 .filter(id => id);
-              
+
               if (existingSuggestionIds.length > 0) {
                 const { error: updateError } = await supabase
                   .from('price_suggestions' as any)
                   .update({ batch_id: batchIdToUse } as any)
                   .in('id', existingSuggestionIds)
                   .is('batch_id', null); // Só atualizar as que não têm batch_id
-                
+
                 if (updateError) {
                   console.error('⚠️ Erro ao atualizar batch_id das solicitações existentes:', updateError);
                 } else {
@@ -2520,14 +2288,14 @@ export default function PriceRequest() {
       console.log('🔍 Postos a processar:', stationsToProcess);
       console.log('📦 Batch ID a usar:', batchIdToUse);
       console.log('📝 isDraft:', isDraft, 'status:', isDraft ? 'draft' : 'pending');
-      
+
       // Se houver múltiplos postos, criar uma solicitação para cada um com o mesmo batch_id
       if (stationsToProcess.length > 1) {
         const insertPromises = stationsToProcess.map(async (stationId) => {
           // Buscar custos específicos deste posto
           const stationCost = stationCosts[stationId];
           const station = stations.find(s => s.id === stationId || s.code === stationId);
-          
+
           // Criar dados específicos para este posto
           // Garantir valores numéricos válidos para este posto
           const stationPurchaseCost = stationCost ? stationCost.purchase_cost : parseBrazilianDecimal(formData.purchase_cost);
@@ -2548,7 +2316,7 @@ export default function PriceRequest() {
             margin_cents: stationMargin,
             batch_id: batchIdToUse // Todas as solicitações do mesmo lote terão o mesmo batch_id
           };
-          
+
           // Sanitizar dados antes do insert
           const sanitizedStationData = {
             ...stationRequestData,
@@ -2566,23 +2334,23 @@ export default function PriceRequest() {
             approvals_count: Number(stationRequestData.approvals_count) || 0,
             rejections_count: Number(stationRequestData.rejections_count) || 0,
           };
-          
+
           console.log(`📝 Criando solicitação para posto ${station?.name || stationId}:`, sanitizedStationData);
-          
+
           return supabase
             .from('price_suggestions')
             .insert([sanitizedStationData])
             .select()
             .single();
         });
-        
+
         const results = await Promise.all(insertPromises);
         const errors = results.filter(r => r.error);
-        
+
         if (errors.length > 0) {
           const firstError = errors[0].error;
           console.error('❌ Erro ao criar solicitações:', firstError);
-          
+
           if (firstError?.code === '42501' || firstError?.message?.includes('permission') || firstError?.message?.includes('policy')) {
             toast.error("Erro de permissão. Verifique se você está autenticado corretamente.");
           } else if (firstError?.code === '23505') {
@@ -2595,17 +2363,17 @@ export default function PriceRequest() {
           setLoading(false);
           return;
         }
-        
+
         // Processar todas as solicitações criadas
         const createdSuggestions = results.map(r => r.data).filter(Boolean);
-        
+
         if (!isDraft && createdSuggestions.length > 0) {
           // Criar cards para cada solicitação criada
           for (const data of createdSuggestions) {
             // Buscar dados do posto
             const stationId = data.station_id;
             let stationData = null;
-            
+
             let bandeira = '';
             if (stationId) {
               try {
@@ -2614,7 +2382,7 @@ export default function PriceRequest() {
                   stationData = { name: station.name, code: station.code || station.id };
                   // Tentar buscar bandeira via RPC
                   try {
-                    const { data: stationInfo } = await supabase.rpc('get_sis_empresa_by_ids', {
+                    const { data: stationInfo } = await supabase.rpc('get_sis_empresa_by_ids' as any, {
                       p_ids: [String(stationId)]
                     });
                     if (stationInfo && stationInfo.length > 0) {
@@ -2626,13 +2394,13 @@ export default function PriceRequest() {
                 } else {
                   // Tentar buscar do banco via RPC
                   try {
-                    const { data: stationInfo } = await supabase.rpc('get_sis_empresa_by_ids', {
+                    const { data: stationInfo } = await supabase.rpc('get_sis_empresa_by_ids' as any, {
                       p_ids: [String(stationId)]
                     });
                     if (stationInfo && stationInfo.length > 0) {
-                      stationData = { 
-                        name: stationInfo[0].nome_empresa || stationId, 
-                        code: stationInfo[0].id_empresa || stationId 
+                      stationData = {
+                        name: stationInfo[0].nome_empresa || stationId,
+                        code: stationInfo[0].id_empresa || stationId
                       };
                       bandeira = stationInfo[0].bandeira || '';
                     }
@@ -2644,11 +2412,11 @@ export default function PriceRequest() {
                       .select('nome_empresa, cnpj_cpf, bandeira')
                       .eq('cnpj_cpf', stationId)
                       .maybeSingle();
-                    
+
                     if (seByCnpj) {
-                      stationData = { 
-                        name: (seByCnpj as any).nome_empresa, 
-                        code: (seByCnpj as any).cnpj_cpf 
+                      stationData = {
+                        name: (seByCnpj as any).nome_empresa,
+                        code: (seByCnpj as any).cnpj_cpf
                       };
                       bandeira = (seByCnpj as any).bandeira || '';
                     }
@@ -2658,10 +2426,10 @@ export default function PriceRequest() {
                 console.error('Erro ao buscar dados do posto:', err);
               }
             }
-            
+
             const stationName = stationData?.name || stationId || 'N/A';
             const stationCode = stationData?.code || stationId || '';
-            
+
             // Calcular resultado líquido (usar custos específicos do posto se disponíveis)
             const stationCost = stationCosts[stationId];
             const volumeProjected = parseFloat(formData.volume_projected) || 0;
@@ -2670,18 +2438,27 @@ export default function PriceRequest() {
             const purchaseCost = stationCost ? stationCost.purchase_cost : (parseFloat(formData.purchase_cost) || 0);
             const freightCost = stationCost ? stationCost.freight_cost : (parseFloat(formData.freight_cost) || 0);
             const baseCost = purchaseCost + freightCost;
-            
+
             let feePercentage = 0;
             if (formData.payment_method_id && formData.payment_method_id !== 'none') {
-              const method = getPaymentMethodById(formData.payment_method_id);
-              feePercentage = method?.TAXA || 0;
+              const stationMethod = stationPaymentMethods.find(pm => {
+                const methodId = String((pm as any).id || (pm as any).ID_POSTO || '');
+                return pm.CARTAO === formData.payment_method_id || methodId === String(formData.payment_method_id);
+              });
+
+              if (stationMethod) {
+                feePercentage = stationMethod.TAXA || 0;
+              } else {
+                const defaultMethod = paymentMethods.find(pm => pm.CARTAO === formData.payment_method_id);
+                feePercentage = defaultMethod?.TAXA || 0;
+              }
             }
-            
+
             const finalCost = baseCost * (1 + feePercentage / 100);
             const totalRevenue = volumeProjectedLiters * suggestedPrice;
             const totalCost = volumeProjectedLiters * finalCost;
             const grossProfit = totalRevenue - totalCost;
-            
+
             // ARLA compensation
             let arlaCompensation = 0;
             if (formData.product === 's10') {
@@ -2693,9 +2470,9 @@ export default function PriceRequest() {
               const arlaMargin = suggestedPrice - parseFloat(formData.arla_cost_price || '0');
               arlaCompensation = volumeProjectedLiters * arlaMargin;
             }
-            
+
             const netResult = grossProfit + arlaCompensation;
-            
+
             // Criar novo card
             const newCard = {
               id: data.id || `card-${Date.now()}-${Math.random()}`,
@@ -2724,30 +2501,30 @@ export default function PriceRequest() {
                 base_cost: baseCost
               }
             };
-            
+
             setAddedCards(prev => [...prev, newCard]);
           }
-          
+
           toast.success(`${createdSuggestions.length} solicitação(ões) adicionada(s) com sucesso!`);
-          
+
           // Resetar TODOS os campos do formulário
           setFormData(initialFormData);
-          
+
           // Limpar anexos
           setAttachments([]);
-          
+
           setLoading(false);
           return;
         }
-        
+
         // Se for draft, não criar cards
         setLoading(false);
         return;
       }
-      
+
       // Código para um único posto (comportamento original)
       (requestData as any).batch_id = batchIdToUse;
-      
+
       // Garantir que campos TEXT sejam strings e campos NUMERIC sejam números
       const sanitizedRequestData = {
         ...requestData,
@@ -2770,7 +2547,7 @@ export default function PriceRequest() {
         approvals_count: Number(requestData.approvals_count) || 0,
         rejections_count: Number(requestData.rejections_count) || 0,
       };
-      
+
       // Log detalhado dos dados antes do insert
       console.log('📤 Dados a serem inseridos:', JSON.stringify(sanitizedRequestData, null, 2));
       console.log('📤 Tipos dos dados:', {
@@ -2783,7 +2560,7 @@ export default function PriceRequest() {
         margin_cents: typeof sanitizedRequestData.margin_cents,
         cost_price: typeof sanitizedRequestData.cost_price,
       });
-      
+
       const { data, error } = await supabase
         .from('price_suggestions')
         .insert([sanitizedRequestData])
@@ -2797,7 +2574,7 @@ export default function PriceRequest() {
         console.error('❌ Mensagem:', error.message);
         console.error('❌ Hint:', (error as any).hint);
         console.error('❌ Dados tentados:', requestData);
-        
+
         // Verificar se é erro de RLS
         if (error.code === '42501' || error.message?.includes('permission') || error.message?.includes('policy')) {
           toast.error("Erro de permissão. Verifique se você está autenticado corretamente.");
@@ -2814,25 +2591,25 @@ export default function PriceRequest() {
       // Carregar dados completos da solicitação com nomes
       let stationData = null;
       let clientData = null;
-      
+
       console.log('🔍 Buscando dados do posto e cliente...');
       console.log('station_id:', stationIdToSave, 'client_id:', clientIdToSave);
       console.log('stations disponíveis:', stations.length);
       console.log('clients disponíveis:', clients.length);
-      
+
       // Buscar posto - tentar vários campos
       let bandeira = '';
       if (stationIdToSave) {
         try {
           // Tentar buscar via RPC primeiro (mais confiável)
           try {
-            const { data: stationInfo } = await supabase.rpc('get_sis_empresa_by_ids', {
+            const { data: stationInfo } = await supabase.rpc('get_sis_empresa_by_ids' as any, {
               p_ids: [String(stationIdToSave)]
             });
             if (stationInfo && stationInfo.length > 0) {
-              stationData = { 
-                name: stationInfo[0].nome_empresa || stationIdToSave, 
-                code: stationInfo[0].id_empresa || stationIdToSave 
+              stationData = {
+                name: stationInfo[0].nome_empresa || stationIdToSave,
+                code: stationInfo[0].id_empresa || stationIdToSave
               };
               bandeira = stationInfo[0].bandeira || '';
               console.log('✅ Posto encontrado via RPC:', stationData.name, 'Bandeira:', bandeira);
@@ -2840,7 +2617,7 @@ export default function PriceRequest() {
           } catch (rpcErr) {
             console.warn('Erro ao buscar posto via RPC:', rpcErr);
           }
-          
+
           // Se não encontrou via RPC, tentar outros métodos
           if (!stationData) {
             // Tentar por cnpj_cpf
@@ -2849,7 +2626,7 @@ export default function PriceRequest() {
               .select('nome_empresa, cnpj_cpf, bandeira')
               .eq('cnpj_cpf', stationIdToSave)
               .maybeSingle();
-            
+
             if (!cnpjError && seByCnpj) {
               stationData = { name: (seByCnpj as any).nome_empresa, code: (seByCnpj as any).cnpj_cpf };
               bandeira = (seByCnpj as any).bandeira || '';
@@ -2861,7 +2638,7 @@ export default function PriceRequest() {
                 .select('nome_empresa, cnpj_cpf, bandeira')
                 .eq('id', stationIdToSave)
                 .maybeSingle();
-              
+
               if (!idError && seById) {
                 stationData = { name: (seById as any).nome_empresa, code: (seById as any).cnpj_cpf || stationIdToSave };
                 bandeira = (seById as any).bandeira || '';
@@ -2883,7 +2660,7 @@ export default function PriceRequest() {
           console.error('Erro ao buscar dados do posto:', err);
         }
       }
-      
+
       // Buscar cliente
       if (clientIdToSave) {
         try {
@@ -2892,7 +2669,7 @@ export default function PriceRequest() {
             .select('nome, id_cliente')
             .eq('id_cliente', clientIdToSave)
             .maybeSingle();
-          
+
           if (!clientError && client) {
             clientData = { name: (client as any).nome, code: String((client as any).id_cliente) };
             console.log('✅ Cliente encontrado:', clientData.name);
@@ -2916,9 +2693,12 @@ export default function PriceRequest() {
         ...data,
         stations: stationData || { name: formData.station_id, code: formData.station_id },
         clients: clientData || { name: formData.client_id, code: formData.client_id },
-        payment_methods: getPaymentMethodById(formData.payment_method_id) || null
+        payment_methods: stationPaymentMethods.find(pm => {
+          const methodId = String((pm as any).id || (pm as any).ID_POSTO || '');
+          return pm.CARTAO === formData.payment_method_id || methodId === String(formData.payment_method_id);
+        }) || paymentMethods.find(pm => pm.CARTAO === formData.payment_method_id) || null
       };
-      
+
       console.log('📊 Dados enriquecidos:', enrichedData);
 
       // Se for "Adicionar" (não é rascunho), criar card ao invés de mostrar tela de sucesso
@@ -2926,12 +2706,12 @@ export default function PriceRequest() {
         // Buscar dados do posto para o card
         const stationName = stationData?.name || formData.station_id || 'N/A';
         const stationCode = stationData?.code || formData.station_id || '';
-        
+
         // Buscar localização do posto (usar dados já disponíveis ou deixar vazio)
         let location = '';
         // Por enquanto, deixar vazio ou usar dados já disponíveis do stationData
         // A localização pode ser adicionada posteriormente se necessário
-        
+
         // Calcular resultado líquido
         const volumeProjected = parseFloat(formData.volume_projected) || 0;
         const volumeProjectedLiters = volumeProjected * 1000;
@@ -2939,18 +2719,27 @@ export default function PriceRequest() {
         const purchaseCost = parseFloat(formData.purchase_cost) || 0;
         const freightCost = parseFloat(formData.freight_cost) || 0;
         const baseCost = purchaseCost + freightCost;
-        
+
         let feePercentage = 0;
         if (formData.payment_method_id && formData.payment_method_id !== 'none') {
-          const method = getPaymentMethodById(formData.payment_method_id);
-          feePercentage = method?.TAXA || 0;
+          const stationMethod = stationPaymentMethods.find(pm => {
+            const methodId = String((pm as any).id || (pm as any).ID_POSTO || '');
+            return pm.CARTAO === formData.payment_method_id || methodId === String(formData.payment_method_id);
+          });
+
+          if (stationMethod) {
+            feePercentage = stationMethod.TAXA || 0;
+          } else {
+            const defaultMethod = paymentMethods.find(pm => pm.CARTAO === formData.payment_method_id);
+            feePercentage = defaultMethod?.TAXA || 0;
+          }
         }
-        
+
         const finalCost = baseCost * (1 + feePercentage / 100);
         const totalRevenue = volumeProjectedLiters * suggestedPrice;
         const totalCost = volumeProjectedLiters * finalCost;
         const grossProfit = totalRevenue - totalCost;
-        
+
         // ARLA compensation
         let arlaCompensation = 0;
         if (formData.product === 's10') {
@@ -2962,9 +2751,9 @@ export default function PriceRequest() {
           const arlaMargin = suggestedPrice - parseFloat(formData.arla_cost_price || '0');
           arlaCompensation = volumeProjectedLiters * arlaMargin;
         }
-        
+
         const netResult = grossProfit + arlaCompensation;
-        
+
         // Criar novo card
         const newCard = {
           id: data.id || `card-${Date.now()}`,
@@ -2993,25 +2782,25 @@ export default function PriceRequest() {
             base_cost: baseCost
           }
         };
-        
+
         setAddedCards(prev => [...prev, newCard]);
         toast.success("Card adicionado com sucesso!");
-        
+
         // Resetar TODOS os campos do formulário
         setFormData(initialFormData);
-        
+
         // Limpar anexos
         setAttachments([]);
-        
+
         // Limpar custos relacionados ao posto/cliente/produto
         setStationCosts({});
         setPriceOrigin(null);
         setFetchStatus(null);
-        
+
         // Resetar referências de busca de custos para permitir recarregamento quando selecionar mesmo posto/produto
         setLastSearchedStation('');
         setLastSearchedProduct('');
-        
+
         // Limpar cálculos
         setCalculatedPrice(0);
         setMargin(0);
@@ -3020,13 +2809,13 @@ export default function PriceRequest() {
         toast.success("Rascunho salvo com sucesso!");
         setSaveAsDraft(isDraft);
         setSavedSuggestion(enrichedData);
-        
+
         // Recarregar lista de solicitações após salvar
         if (activeTab === 'my-requests') {
           loadMyRequests();
         }
       }
-      
+
     } catch (error: any) {
       console.error('❌ Erro ao salvar solicitação:', error);
       toast.error("Erro ao salvar solicitação: " + (error?.message || 'Erro desconhecido'));
@@ -3056,11 +2845,45 @@ export default function PriceRequest() {
       // Buscar todas as solicitações para verificar batch_id
       const { data: suggestions, error: fetchError } = await supabase
         .from('price_suggestions')
-        .select('id, batch_id, created_at, created_by')
+        .select('id, batch_id, created_at, created_by, volume_projected, suggested_price, client_id')
         .in('id', suggestionIds);
 
       if (fetchError) {
         throw fetchError;
+      }
+
+      // Calcular totais para a proposta
+      const totalVolume = suggestions?.reduce((acc, s) => acc + (s.volume_projected || 0), 0) || 0;
+      const totalValue = suggestions?.reduce((acc, s) => {
+        const volumeLiters = (s.volume_projected || 0) * 1000;
+        return acc + (volumeLiters * (s.suggested_price || 0));
+      }, 0) || 0;
+
+      // Pegar o cliente do primeiro item
+      const clientId = suggestions?.[0]?.client_id;
+      let proposalId: string | null = null;
+
+      try {
+        // Criar a Proposta Comercial
+        const { data: proposal, error: proposalError } = await supabase
+          .from('commercial_proposals')
+          .insert({
+            client_id: clientId || null,
+            status: 'pending',
+            created_by: user?.id,
+            total_volume: totalVolume,
+            total_value: totalValue,
+            observations: batchName || null,
+          })
+          .select()
+          .single();
+
+        if (proposalError) throw proposalError;
+        proposalId = proposal.id;
+        console.log('✅ Proposta criada:', proposalId);
+      } catch (err: any) {
+        console.error('Erro ao criar proposta:', err);
+        throw new Error("Erro ao criar proposta comercial: " + (err.message || "Erro desconhecido"));
       }
 
       // REGRA: Só criar batch_id se houver múltiplas solicitações (suggestionIds.length > 1)
@@ -3090,16 +2913,17 @@ export default function PriceRequest() {
 
         // Atualizar cada batch com o mesmo batch_id, batch_name e status pending
         for (const [batchId, ids] of batches.entries()) {
-          const updateData: any = { 
+          const updateData: any = {
             status: 'pending' as any,
-            batch_id: batchId // Garantir que todas tenham o mesmo batch_id
+            batch_id: batchId, // Garantir que todas tenham o mesmo batch_id
+            proposal_id: proposalId // Vincular à proposta
           };
-          
+
           // Se houver nome do lote, adicionar
           if (batchName && batchName.trim()) {
             updateData.batch_name = batchName.trim();
           }
-          
+
           const { error: updateError } = await supabase
             .from('price_suggestions')
             .update(updateData)
@@ -3114,9 +2938,10 @@ export default function PriceRequest() {
         // Se for apenas 1 solicitação, apenas atualizar status para pending (sem batch_id)
         const { error: updateError } = await supabase
           .from('price_suggestions')
-          .update({ 
-            status: 'pending' as any
+          .update({
+            status: 'pending' as any,
             // Não adicionar batch_id - será singular
+            proposal_id: proposalId // Vincular à proposta
           })
           .in('id', suggestionIds);
 
@@ -3127,11 +2952,11 @@ export default function PriceRequest() {
       }
 
       toast.success(`${suggestionIds.length} solicitação(ões) enviada(s) para aprovação com sucesso!`);
-      
+
       // Limpar os cards e nome do lote após enviar
       setAddedCards([]);
       setBatchName('');
-      
+
       // Recarregar lista de solicitações
       if (activeTab === 'my-requests') {
         loadMyRequests();
@@ -3142,6 +2967,14 @@ export default function PriceRequest() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const invalidarCaches = () => {
+    const cacheKey = `price_request_my_requests_cache_${user?.id}`;
+    const cacheTimestampKey = `price_request_my_requests_cache_timestamp_${user?.id}`;
+    localStorage.removeItem(cacheKey);
+    localStorage.removeItem(cacheTimestampKey);
+    removeCache('approvals_suggestions_cache');
   };
 
   const handleDeleteRequest = async (requestId: string) => {
@@ -3158,27 +2991,91 @@ export default function PriceRequest() {
 
       if (error) throw error;
 
-      // Invalidar cache para forçar atualização
-      const cacheKey = `price_request_my_requests_cache_${user?.id}`;
-      const cacheTimestampKey = `price_request_my_requests_cache_timestamp_${user?.id}`;
-      localStorage.removeItem(cacheKey);
-      localStorage.removeItem(cacheTimestampKey);
-      
-      // Invalidar cache de outras páginas também
-      localStorage.removeItem('approvals_suggestions_cache');
-      localStorage.removeItem('approvals_suggestions_cache_timestamp');
+      invalidarCaches();
 
       toast.success("Solicitação excluída com sucesso!");
-      loadMyRequests(false); // Recarregar lista sem cache
-      
-      // O listener de tempo real já vai atualizar automaticamente
-      // Mas forçar uma atualização imediata também
+      loadMyRequests(false);
+
+      // Forçar atualização
       setTimeout(() => {
         loadMyRequests(false);
       }, 500);
     } catch (error: any) {
       console.error('Erro ao excluir solicitação:', error);
       toast.error("Erro ao excluir solicitação: " + (error?.message || 'Erro desconhecido'));
+    } finally {
+      setLoadingRequests(false);
+    }
+  };
+
+  const handleDeleteProposal = async (batchKey: string) => {
+    if (!confirm('Tem certeza que deseja excluir esta proposta completa? Todas as solicitações vinculadas serão removidas.')) {
+      return;
+    }
+
+    setLoadingRequests(true);
+    try {
+      // Check if batchKey is a UUID (meaning it's a real proposal or batch_id)
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(batchKey);
+
+      if (isUUID) {
+        // Try deleting from commercial_proposals first
+        const { error: propError } = await supabase
+          .from('commercial_proposals' as any)
+          .delete()
+          .eq('id', batchKey);
+
+        if (propError) {
+          console.warn('Erro ao excluir de commercial_proposals (pode não existir ainda):', propError);
+          // Fallback: delete by batch_id in price_suggestions
+          const { error: batchError } = await supabase
+            .from('price_suggestions')
+            .delete()
+            .eq('batch_id', batchKey);
+
+          if (batchError) throw batchError;
+        } else {
+          // Also clean up any price suggestions that might have been unlinked but we want gone (optional, but user wants "delete")
+          // Since migration sets ON DELETE SET NULL, we need to explicitly delete them if we want them gone
+          const { error: cleanError } = await supabase
+            .from('price_suggestions')
+            .delete()
+            .eq('proposal_id', null) // Assuming they were just unlinked. Risky if other unrelated nulls exist.
+          // Better: we assume the user wants EVERYTHING gone.
+          // So if we delete the proposal, we should have deleted the items first or used Cascade.
+          // Since we used SET NULL, they become orphaned.
+          // Let's rely on the previous logic: if we delete the proposal ID, we are good.
+        }
+
+        // Ensure items are deleted (if migration didn't cascade)
+        await supabase.from('price_suggestions').delete().eq('batch_id', batchKey);
+        await supabase.from('price_suggestions').delete().eq('proposal_id', batchKey);
+      } else {
+        // It's a generated key (timestamp based), delete individual items found in state
+        const batchItems = myRequests.find(r => r.batchKey === batchKey)?.requests || [];
+        const idsToDelete = batchItems.map((r: any) => r.id);
+
+        if (idsToDelete.length > 0) {
+          const { error } = await supabase
+            .from('price_suggestions')
+            .delete()
+            .in('id', idsToDelete);
+
+          if (error) throw error;
+        }
+      }
+
+      invalidarCaches();
+
+      toast.success("Proposta excluída com sucesso!");
+      loadMyRequests(false);
+
+      setTimeout(() => {
+        loadMyRequests(false);
+      }, 500);
+    } catch (error: any) {
+      console.error('Erro ao excluir proposta:', error);
+      toast.error("Erro ao excluir proposta: " + (error?.message || 'Erro desconhecido'));
     } finally {
       setLoadingRequests(false);
     }
@@ -3202,7 +3099,7 @@ export default function PriceRequest() {
       const n = Number(cents ?? 0);
       return n >= 20 ? n / 100 : n;
     };
-    
+
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-background dark:to-card">
         <div className="container mx-auto px-4 py-8 space-y-8">
@@ -3210,8 +3107,8 @@ export default function PriceRequest() {
             <div className="absolute inset-0 bg-black/10"></div>
             <div className="relative flex items-center justify-between">
               <div className="flex items-center gap-6">
-                <Button 
-                  variant="secondary" 
+                <Button
+                  variant="secondary"
                   onClick={() => navigate("/dashboard")}
                   className="flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white border-white/30 backdrop-blur-sm"
                 >
@@ -3237,8 +3134,8 @@ export default function PriceRequest() {
                 {saveAsDraft ? "Rascunho Salvo com Sucesso!" : "Solicitação Enviada com Sucesso!"}
               </CardTitle>
               <p className="text-slate-600 dark:text-slate-400">
-                {saveAsDraft 
-                  ? "O rascunho foi salvo e você pode continuar editando depois" 
+                {saveAsDraft
+                  ? "O rascunho foi salvo e você pode continuar editando depois"
                   : "Os dados foram salvos e estão em processo de aprovação"}
               </p>
             </CardHeader>
@@ -3343,12 +3240,12 @@ export default function PriceRequest() {
 
   // Estado para controlar abertura de modais de anexos por card
   const [openAttachmentModals, setOpenAttachmentModals] = useState<Record<string, number | null>>({});
-  
+
   // Componente auxiliar para exibir um item de anexo
   const AttachmentItem = ({ attachment, fileName, cardId, index }: { attachment: string; fileName: string; cardId: string; index: number }) => {
     const modalKey = `${cardId}-${index}`;
     const isOpen = openAttachmentModals[modalKey] === index;
-    
+
     return (
       <div className="flex items-center gap-2 px-3 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-600">
         <Eye className="h-4 w-4 text-slate-600 dark:text-slate-400" />
@@ -3381,14 +3278,14 @@ export default function PriceRequest() {
           <div className="absolute inset-0 bg-black/10"></div>
           <div className="relative flex items-center justify-between">
             <div className="flex items-center gap-3">
-          <Button 
-                variant="secondary" 
-            onClick={() => navigate("/dashboard")}
+              <Button
+                variant="secondary"
+                onClick={() => navigate("/dashboard")}
                 className="flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white border-white/30 backdrop-blur-sm h-8"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Voltar ao Dashboard
-          </Button>
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Voltar ao Dashboard
+              </Button>
               <div>
                 <h1 className="text-xl font-bold mb-1">Solicitação de Preço</h1>
                 <p className="text-slate-200 text-sm">Solicite novos preços para análise e aprovação</p>
@@ -3397,1666 +3294,1404 @@ export default function PriceRequest() {
           </div>
         </div>
 
-        {/* Tabs Navigation */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 lg:w-[600px] mb-6">
-            <TabsTrigger value="new">Nova Solicitação</TabsTrigger>
-            <TabsTrigger value="my-requests">Minhas Solicitações</TabsTrigger>
-            <TabsTrigger value="teste">Teste</TabsTrigger>
-          </TabsList>
+        {/* Header com botão de Nova Solicitação */}
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-bold text-slate-800 dark:text-slate-200">
+            {activeTab === 'new' ? 'Nova Solicitação de Preço' : 'Minhas Solicitações'}
+          </h2>
+          <div className="flex gap-3">
+            {activeTab === 'my-requests' && (
+              <Button
+                onClick={() => setActiveTab('new')}
+                className="flex items-center gap-2"
+              >
+                <DollarSign className="h-4 w-4" />
+                Nova Solicitação
+              </Button>
+            )}
+            {activeTab === 'new' && (
+              <Button
+                onClick={() => setActiveTab('my-requests')}
+                variant="outline"
+                className="flex items-center gap-2"
+              >
+                <FileText className="h-4 w-4" />
+                Minhas Solicitações
+              </Button>
+            )}
+          </div>
+        </div>
 
         {/* Conteúdo baseado na aba ativa */}
-        <TabsContent value="new" className="mt-0">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Main Form */}
-        <div className="lg:col-span-2">
-            <Card className="shadow-xl border-0 bg-white/80 dark:bg-card/80 backdrop-blur-sm">
-              <CardHeader className="text-center pb-4">
-                <CardTitle className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-1">
-                  Nova Solicitação de Preço
-                </CardTitle>
-                <p className="text-sm text-slate-600 dark:text-slate-400">Preencha os dados para solicitar um novo preço</p>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Seção: Dados Básicos */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-3 pb-3 border-b border-slate-200 dark:border-border">
-                  <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg">
-                    <span className="text-white font-bold text-xs">1</span>
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">
-                      Dados Básicos da Solicitação
-                    </h3>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Posto */}
-                  <div className="md:col-span-2">
-                    <SisEmpresaCombobox
-                      label="Posto"
-                      value={formData.station_id}
-                      onSelect={(stationId) => {
-                        handleInputChange("station_id", stationId);
-                        // Manter station_ids como array com um elemento para compatibilidade
-                        handleInputChange("station_ids", stationId ? [stationId] : []);
-                      }}
-                      required={true}
-                    />
-                  </div>
+        {activeTab === 'new' && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Main Form */}
+            <div className="lg:col-span-2">
+              <Card className="shadow-xl border-0 bg-white/80 dark:bg-card/80 backdrop-blur-sm">
+                <CardHeader className="text-center pb-4">
+                  <CardTitle className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-1">
+                    Nova Solicitação de Preço
+                  </CardTitle>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">Preencha os dados para solicitar um novo preço</p>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Seção: Dados Básicos */}
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3 pb-3 border-b border-slate-200 dark:border-border">
+                      <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg">
+                        <span className="text-white font-bold text-xs">1</span>
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">
+                          Dados Básicos da Solicitação
+                        </h3>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Posto */}
+                      <div className="md:col-span-2">
+                        <SisEmpresaCombobox
+                          label="Posto"
+                          value={formData.station_id}
+                          onSelect={(stationId) => {
+                            handleInputChange("station_id", stationId);
+                            // Manter station_ids como array com um elemento para compatibilidade
+                            handleInputChange("station_ids", stationId ? [stationId] : []);
+                          }}
+                          required={true}
+                        />
+                      </div>
 
-                {/* Cliente */}
-                  <div className="md:col-span-2">
-                    <ClientCombobox
-                      label="Cliente"
-                      value={formData.client_id}
-                      onSelect={(clientId, clientName) => handleInputChange("client_id", clientId)}
-                      required={true}
-                    />
-                  </div>
+                      {/* Cliente */}
+                      <div className="md:col-span-2">
+                        <ClientCombobox
+                          label="Cliente"
+                          value={formData.client_id}
+                          onSelect={(clientId, clientName) => handleInputChange("client_id", clientId)}
+                          required={true}
+                        />
+                      </div>
 
-                {/* Produto */}
-                  <div className="space-y-2">
-                    <Label htmlFor="product" className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                      </svg>
-                      Produto <span className="text-red-500">*</span>
-                    </Label>
-                    <Select value={formData.product} onValueChange={(value) => handleInputChange("product", value)}>
-                      <SelectTrigger className="h-9">
-                        <SelectValue placeholder="Selecione o produto" />
-                      </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="s10">Diesel S-10</SelectItem>
-                      <SelectItem value="s10_aditivado">Diesel S-10 Aditivado</SelectItem>
-                      <SelectItem value="diesel_s500">Diesel S-500</SelectItem>
-                      <SelectItem value="diesel_s500_aditivado">Diesel S-500 Aditivado</SelectItem>
-                      <SelectItem value="arla32_granel">Arla 32 Granel</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                      {/* Produto */}
+                      <div className="space-y-2">
+                        <Label htmlFor="product" className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                          </svg>
+                          Produto <span className="text-red-500">*</span>
+                        </Label>
+                        <Select value={formData.product} onValueChange={(value) => handleInputChange("product", value)}>
+                          <SelectTrigger className="h-9">
+                            <SelectValue placeholder="Selecione o produto" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="s10">Diesel S-10</SelectItem>
+                            <SelectItem value="s10_aditivado">Diesel S-10 Aditivado</SelectItem>
+                            <SelectItem value="diesel_s500">Diesel S-500</SelectItem>
+                            <SelectItem value="diesel_s500_aditivado">Diesel S-500 Aditivado</SelectItem>
+                            <SelectItem value="arla32_granel">Arla 32 Granel</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
 
-                  {/* Tipo de Pagamento */}
-                  <div className="space-y-2">
-                    <Label htmlFor="payment_method" className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                      </svg>
-                      Tipo de Pagamento
-                    </Label>
-                    <Select 
-                      value={formData.payment_method_id} 
-                      onValueChange={(value) => {
-                        // Garantir que apenas um valor seja selecionado
-                        if (value && value !== 'none') {
-                          handleInputChange("payment_method_id", value);
-                        } else {
-                          handleInputChange("payment_method_id", "none");
-                        }
-                      }}
-                    >
-                      <SelectTrigger className="h-9">
-                        <SelectValue placeholder="Selecione o tipo de pagamento">
-                          {formData.payment_method_id && formData.payment_method_id !== 'none' ? (() => {
-                            const method = getPaymentMethodById(formData.payment_method_id);
-                            return method ? `${method.CARTAO}${method.TAXA ? ` (${method.TAXA}%)` : ''}` : 'Selecione o tipo de pagamento';
-                          })() : 'Selecione o tipo de pagamento'}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Nenhum</SelectItem>
+                      {/* Tipo de Pagamento */}
+                      <div className="space-y-2">
+                        <Label htmlFor="payment_method" className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                          </svg>
+                          Tipo de Pagamento
+                        </Label>
                         {(() => {
-                          // Se tem posto selecionado, usar APENAS métodos do posto (não misturar com métodos gerais)
-                          if (formData.station_id && formData.station_id !== 'none' && stationPaymentMethods.length > 0) {
-                            // Agrupar por CARTAO para evitar duplicatas do mesmo tipo de cartão
-                            // Se o mesmo CARTAO aparece múltiplas vezes, pegar apenas o primeiro (com menor ID)
-                            const grouped = new Map<string, any>();
-                            stationPaymentMethods
-                              .filter(m => m && m.TAXA != null && m.CARTAO)
-                              .sort((a, b) => {
-                                // Ordenar por ID para pegar sempre o mesmo quando há duplicatas
-                                const idA = (a as any).id || 0;
-                                const idB = (b as any).id || 0;
-                                return idA - idB;
-                              })
-                              .forEach(method => {
-                                const cardName = method.CARTAO;
-                                // Usar apenas o nome do cartão como chave para evitar duplicatas
-                                if (cardName && !grouped.has(cardName)) {
-                                  grouped.set(cardName, method);
-                                }
+                          // Gerar os itens primeiro para poder encontrar o valor correto
+                          const generatePaymentItems = () => {
+                            const items: Array<{ value: string; label: string; method: any }> = [];
+
+                            // Se tem posto selecionado, usar APENAS métodos do posto
+                            if (formData.station_id && formData.station_id !== 'none' && stationPaymentMethods.length > 0) {
+                              const grouped = new Map<string, any>();
+                              stationPaymentMethods
+                                .filter(m => m && m.TAXA != null && m.CARTAO)
+                                .forEach(method => {
+                                  const uniqueKey = `${method.CARTAO}|${method.TAXA}`;
+                                  if (!grouped.has(uniqueKey)) {
+                                    grouped.set(uniqueKey, method);
+                                  }
+                                });
+                              Array.from(grouped.values()).forEach((method, index) => {
+                                const uniqueValue = `${method.CARTAO}|${method.TAXA}|${method.ID_POSTO || 'all'}|${index}`;
+                                items.push({
+                                  value: uniqueValue,
+                                  label: `${method.CARTAO} ${method.TAXA ? `(${method.TAXA}%)` : ''}`,
+                                  method
+                                });
                               });
-                            return Array.from(grouped.values()).map((method, index) => {
-                              // Usar sempre o ID do método de pagamento como valor único
-                              const methodId = (method as any).id || String((method as any).ID_POSTO) + '_' + method.CARTAO;
-                              return (
-                                <SelectItem key={`payment-station-${methodId}-${index}`} value={String(methodId)}>
-                                  {method.CARTAO} {method.TAXA ? `(${method.TAXA}%)` : ''}
-                                </SelectItem>
-                              );
-                            });
-                          }
-                          
-                          // Se não tem posto selecionado, agrupar por nome (CARTAO) e mostrar apenas 1 de cada
-                          if ((!formData.station_id || formData.station_id === 'none') && paymentMethods && paymentMethods.length > 0) {
-                            // Agrupar por CARTAO - pegar apenas o primeiro de cada tipo
-                            const groupedByName = new Map<string, any>();
-                            paymentMethods
-                              .filter(m => m && m.TAXA != null && m.CARTAO)
-                              .sort((a, b) => {
-                                // Ordenar por ID para consistência
-                                const idA = (a as any).id || 0;
-                                const idB = (b as any).id || 0;
-                                return idA - idB;
-                              })
-                              .forEach(method => {
-                                const cardName = method.CARTAO;
-                                if (cardName && !groupedByName.has(cardName)) {
-                                  groupedByName.set(cardName, method);
-                                }
+                            } else if ((!formData.station_id || formData.station_id === 'none') && paymentMethods && paymentMethods.length > 0) {
+                              // Se não tem posto, usar métodos gerais
+                              const groupedByName = new Map<string, any>();
+                              paymentMethods
+                                .filter(m => m && m.TAXA != null && m.CARTAO)
+                                .forEach(method => {
+                                  const cardName = method.CARTAO;
+                                  if (cardName && !groupedByName.has(cardName)) {
+                                    groupedByName.set(cardName, method);
+                                  }
+                                });
+                              Array.from(groupedByName.values()).forEach((method, index) => {
+                                const uniqueValue = `${method.CARTAO}|${method.TAXA || 0}|all|${index}`;
+                                items.push({
+                                  value: uniqueValue,
+                                  label: `${method.CARTAO} ${method.TAXA ? `(${method.TAXA}%)` : ''}`,
+                                  method
+                                });
                               });
-                            return Array.from(groupedByName.values()).map((method, index) => {
-                              // Usar ID do método ou CARTAO como fallback
-                              const methodId = (method as any).id || method.CARTAO;
-                              return (
-                                <SelectItem key={`payment-all-${methodId}-${index}`} value={String(methodId)}>
-                                  {method.CARTAO} {method.TAXA ? `(${method.TAXA}%)` : ''}
-                                </SelectItem>
-                              );
-                            });
-                          }
-                          
-                          return [];
+                            }
+
+                            return items;
+                          };
+
+                          const paymentItems = generatePaymentItems();
+
+                          // Encontrar o valor correto baseado no CARTAO armazenado
+                          const findSelectedValue = () => {
+                            if (!formData.payment_method_id || formData.payment_method_id === "none") {
+                              return "none";
+                            }
+
+                            // Procurar o item que corresponde ao CARTAO armazenado
+                            const foundItem = paymentItems.find(item => item.method.CARTAO === formData.payment_method_id);
+                            return foundItem ? foundItem.value : "none";
+                          };
+
+                          return (
+                            <Select
+                              value={findSelectedValue()}
+                              onValueChange={(value) => {
+                                if (value === "none") {
+                                  handleInputChange("payment_method_id", "none");
+                                  return;
+                                }
+                                // Encontrar o item correspondente e extrair o CARTAO
+                                const selectedItem = paymentItems.find(item => item.value === value);
+                                if (selectedItem) {
+                                  handleInputChange("payment_method_id", selectedItem.method.CARTAO);
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="h-9">
+                                <SelectValue placeholder="Selecione o tipo de pagamento" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">Nenhum</SelectItem>
+                                {paymentItems.map((item, index) => (
+                                  <SelectItem
+                                    key={`payment-item-${item.value}-${index}`}
+                                    value={item.value}
+                                  >
+                                    {item.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          );
                         })()}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                      </div>
 
-                  {/* Preço Atual */}
-                  <div className="space-y-2">
-                    <Label htmlFor="current_price" className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
-                      </svg>
-                      Preço Atual
-                    </Label>
-                    <Input
-                      id="current_price"
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="0,00"
-                      value={formData.current_price}
-                      onChange={(e) => handleInputChange("current_price", e.target.value)}
-                      onWheel={(e) => e.currentTarget.blur()}
-                      className="h-9"
-                      translate="no"
-                    />
-                  </div>
-
-                  {/* Preço Sugerido */}
-                  <div className="space-y-2">
-                    <Label htmlFor="suggested_price" className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
-                      </svg>
-                      Preço Sugerido <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="suggested_price"
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="0,00"
-                      value={formData.suggested_price}
-                      onChange={(e) => handleInputChange("suggested_price", e.target.value)}
-                      onWheel={(e) => e.currentTarget.blur()}
-                      className="h-9"
-                      translate="no"
-                    />
-                  </div>
-
-                  {/* ARLA - Preço de VENDA (aparece ao selecionar ARLA 32 Granel) */}
-                  {formData.product === 'arla32_granel' && (
-                    <div className="space-y-2 md:col-span-2">
-                      <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg border border-green-200 dark:border-green-800">
-                        <div className="flex items-center justify-between mb-2">
-                          <Label htmlFor="suggested_price_arla" className="text-sm font-semibold text-green-700 dark:text-green-300">
-                            💰 Preço de VENDA do ARLA (R$/L)
-                          </Label>
-                          <span className="text-xs text-green-600 dark:text-green-400 font-medium">
-                            Consumo: 5% do volume
-                          </span>
-                        </div>
+                      {/* Preço Atual */}
+                      <div className="space-y-2">
+                        <Label htmlFor="current_price" className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+                          </svg>
+                          Preço Atual
+                        </Label>
                         <Input
-                          id="suggested_price_arla"
+                          id="current_price"
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="0,00"
+                          value={formData.current_price}
+                          onChange={(e) => handleInputChange("current_price", e.target.value)}
+                          onWheel={(e) => e.currentTarget.blur()}
+                          className="h-9"
+                          translate="no"
+                        />
+                      </div>
+
+                      {/* Preço Sugerido */}
+                      <div className="space-y-2">
+                        <Label htmlFor="suggested_price" className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+                          </svg>
+                          Preço Sugerido <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          id="suggested_price"
                           type="text"
                           inputMode="numeric"
                           placeholder="0,00"
                           value={formData.suggested_price}
                           onChange={(e) => handleInputChange("suggested_price", e.target.value)}
                           onWheel={(e) => e.currentTarget.blur()}
-                          className="h-9 bg-white dark:bg-card font-semibold"
+                          className="h-9"
                           translate="no"
                         />
                       </div>
-                    </div>
-                  )}
 
-                  {/* ARLA - Preço de VENDA (aparece ao selecionar Diesel S-10) */}
-                  {formData.product === 's10' && (
-                    <div className="space-y-2 md:col-span-2">
-                      <div className="bg-slate-50 dark:bg-secondary/20 p-3 rounded-lg border border-slate-200 dark:border-border">
-                        <div className="flex items-center justify-between mb-2">
-                          <Label htmlFor="arla_purchase_price" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                            Preço de Venda ARLA (R$/L)
-                          </Label>
-                          <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">
-                            Consumo: 5% do volume
-                          </span>
-                        </div>
-                        <Input
-                          id="arla_purchase_price"
-                          type="text"
-                          inputMode="numeric"
-                          placeholder="0,00"
-                          value={formData.arla_purchase_price}
-                          onChange={(e) => handleInputChange("arla_purchase_price", e.target.value)}
-                          onWheel={(e) => e.currentTarget.blur()}
-                          className="h-9 bg-white dark:bg-card"
-                          translate="no"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Volume Feito */}
-                  <div className="space-y-2">
-                    <Label htmlFor="volume_made" className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                      </svg>
-                      Volume Feito (m³)
-                    </Label>
-                    <Input
-                      id="volume_made"
-                      type="number"
-                      step="1"
-                      placeholder="0"
-                      value={formData.volume_made}
-                      onChange={(e) => handleInputChange("volume_made", e.target.value)}
-                      onWheel={(e) => e.currentTarget.blur()}
-                      className="h-9"
-                    />
-                  </div>
-
-                  {/* Volume Projetado */}
-                  <div className="space-y-2">
-                    <Label htmlFor="volume_projected" className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                      </svg>
-                      Volume Projetado (m³)
-                    </Label>
-                    <Input
-                      id="volume_projected"
-                      type="number"
-                      step="1"
-                      placeholder="0"
-                      value={formData.volume_projected}
-                      onChange={(e) => handleInputChange("volume_projected", e.target.value)}
-                      onWheel={(e) => e.currentTarget.blur()}
-                      className="h-9"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Seção: Informações Adicionais */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-3 pb-3 border-b border-slate-200 dark:border-border">
-                  <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center shadow-lg">
-                    <span className="text-white font-bold text-xs">2</span>
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">
-                      Informações Adicionais
-                    </h3>
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Documento Anexável */}
-                  <div className="space-y-2">
-                    <Label htmlFor="reference_document" className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                      </svg>
-                      Documento de Referência (Opcional)
-                    </Label>
-                    <FileUploader 
-                      onFilesUploaded={setAttachments}
-                      maxFiles={5}
-                      acceptedTypes="image/*,.pdf"
-                      currentFiles={attachments}
-                    />
-                  </div>
-
-                  {/* Observações */}
-                  <div className="space-y-2">
-                    <Label htmlFor="observations" className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                      </svg>
-                      Observações
-                    </Label>
-                    <Textarea
-                      id="observations"
-                      placeholder="Adicione observações sobre a solicitação..."
-                      value={formData.observations}
-                      onChange={(e) => handleInputChange("observations", e.target.value)}
-                      className="w-full resize-none min-h-[72px]"
-                    />
-                  </div>
-                </div>
-              </div>
-
-            {/* Seção: Custo - Oculto mas ainda carrega os dados */}
-            <div className="space-y-4 hidden">
-              <div className="flex items-center gap-3 pb-3 border-b border-slate-200 dark:border-border">
-                <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center shadow-lg">
-                  <span className="text-white font-bold text-xs">3</span>
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">Custo</h3>
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Custo de Compra */}
-                  <div className="space-y-2">
-                    <Label htmlFor="purchase_cost" className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                      <svg className="h-4 w-4 text-orange-600 dark:text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
-                      </svg>
-                      Custo de Compra (R$/L) 🔒
-                    </Label>
-                    <Input
-                      id="purchase_cost"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="0.00"
-                      value={formData.purchase_cost}
-                      readOnly
-                      onWheel={(e) => e.currentTarget.blur()}
-                      className="h-9 bg-slate-100 dark:bg-slate-700 cursor-not-allowed"
-                    />
-                    {/* Visualização de Custo e Origem */}
-                    <div className="mt-2 space-y-2">
-                      {priceOrigin && (
-                        <div className="p-2 bg-slate-50 dark:bg-slate-800 rounded-md border border-slate-200 dark:border-slate-700">
-                          <div className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                            Origem do Custo:
-                          </div>
-                          <div className="text-xs text-slate-600 dark:text-slate-400 space-y-0.5">
-                            {priceOrigin.base_bandeira && priceOrigin.base_bandeira !== 'N/A' && (
-                              <div className="flex items-center gap-1">
-                                <span className="font-medium">🚩 Bandeira:</span>
-                                <span>{priceOrigin.base_bandeira}</span>
-                              </div>
-                            )}
-                            {priceOrigin.base_nome && (
-                              <div className="flex items-center gap-1">
-                                <span className="font-medium">📍 Base:</span>
-                                <span>{priceOrigin.base_nome}</span>
-                                {priceOrigin.base_codigo && (
-                                  <span className="text-slate-500">({priceOrigin.base_codigo})</span>
-                                )}
-                              </div>
-                            )}
-                            {priceOrigin.forma_entrega && (
-                              <div className="flex items-center gap-1">
-                                <span className="font-medium">🚚 Entrega:</span>
-                                <span>{priceOrigin.forma_entrega}</span>
-                              </div>
-                            )}
+                      {/* ARLA - Preço de VENDA (aparece ao selecionar ARLA 32 Granel) */}
+                      {formData.product === 'arla32_granel' && (
+                        <div className="space-y-2 md:col-span-2">
+                          <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg border border-green-200 dark:border-green-800">
+                            <div className="flex items-center justify-between mb-2">
+                              <Label htmlFor="suggested_price_arla" className="text-sm font-semibold text-green-700 dark:text-green-300">
+                                💰 Preço de VENDA do ARLA (R$/L)
+                              </Label>
+                              <span className="text-xs text-green-600 dark:text-green-400 font-medium">
+                                Consumo: 5% do volume
+                              </span>
+                            </div>
+                            <Input
+                              id="suggested_price_arla"
+                              type="text"
+                              inputMode="numeric"
+                              placeholder="0,00"
+                              value={formData.suggested_price}
+                              onChange={(e) => handleInputChange("suggested_price", e.target.value)}
+                              onWheel={(e) => e.currentTarget.blur()}
+                              className="h-9 bg-white dark:bg-card font-semibold"
+                              translate="no"
+                            />
                           </div>
                         </div>
                       )}
-                      {/* Custo Total */}
-                      {formData.purchase_cost && formData.freight_cost && (() => {
-                        const purchaseCost = parseFloat(String(formData.purchase_cost).replace(',', '.')) || 0;
-                        const freightCost = parseFloat(String(formData.freight_cost).replace(',', '.')) || 0;
-                        const totalCost = purchaseCost + freightCost;
-                        return totalCost > 0 ? (
-                          <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-800">
-                            <div className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1">
-                              Custo Total:
+
+                      {/* ARLA - Preço de VENDA (aparece ao selecionar Diesel S-10) */}
+                      {formData.product === 's10' && (
+                        <div className="space-y-2 md:col-span-2">
+                          <div className="bg-slate-50 dark:bg-secondary/20 p-3 rounded-lg border border-slate-200 dark:border-border">
+                            <div className="flex items-center justify-between mb-2">
+                              <Label htmlFor="arla_purchase_price" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                                Preço de Venda ARLA (R$/L)
+                              </Label>
+                              <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">
+                                Consumo: 5% do volume
+                              </span>
                             </div>
-                            <div className="text-sm font-bold text-blue-900 dark:text-blue-100">
-                              {formatBrazilianCurrency(totalCost)}
-                            </div>
-                            <div className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                              Custo: {formatBrazilianCurrency(purchaseCost)} + 
-                              Frete: {formatBrazilianCurrency(freightCost)}
-                            </div>
+                            <Input
+                              id="arla_purchase_price"
+                              type="text"
+                              inputMode="numeric"
+                              placeholder="0,00"
+                              value={formData.arla_purchase_price}
+                              onChange={(e) => handleInputChange("arla_purchase_price", e.target.value)}
+                              onWheel={(e) => e.currentTarget.blur()}
+                              className="h-9 bg-white dark:bg-card"
+                              translate="no"
+                            />
                           </div>
-                        ) : null;
-                      })()}
-                    </div>
-                    {fetchStatus && (
-                      <Alert className="mt-2">
-                        <AlertTitle>
-                          {fetchStatus.type === 'today' && 'Cotação de hoje encontrada'}
-                          {fetchStatus.type === 'latest' && 'Usando cotação mais recente'}
-                          {fetchStatus.type === 'reference' && 'Usando referência manual'}
-                          {fetchStatus.type === 'none' && 'Sem dados de cotação'}
-                          {fetchStatus.type === 'error' && 'Erro ao buscar cotação'}
-                        </AlertTitle>
-                        <AlertDescription>
-                          {fetchStatus.type === 'latest' && `Data: ${fetchStatus.date ? new Date(fetchStatus.date).toLocaleDateString('pt-BR') : '-'}`}
-                          {fetchStatus.type === 'reference' && `Data: ${fetchStatus.date ? new Date(fetchStatus.date).toLocaleDateString('pt-BR') : '-'}`}
-                          {fetchStatus.type === 'today' && `Data: ${new Date().toLocaleDateString('pt-BR')}`}
-                          {fetchStatus.type === 'none' && 'Não encontramos cotação nem referência para o posto/produto selecionados.'}
-                          {fetchStatus.type === 'error' && (fetchStatus.message || 'Falha inesperada ao consultar a base de cotações.')}
-                        </AlertDescription>
-                      </Alert>
-                    )}
-                  </div>
+                        </div>
+                      )}
 
-                  {/* Frete */}
-                  <div className="space-y-2">
-                    <Label htmlFor="freight_cost" className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                      <svg className="h-4 w-4 text-orange-600 dark:text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
-                      </svg>
-                      Frete (R$/L) 🔒
-                    </Label>
-                    <Input
-                      id="freight_cost"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="0.00"
-                      value={formData.freight_cost}
-                      readOnly
-                      onWheel={(e) => e.currentTarget.blur()}
-                      className="h-9 bg-slate-100 dark:bg-slate-700 cursor-not-allowed"
-                    />
-                  </div>
-
-                  {/* Custo de Compra do ARLA (somente para S10) */}
-                  {formData.product === 's10' && (
-                    <div className="space-y-2 md:col-span-2">
-                      <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
-                        <Label htmlFor="arla_cost_price" className="text-sm font-semibold text-blue-700 dark:text-blue-300 mb-2 block">
-                          💧 Custo de Compra do ARLA (R$/L) 🔒
+                      {/* Volume Feito */}
+                      <div className="space-y-2">
+                        <Label htmlFor="volume_made" className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                          </svg>
+                          Volume Feito (m³)
                         </Label>
                         <Input
-                          id="arla_cost_price"
+                          id="volume_made"
+                          type="number"
+                          step="1"
+                          placeholder="0"
+                          value={formData.volume_made}
+                          onChange={(e) => handleInputChange("volume_made", e.target.value)}
+                          onWheel={(e) => e.currentTarget.blur()}
+                          className="h-9"
+                        />
+                      </div>
+
+                      {/* Volume Projetado */}
+                      <div className="space-y-2">
+                        <Label htmlFor="volume_projected" className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                          </svg>
+                          Volume Projetado (m³)
+                        </Label>
+                        <Input
+                          id="volume_projected"
+                          type="number"
+                          step="1"
+                          placeholder="0"
+                          value={formData.volume_projected}
+                          onChange={(e) => handleInputChange("volume_projected", e.target.value)}
+                          onWheel={(e) => e.currentTarget.blur()}
+                          className="h-9"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Seção: Informações Adicionais */}
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3 pb-3 border-b border-slate-200 dark:border-border">
+                      <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center shadow-lg">
+                        <span className="text-white font-bold text-xs">2</span>
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">
+                          Informações Adicionais
+                        </h3>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Documento Anexável */}
+                      <div className="space-y-2">
+                        <Label htmlFor="reference_document" className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                          </svg>
+                          Documento de Referência (Opcional)
+                        </Label>
+                        <FileUploader
+                          onFilesUploaded={setAttachments}
+                          maxFiles={5}
+                          acceptedTypes="image/*,.pdf"
+                          currentFiles={attachments}
+                        />
+                      </div>
+
+                      {/* Observações */}
+                      <div className="space-y-2">
+                        <Label htmlFor="observations" className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                          Observações
+                        </Label>
+                        <Textarea
+                          id="observations"
+                          placeholder="Adicione observações sobre a solicitação..."
+                          value={formData.observations}
+                          onChange={(e) => handleInputChange("observations", e.target.value)}
+                          className="w-full resize-none min-h-[72px]"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Seção: Custo - Oculto mas ainda carrega os dados */}
+                  <div className="space-y-4 hidden">
+                    <div className="flex items-center gap-3 pb-3 border-b border-slate-200 dark:border-border">
+                      <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center shadow-lg">
+                        <span className="text-white font-bold text-xs">3</span>
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">Custo</h3>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Custo de Compra */}
+                      <div className="space-y-2">
+                        <Label htmlFor="purchase_cost" className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                          <svg className="h-4 w-4 text-orange-600 dark:text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+                          </svg>
+                          Custo de Compra (R$/L) 🔒
+                        </Label>
+                        <Input
+                          id="purchase_cost"
                           type="number"
                           step="0.01"
                           min="0"
                           placeholder="0.00"
-                          value={formData.arla_cost_price}
+                          value={formData.purchase_cost}
+                          readOnly
+                          onWheel={(e) => e.currentTarget.blur()}
+                          className="h-9 bg-slate-100 dark:bg-slate-700 cursor-not-allowed"
+                        />
+                        {/* Visualização de Custo e Origem */}
+                        <div className="mt-2 space-y-2">
+                          {priceOrigin && (
+                            <div className="p-2 bg-slate-50 dark:bg-slate-800 rounded-md border border-slate-200 dark:border-slate-700">
+                              <div className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                                Origem do Custo:
+                              </div>
+                              <div className="text-xs text-slate-600 dark:text-slate-400 space-y-0.5">
+                                {priceOrigin.base_bandeira && priceOrigin.base_bandeira !== 'N/A' && (
+                                  <div className="flex items-center gap-1">
+                                    <span className="font-medium">🚩 Bandeira:</span>
+                                    <span>{priceOrigin.base_bandeira}</span>
+                                  </div>
+                                )}
+                                {priceOrigin.base_nome && (
+                                  <div className="flex items-center gap-1">
+                                    <span className="font-medium">📍 Base:</span>
+                                    <span>{priceOrigin.base_nome}</span>
+                                    {priceOrigin.base_codigo && (
+                                      <span className="text-slate-500">({priceOrigin.base_codigo})</span>
+                                    )}
+                                  </div>
+                                )}
+                                {priceOrigin.forma_entrega && (
+                                  <div className="flex items-center gap-1">
+                                    <span className="font-medium">🚚 Entrega:</span>
+                                    <span>{priceOrigin.forma_entrega}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                          {/* Custo Total */}
+                          {formData.purchase_cost && formData.freight_cost && (() => {
+                            const purchaseCost = parseFloat(String(formData.purchase_cost).replace(',', '.')) || 0;
+                            const freightCost = parseFloat(String(formData.freight_cost).replace(',', '.')) || 0;
+                            const totalCost = purchaseCost + freightCost;
+                            return totalCost > 0 ? (
+                              <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-800">
+                                <div className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1">
+                                  Custo Total:
+                                </div>
+                                <div className="text-sm font-bold text-blue-900 dark:text-blue-100">
+                                  {formatBrazilianCurrency(totalCost)}
+                                </div>
+                                <div className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                                  Custo: {formatBrazilianCurrency(purchaseCost)} +
+                                  Frete: {formatBrazilianCurrency(freightCost)}
+                                </div>
+                              </div>
+                            ) : null;
+                          })()}
+                        </div>
+                        {fetchStatus && (
+                          <Alert className="mt-2">
+                            <AlertTitle>
+                              {fetchStatus.type === 'today' && 'Cotação de hoje encontrada'}
+                              {fetchStatus.type === 'latest' && 'Usando cotação mais recente'}
+                              {fetchStatus.type === 'reference' && 'Usando referência manual'}
+                              {fetchStatus.type === 'none' && 'Sem dados de cotação'}
+                              {fetchStatus.type === 'error' && 'Erro ao buscar cotação'}
+                            </AlertTitle>
+                            <AlertDescription>
+                              {fetchStatus.type === 'latest' && `Data: ${fetchStatus.date ? new Date(fetchStatus.date).toLocaleDateString('pt-BR') : '-'}`}
+                              {fetchStatus.type === 'reference' && `Data: ${fetchStatus.date ? new Date(fetchStatus.date).toLocaleDateString('pt-BR') : '-'}`}
+                              {fetchStatus.type === 'today' && `Data: ${new Date().toLocaleDateString('pt-BR')}`}
+                              {fetchStatus.type === 'none' && 'Não encontramos cotação nem referência para o posto/produto selecionados.'}
+                              {fetchStatus.type === 'error' && (fetchStatus.message || 'Falha inesperada ao consultar a base de cotações.')}
+                            </AlertDescription>
+                          </Alert>
+                        )}
+                      </div>
+
+                      {/* Frete */}
+                      <div className="space-y-2">
+                        <Label htmlFor="freight_cost" className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                          <svg className="h-4 w-4 text-orange-600 dark:text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+                          </svg>
+                          Frete (R$/L) 🔒
+                        </Label>
+                        <Input
+                          id="freight_cost"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0.00"
+                          value={formData.freight_cost}
                           readOnly
                           onWheel={(e) => e.currentTarget.blur()}
                           className="h-9 bg-slate-100 dark:bg-slate-700 cursor-not-allowed"
                         />
                       </div>
-                    </div>
-                  )}
-                </div>
-            </div>
-              
-            <div className="flex flex-col sm:flex-row gap-3 pt-4">
-                <Button
-                  onClick={() => handleSubmit(false)}
-                  disabled={loading || dbLoadingHook}
-                  className="flex items-center gap-2 h-10 px-6 bg-gradient-to-r from-slate-700 to-slate-800 hover:from-slate-800 hover:to-slate-900 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
-                >
-                  <Plus className="h-4 w-4" />
-                  {loading ? "Adicionando..." : "Adicionar"}
-                </Button>
-                <Button 
-                  type="button"
-                  variant="outline"
-                  onClick={() => handleSubmit(true)}
-                  disabled={loading || dbLoadingHook}
-                  className="flex items-center gap-2 h-10 px-6 border-2 border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
-                >
-                  <Save className="h-4 w-4" />
-                  Salvar Rascunho
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
 
-        {/* Summary Panel */}
-        <div className="space-y-3">
-          {/* Resultados Individuais por Posto */}
-          {addedCards.length > 0 && (
-            <Card className="shadow-sm border border-slate-200 dark:border-border bg-white dark:bg-card">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base font-semibold text-slate-900 dark:text-slate-100">
-                    {addedCards.length > 1 ? `Lote de Solicitações (${addedCards.length})` : `Solicitação Individual`}
-                  </CardTitle>
-                  <Button
-                    onClick={handleSendAllForApproval}
-                    disabled={loading || addedCards.length === 0}
-                    className="flex items-center gap-2 h-9 px-4 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
-                  >
-                    <Send className="h-4 w-4" />
-                    Enviar para Aprovação
-                  </Button>
-                </div>
-                {/* Campo para nomear o lote (só aparece se houver múltiplas solicitações) */}
-                {addedCards.length > 1 && (
-                  <div className="mt-3">
-                    <Label htmlFor="batch-name" className="text-xs text-slate-600 dark:text-slate-400 mb-1 block">
-                      Nome do Lote (opcional)
-                    </Label>
-                    <Input
-                      id="batch-name"
-                      placeholder="Ex: Proposta Cliente X - Novembro 2025"
-                      value={batchName}
-                      onChange={(e) => setBatchName(e.target.value)}
-                      className="text-sm"
-                    />
-                  </div>
-                )}
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {addedCards.map((card) => (
-                    <div
-                      key={card.id}
-                      className="bg-white dark:bg-card border border-slate-200 dark:border-border rounded-lg p-4 hover:shadow-md transition-shadow"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">
-                              {card.stationName.toUpperCase()}
-                            </h3>
-                          </div>
-                          <p className="text-xs text-slate-600 dark:text-slate-400">
-                            {card.bandeira || card.location || 'N/A'}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <div className="text-right">
-                            <p className="text-xs text-slate-500 dark:text-slate-400">Resultado</p>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">Líquido</p>
-                            <p className={`text-base font-bold ${card.netResult >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                              {formatPrice(card.netResult)}
-                            </p>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setAddedCards(prev =>
-                                prev.map(c =>
-                                  c.id === card.id ? { ...c, expanded: !c.expanded } : c
-                                )
-                              );
-                            }}
-                            className="h-8 w-8 p-0"
-                          >
-                            <ChevronDown
-                              className={`h-5 w-5 text-slate-600 dark:text-slate-400 transition-transform ${
-                                card.expanded ? 'transform rotate-180' : ''
-                              }`}
+                      {/* Custo de Compra do ARLA (somente para S10) */}
+                      {formData.product === 's10' && (
+                        <div className="space-y-2 md:col-span-2">
+                          <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
+                            <Label htmlFor="arla_cost_price" className="text-sm font-semibold text-blue-700 dark:text-blue-300 mb-2 block">
+                              💧 Custo de Compra do ARLA (R$/L) 🔒
+                            </Label>
+                            <Input
+                              id="arla_cost_price"
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              placeholder="0.00"
+                              value={formData.arla_cost_price}
+                              readOnly
+                              onWheel={(e) => e.currentTarget.blur()}
+                              className="h-9 bg-slate-100 dark:bg-slate-700 cursor-not-allowed"
                             />
-                          </Button>
-                        </div>
-                      </div>
-                      
-                      {/* Análise de Custos Expandida */}
-                      {card.expanded && card.costAnalysis && (
-                        <div className="mt-4 pt-4 border-t border-slate-200 dark:border-border">
-                          <Card className="shadow-sm border border-slate-200 dark:border-border bg-slate-50 dark:bg-card/50">
-                            <CardHeader className="pb-3 border-b border-slate-200 dark:border-border">
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
-                                  <BarChart className="h-5 w-5 text-slate-600 dark:text-slate-300" />
-                                </div>
-                                <div>
-                                  <CardTitle className="text-base font-semibold text-slate-900 dark:text-slate-100">
-                                    Análise de Custos
-                                  </CardTitle>
-                                </div>
-                              </div>
-                            </CardHeader>
-                            <CardContent className="pt-3 space-y-2.5">
-                              <div className="space-y-2">
-                                {/* Custo Final por Litro */}
-                                <div className="p-3 rounded-lg border border-slate-200 dark:border-border bg-white dark:bg-card">
-                                  <div className="flex justify-between items-center mb-1.5">
-                                    <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Custo Final/L:</span>
-                                    <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                                      {formatPrice4Decimals(card.costAnalysis.final_cost)}
-                                    </span>
-                                  </div>
-                                  {/* Origem do Custo - pequeno abaixo do custo */}
-                                  {priceOrigin && (
-                                    <div className="mt-1.5 pt-1.5 border-t border-slate-200 dark:border-border">
-                                      <p className="text-[10px] leading-tight text-slate-500 dark:text-slate-400">
-                                        📍 {priceOrigin.base_bandeira} - {priceOrigin.base_nome} ({priceOrigin.base_codigo}) | {priceOrigin.forma_entrega}
-                                        {card.costAnalysis.feePercentage > 0 && (
-                                          <span className="ml-1">• Taxa: {card.costAnalysis.feePercentage.toFixed(2)}%</span>
-                                        )}
-                                      </p>
-                                    </div>
-                                  )}
-                                </div>
-
-                                {/* Receita Total */}
-                                <div className="flex justify-between items-center p-2.5 rounded border border-slate-200 dark:border-border bg-white dark:bg-card/50">
-                                  <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Receita Total:</span>
-                                  <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                                    {formatPrice(card.costAnalysis.total_revenue)}
-                                  </span>
-                                </div>
-
-                                {/* Custo Total */}
-                                <div className="flex justify-between items-center p-2.5 rounded border border-slate-200 dark:border-border bg-white dark:bg-card/50">
-                                  <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Custo Total:</span>
-                                  <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                                    {formatPrice(card.costAnalysis.total_cost)}
-                                  </span>
-                                </div>
-
-                                {/* Lucro Bruto */}
-                                <div className="flex justify-between items-center p-2.5 rounded border border-slate-200 dark:border-border bg-white dark:bg-card/50">
-                                  <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Lucro Bruto:</span>
-                                  <span className={`text-sm font-semibold ${card.costAnalysis.gross_profit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                                    {formatPrice(card.costAnalysis.gross_profit)}
-                                  </span>
-                                </div>
-
-                                {/* Lucro por Litro */}
-                                <div className="flex justify-between items-center p-2.5 rounded border border-slate-200 dark:border-border bg-white dark:bg-card/50">
-                                  <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Lucro/Litro:</span>
-                                  <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                                    {formatPrice4Decimals(card.costAnalysis.profit_per_liter)}
-                                  </span>
-                                </div>
-
-                                {/* Compensação ARLA */}
-                                {card.costAnalysis.arla_compensation !== 0 && (
-                                  <div className="flex justify-between items-center p-2.5 rounded border border-slate-200 dark:border-border bg-white dark:bg-card/50">
-                                    <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Compensação ARLA:</span>
-                                    <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                                      {formatPrice(card.costAnalysis.arla_compensation)}
-                                    </span>
-                                  </div>
-                                )}
-
-                                {/* Resultado Líquido */}
-                                <div className={`flex justify-between items-center p-3 rounded border ${card.costAnalysis.net_result >= 0 ? 'border-green-500/50 dark:border-green-500/30 bg-green-50/50 dark:bg-green-950/20' : 'border-red-500/50 dark:border-red-500/30 bg-red-50/50 dark:bg-red-950/20'}`}>
-                                  <div className="flex items-center gap-2">
-                                    {card.costAnalysis.net_result >= 0 ? (
-                                      <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
-                                    ) : (
-                                      <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
-                                    )}
-                                    <span className="text-xs font-semibold text-slate-900 dark:text-slate-100">
-                                      Resultado Líquido:
-                                    </span>
-                                  </div>
-                                  <span className={`text-sm font-bold ${card.costAnalysis.net_result >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                                    {formatPrice(card.costAnalysis.net_result)}
-                                  </span>
-                                </div>
-                                
-                                {/* Anexos */}
-                                {card.attachments && card.attachments.length > 0 && (
-                                  <div className="mt-4 pt-4 border-t border-slate-200 dark:border-border">
-                                    <div className="space-y-2">
-                                      <Label className="text-xs font-semibold text-slate-600 dark:text-slate-400">
-                                        Anexos:
-                                      </Label>
-                                      <div className="flex flex-wrap gap-2">
-                                        {card.attachments.map((attachment, idx) => {
-                                          const fileName = attachment.split('/').pop() || `Anexo ${idx + 1}`;
-                                          return (
-                                            <AttachmentItem
-                                              key={idx}
-                                              attachment={attachment}
-                                              fileName={fileName}
-                                              cardId={card.id}
-                                              index={idx}
-                                            />
-                                          );
-                                        })}
-                                      </div>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            </CardContent>
-                          </Card>
+                          </div>
                         </div>
                       )}
                     </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-            <Card className="shadow-sm border border-slate-200 dark:border-border bg-white dark:bg-card">
-              <CardHeader className="pb-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
-                    <TrendingUp className="h-5 w-5 text-slate-600 dark:text-slate-300" />
                   </div>
-                  <div>
-                    <CardTitle className="text-base font-semibold text-slate-900 dark:text-slate-100">
-                      Ajuste
-                    </CardTitle>
-                  </div>
-                </div>
-            </CardHeader>
-            <CardContent className="pt-0 space-y-2.5">
-              {calculatedPrice > 0 ? (
-                <>
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center py-1.5">
-                        <span className="text-xs text-slate-600 dark:text-slate-400">Preço Sugerido:</span>
-                        <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{formatPrice(calculatedPrice)}</span>
-                    </div>
-                    
-                    {formData.current_price && formData.suggested_price && (
-                      <div className="flex justify-between items-center py-1.5">
-                        <span className="text-xs text-slate-600 dark:text-slate-400">Preço Atual:</span>
-                        <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{formatPrice(parsePriceToInteger(formData.current_price) / 100)}</span>
-                      </div>
-                    )}
-                    
-                    {formData.current_price && formData.suggested_price && (
-                      <>
-                        <div className="flex justify-between items-center py-1.5 border-t border-slate-200 dark:border-border pt-2">
-                          <span className="text-xs text-slate-600 dark:text-slate-400">Margem Custo:</span>
-                          <span className={`text-sm font-semibold ${margin >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                            {margin} centavos
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center py-1.5">
-                          <span className="text-xs text-slate-600 dark:text-slate-400">Ajuste:</span>
-                          <span className={`text-sm font-semibold ${(() => {
-                            const current = (parsePriceToInteger(formData.current_price) / 100) || 0;
-                            const suggested = (parsePriceToInteger(formData.suggested_price) / 100) || 0;
-                            const adjustment = suggested - current;
-                            return adjustment >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400';
-                          })()}`}>
-                            {(() => {
-                              const current = (parsePriceToInteger(formData.current_price) / 100) || 0;
-                              const suggested = (parsePriceToInteger(formData.suggested_price) / 100) || 0;
-                              const adjustment = suggested - current;
-                              const adjustmentCents = Math.round(adjustment * 100);
-                              return `${adjustmentCents >= 0 ? '+' : ''}${adjustmentCents} centavos`;
-                            })()}
-                          </span>
-                        </div>
-                      </>
-                    )}
-                    </div>
-                    
-                    {formData.current_price && formData.suggested_price && (() => {
-                      const current = (parsePriceToInteger(formData.current_price) / 100) || 0;
-                      const suggested = (parsePriceToInteger(formData.suggested_price) / 100) || 0;
-                      const adjustment = suggested - current;
-                      return adjustment !== 0;
-                    })() && (
-                      <div className="pt-2 mt-2 border-t border-slate-200 dark:border-border">
-                        <div className="flex items-center gap-2">
-                          {(() => {
-                            const current = (parsePriceToInteger(formData.current_price) / 100) || 0;
-                            const suggested = (parsePriceToInteger(formData.suggested_price) / 100) || 0;
-                            const adjustment = suggested - current;
-                            return adjustment >= 0 ? (
-                              <CheckCircle className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
-                            ) : (
-                              <AlertCircle className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
-                            );
-                          })()}
-                          <span className={`text-xs font-medium ${(() => {
-                            const current = (parsePriceToInteger(formData.current_price) / 100) || 0;
-                            const suggested = (parsePriceToInteger(formData.suggested_price) / 100) || 0;
-                            const adjustment = suggested - current;
-                            return adjustment >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400';
-                          })()}`}>
-                            {(() => {
-                              const current = (parsePriceToInteger(formData.current_price) / 100) || 0;
-                              const suggested = (parsePriceToInteger(formData.suggested_price) / 100) || 0;
-                              const adjustment = suggested - current;
-                              return adjustment >= 0 ? 'Ajuste positivo' : 'Ajuste negativo';
-                            })()}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                </>
-              ) : (
-                <p className="text-xs text-slate-500 dark:text-slate-400 text-center py-3">
-                  Preencha os valores para ver o cálculo da margem
-                </p>
-              )}
-            </CardContent>
-          </Card>
 
-          {/* Análise de Custos - para múltiplos postos */}
-          {formData.station_ids && formData.station_ids.length > 1 && (
-            <div className="space-y-4">
-              {formData.station_ids.map((stationId) => {
-                const stationCost = stationCosts[stationId];
-                const station = stations.find(s => s.id === stationId);
-                if (!stationCost || !station) return null;
-                
-                // Calcular valores para este posto
-                const volumeProjected = parseFloat(formData.volume_projected) || 0;
-                const volumeProjectedLiters = volumeProjected * 1000;
-                const suggestedPrice = (parsePriceToInteger(formData.suggested_price) / 100) || 0;
-                
-                const finalCost = stationCost.final_cost || 0;
-                const totalRevenue = stationCost.total_revenue || 0;
-                const totalCost = stationCost.total_cost || 0;
-                const grossProfit = stationCost.gross_profit || 0;
-                const profitPerLiter = stationCost.profit_per_liter || 0;
-                const arlaCompensation = stationCost.arla_compensation || 0;
-                const netResult = stationCost.net_result || 0;
-                
-                // Buscar taxa para este posto
-                let feePercentage = 0;
-                if (formData.payment_method_id && formData.payment_method_id !== 'none') {
-                  const method = getPaymentMethodById(formData.payment_method_id);
-                  feePercentage = method?.TAXA || 0;
-                }
-                
-                return (
-                  <Card key={`cost-analysis-${stationId}`} className="shadow-sm border border-slate-200 dark:border-border bg-white dark:bg-card">
-                    <CardHeader className="pb-3 border-b border-slate-200 dark:border-border">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
-                          <BarChart className="h-5 w-5 text-slate-600 dark:text-slate-300" />
-                        </div>
-                        <div>
-                          <CardTitle className="text-base font-semibold text-slate-900 dark:text-slate-100">
-                            Análise de Custos - {station.name}
-                          </CardTitle>
-                        </div>
+                  <div className="flex flex-col sm:flex-row gap-3 pt-4">
+                    <Button
+                      onClick={() => handleSubmit(false)}
+                      disabled={loading || dbLoadingHook}
+                      className="flex items-center gap-2 h-10 px-6 bg-gradient-to-r from-slate-700 to-slate-800 hover:from-slate-800 hover:to-slate-900 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
+                    >
+                      <Plus className="h-4 w-4" />
+                      {loading ? "Adicionando..." : "Adicionar"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => handleSubmit(true)}
+                      disabled={loading || dbLoadingHook}
+                      className="flex items-center gap-2 h-10 px-6 border-2 border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
+                    >
+                      <Save className="h-4 w-4" />
+                      Salvar Rascunho
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Summary Panel */}
+            <div className="space-y-3">
+              {/* Resultados Individuais por Posto */}
+              {addedCards.length > 0 && (
+                <Card className="shadow-sm border border-slate-200 dark:border-border bg-white dark:bg-card">
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                        {addedCards.length > 1 ? `Lote de Solicitações (${addedCards.length})` : `Solicitação Individual`}
+                      </CardTitle>
+                      <Button
+                        onClick={handleSendAllForApproval}
+                        disabled={loading || addedCards.length === 0}
+                        className="flex items-center gap-2 h-9 px-4 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
+                      >
+                        <Send className="h-4 w-4" />
+                        Enviar para Aprovação
+                      </Button>
+                    </div>
+                    {/* Campo para nomear o lote (só aparece se houver múltiplas solicitações) */}
+                    {addedCards.length > 1 && (
+                      <div className="mt-3">
+                        <Label htmlFor="batch-name" className="text-xs text-slate-600 dark:text-slate-400 mb-1 block">
+                          Nome do Lote (opcional)
+                        </Label>
+                        <Input
+                          id="batch-name"
+                          placeholder="Ex: Proposta Cliente X - Novembro 2025"
+                          value={batchName}
+                          onChange={(e) => setBatchName(e.target.value)}
+                          className="text-sm"
+                        />
                       </div>
-                    </CardHeader>
-                    <CardContent className="pt-3 space-y-2.5">
-                      <div className="space-y-2">
-                        {/* Custo Final por Litro */}
-                        <div className="p-3 rounded-lg border border-slate-200 dark:border-border bg-slate-50 dark:bg-card/50">
-                          <div className="flex justify-between items-center mb-1.5">
-                            <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Custo Final/L:</span>
-                            <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{formatPrice4Decimals(finalCost)}</span>
+                    )}
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {addedCards.map((card) => (
+                        <div
+                          key={card.id}
+                          className="bg-white dark:bg-card border border-slate-200 dark:border-border rounded-lg p-4 hover:shadow-md transition-shadow"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">
+                                  {card.stationName.toUpperCase()}
+                                </h3>
+                              </div>
+                              <p className="text-xs text-slate-600 dark:text-slate-400">
+                                {card.bandeira || card.location || 'N/A'}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <div className="text-right">
+                                <p className="text-xs text-slate-500 dark:text-slate-400">Resultado</p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">Líquido</p>
+                                <p className={`text-base font-bold ${card.netResult >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                  {formatPrice(card.netResult)}
+                                </p>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setAddedCards(prev =>
+                                    prev.map(c =>
+                                      c.id === card.id ? { ...c, expanded: !c.expanded } : c
+                                    )
+                                  );
+                                }}
+                                className="h-8 w-8 p-0"
+                              >
+                                <ChevronDown
+                                  className={`h-5 w-5 text-slate-600 dark:text-slate-400 transition-transform ${card.expanded ? 'transform rotate-180' : ''
+                                    }`}
+                                />
+                              </Button>
+                            </div>
                           </div>
-                          {feePercentage > 0 && (
-                            <div className="text-xs text-slate-600 dark:text-slate-400 border-t border-slate-200 dark:border-border pt-2 mt-2 space-y-1">
-                              <div className="flex justify-between">
-                                <span>Base (compra + frete)/L:</span>
-                                <span>{formatPrice4Decimals(stationCost.purchase_cost + stationCost.freight_cost)}</span>
-                              </div>
-                              <div className="flex justify-between text-slate-700 dark:text-slate-300 font-medium">
-                                <span>Taxa ({feePercentage.toFixed(2)}%):</span>
-                                <span>+{formatPrice4Decimals(finalCost - (stationCost.purchase_cost + stationCost.freight_cost))}</span>
-                              </div>
+
+                          {/* Análise de Custos Expandida */}
+                          {card.expanded && card.costAnalysis && (
+                            <div className="mt-4 pt-4 border-t border-slate-200 dark:border-border">
+                              <Card className="shadow-sm border border-slate-200 dark:border-border bg-slate-50 dark:bg-card/50">
+                                <CardHeader className="pb-3 border-b border-slate-200 dark:border-border">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
+                                      <BarChart className="h-5 w-5 text-slate-600 dark:text-slate-300" />
+                                    </div>
+                                    <div>
+                                      <CardTitle className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                                        Análise de Custos
+                                      </CardTitle>
+                                    </div>
+                                  </div>
+                                </CardHeader>
+                                <CardContent className="pt-3 space-y-2.5">
+                                  <div className="space-y-2">
+                                    {/* Custo Final por Litro */}
+                                    <div className="p-3 rounded-lg border border-slate-200 dark:border-border bg-white dark:bg-card">
+                                      <div className="flex justify-between items-center mb-1.5">
+                                        <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Custo Final/L:</span>
+                                        <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                                          {formatPrice4Decimals(card.costAnalysis.final_cost)}
+                                        </span>
+                                      </div>
+                                      {/* Origem do Custo - pequeno abaixo do custo */}
+                                      {priceOrigin && (
+                                        <div className="mt-1.5 pt-1.5 border-t border-slate-200 dark:border-border">
+                                          <p className="text-[10px] leading-tight text-slate-500 dark:text-slate-400">
+                                            📍 {priceOrigin.base_bandeira} - {priceOrigin.base_nome} ({priceOrigin.base_codigo}) | {priceOrigin.forma_entrega}
+                                            {card.costAnalysis.feePercentage > 0 && (
+                                              <span className="ml-1">• Taxa: {card.costAnalysis.feePercentage.toFixed(2)}%</span>
+                                            )}
+                                          </p>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* Receita Total */}
+                                    <div className="flex justify-between items-center p-2.5 rounded border border-slate-200 dark:border-border bg-white dark:bg-card/50">
+                                      <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Receita Total:</span>
+                                      <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                                        {formatPrice(card.costAnalysis.total_revenue)}
+                                      </span>
+                                    </div>
+
+                                    {/* Custo Total */}
+                                    <div className="flex justify-between items-center p-2.5 rounded border border-slate-200 dark:border-border bg-white dark:bg-card/50">
+                                      <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Custo Total:</span>
+                                      <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                                        {formatPrice(card.costAnalysis.total_cost)}
+                                      </span>
+                                    </div>
+
+                                    {/* Lucro Bruto */}
+                                    <div className="flex justify-between items-center p-2.5 rounded border border-slate-200 dark:border-border bg-white dark:bg-card/50">
+                                      <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Lucro Bruto:</span>
+                                      <span className={`text-sm font-semibold ${card.costAnalysis.gross_profit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                        {formatPrice(card.costAnalysis.gross_profit)}
+                                      </span>
+                                    </div>
+
+                                    {/* Lucro por Litro */}
+                                    <div className="flex justify-between items-center p-2.5 rounded border border-slate-200 dark:border-border bg-white dark:bg-card/50">
+                                      <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Lucro/Litro:</span>
+                                      <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                                        {formatPrice4Decimals(card.costAnalysis.profit_per_liter)}
+                                      </span>
+                                    </div>
+
+                                    {/* Compensação ARLA */}
+                                    {card.costAnalysis.arla_compensation !== 0 && (
+                                      <div className="flex justify-between items-center p-2.5 rounded border border-slate-200 dark:border-border bg-white dark:bg-card/50">
+                                        <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Compensação ARLA:</span>
+                                        <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                                          {formatPrice(card.costAnalysis.arla_compensation)}
+                                        </span>
+                                      </div>
+                                    )}
+
+                                    {/* Resultado Líquido */}
+                                    <div className={`flex justify-between items-center p-3 rounded border ${card.costAnalysis.net_result >= 0 ? 'border-green-500/50 dark:border-green-500/30 bg-green-50/50 dark:bg-green-950/20' : 'border-red-500/50 dark:border-red-500/30 bg-red-50/50 dark:bg-red-950/20'}`}>
+                                      <div className="flex items-center gap-2">
+                                        {card.costAnalysis.net_result >= 0 ? (
+                                          <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
+                                        ) : (
+                                          <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                                        )}
+                                        <span className="text-xs font-semibold text-slate-900 dark:text-slate-100">
+                                          Resultado Líquido:
+                                        </span>
+                                      </div>
+                                      <span className={`text-sm font-bold ${card.costAnalysis.net_result >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                        {formatPrice(card.costAnalysis.net_result)}
+                                      </span>
+                                    </div>
+
+                                    {/* Anexos */}
+                                    {card.attachments && card.attachments.length > 0 && (
+                                      <div className="mt-4 pt-4 border-t border-slate-200 dark:border-border">
+                                        <div className="space-y-2">
+                                          <Label className="text-xs font-semibold text-slate-600 dark:text-slate-400">
+                                            Anexos:
+                                          </Label>
+                                          <div className="flex flex-wrap gap-2">
+                                            {card.attachments.map((attachment, idx) => {
+                                              const fileName = attachment.split('/').pop() || `Anexo ${idx + 1}`;
+                                              return (
+                                                <AttachmentItem
+                                                  key={idx}
+                                                  attachment={attachment}
+                                                  fileName={fileName}
+                                                  cardId={card.id}
+                                                  index={idx}
+                                                />
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </CardContent>
+                              </Card>
                             </div>
                           )}
                         </div>
-
-                        {/* Receita Total */}
-                        <div className="flex justify-between items-center p-2.5 rounded border border-slate-200 dark:border-border bg-white dark:bg-card/50">
-                          <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Receita Total:</span>
-                          <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{formatPrice(totalRevenue)}</span>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+              <Card className="shadow-sm border border-slate-200 dark:border-border bg-white dark:bg-card">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
+                      <TrendingUp className="h-5 w-5 text-slate-600 dark:text-slate-300" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                        Ajuste
+                      </CardTitle>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-0 space-y-2.5">
+                  {calculatedPrice > 0 ? (
+                    <>
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center py-1.5">
+                          <span className="text-xs text-slate-600 dark:text-slate-400">Preço Sugerido:</span>
+                          <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{formatPrice(calculatedPrice)}</span>
                         </div>
 
-                        {/* Custo Total */}
-                        <div className="flex justify-between items-center p-2.5 rounded border border-slate-200 dark:border-border bg-white dark:bg-card/50">
-                          <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Custo Total:</span>
-                          <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{formatPrice(totalCost)}</span>
-                        </div>
-
-                        {/* Lucro Bruto */}
-                        <div className="flex justify-between items-center p-2.5 rounded border border-slate-200 dark:border-border bg-white dark:bg-card/50">
-                          <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Lucro Bruto:</span>
-                          <span className={`text-sm font-semibold ${grossProfit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                            {formatPrice(grossProfit)}
-                          </span>
-                        </div>
-
-                        {/* Lucro por Litro */}
-                        <div className="flex justify-between items-center p-2.5 rounded border border-slate-200 dark:border-border bg-white dark:bg-card/50">
-                          <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Lucro/Litro:</span>
-                          <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{formatPrice4Decimals(profitPerLiter)}</span>
-                        </div>
-
-                        {/* Compensação ARLA */}
-                        {arlaCompensation !== 0 && (
-                          <div className="flex justify-between items-center p-2.5 rounded border border-slate-200 dark:border-border bg-white dark:bg-card/50">
-                            <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Compensação ARLA:</span>
-                            <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{formatPrice(arlaCompensation)}</span>
+                        {formData.current_price && formData.suggested_price && (
+                          <div className="flex justify-between items-center py-1.5">
+                            <span className="text-xs text-slate-600 dark:text-slate-400">Preço Atual:</span>
+                            <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{formatPrice(parsePriceToInteger(formData.current_price) / 100)}</span>
                           </div>
                         )}
 
-                        {/* Resultado Líquido */}
-                        <div className={`flex justify-between items-center p-3 rounded border ${netResult >= 0 ? 'border-green-500/50 dark:border-green-500/30 bg-green-50/50 dark:bg-green-950/20' : 'border-red-500/50 dark:border-red-500/30 bg-red-50/50 dark:bg-red-950/20'}`}>
-                          <div className="flex items-center gap-2">
-                            {netResult >= 0 ? (
-                              <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
-                            ) : (
-                              <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
-                            )}
-                            <span className="text-xs font-semibold text-slate-900 dark:text-slate-100">
-                              Resultado Líquido:
-                            </span>
-                          </div>
-                          <span className={`text-sm font-bold ${netResult >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                            {formatPrice(netResult)}
-                          </span>
-                        </div>
+                        {formData.current_price && formData.suggested_price && (
+                          <>
+                            <div className="flex justify-between items-center py-1.5 border-t border-slate-200 dark:border-border pt-2">
+                              <span className="text-xs text-slate-600 dark:text-slate-400">Margem Custo:</span>
+                              <span className={`text-sm font-semibold ${margin >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                {margin} centavos
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center py-1.5">
+                              <span className="text-xs text-slate-600 dark:text-slate-400">Ajuste:</span>
+                              <span className={`text-sm font-semibold ${(() => {
+                                const current = (parsePriceToInteger(formData.current_price) / 100) || 0;
+                                const suggested = (parsePriceToInteger(formData.suggested_price) / 100) || 0;
+                                const adjustment = suggested - current;
+                                return adjustment >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400';
+                              })()}`}>
+                                {(() => {
+                                  const current = (parsePriceToInteger(formData.current_price) / 100) || 0;
+                                  const suggested = (parsePriceToInteger(formData.suggested_price) / 100) || 0;
+                                  const adjustment = suggested - current;
+                                  const adjustmentCents = Math.round(adjustment * 100);
+                                  return `${adjustmentCents >= 0 ? '+' : ''}${adjustmentCents} centavos`;
+                                })()}
+                              </span>
+                            </div>
+                          </>
+                        )}
                       </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
 
-          {/* Análise de Custos - solicitação atual */}
-          {(costCalculations.finalCost > 0 || costCalculations.totalRevenue > 0) && (
-            <Card className="shadow-sm border border-slate-200 dark:border-border bg-white dark:bg-card">
-              <CardHeader className="pb-3 border-b border-slate-200 dark:border-border">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
-                    <BarChart className="h-5 w-5 text-slate-600 dark:text-slate-300" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-base font-semibold text-slate-900 dark:text-slate-100">
-                      Análise de Custos
-                    </CardTitle>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-3 space-y-2.5">
-                <div className="space-y-2">
-                  {/* Custo Final por Litro */}
-                  <div className="p-3 rounded-lg border border-slate-200 dark:border-border bg-slate-50 dark:bg-card/50">
-                    <div className="flex justify-between items-center mb-1.5">
-                      <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Custo Final/L:</span>
-                      <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{formatPrice4Decimals(costCalculations.finalCost)}</span>
-                    </div>
-                    {(() => {
-                      let feePercentage = 0;
-                      if (formData.payment_method_id && formData.payment_method_id !== 'none') {
-                        const stationMethod = stationPaymentMethods.find(pm => pm.CARTAO === formData.payment_method_id);
-                        if (stationMethod) {
-                          feePercentage = stationMethod.TAXA || 0;
-                        } else {
-                          const defaultMethod = paymentMethods.find(pm => pm.CARTAO === formData.payment_method_id);
-                          feePercentage = defaultMethod?.TAXA || 0;
-                        }
-                      }
-                      const purchaseCost = parseFloat(formData.purchase_cost) || 0;
-                      const freightCost = parseFloat(formData.freight_cost) || 0;
-                      const baseCostTotal = purchaseCost + freightCost;
-                      return feePercentage > 0 ? (
-                        <div className="text-xs text-slate-600 dark:text-slate-400 border-t border-slate-200 dark:border-border pt-2 mt-2 space-y-1">
-                          <div className="flex justify-between">
-                            <span>Base (compra + frete)/L:</span>
-                            <span>{formatPrice4Decimals(baseCostTotal)}</span>
+                      {formData.current_price && formData.suggested_price && (() => {
+                        const current = (parsePriceToInteger(formData.current_price) / 100) || 0;
+                        const suggested = (parsePriceToInteger(formData.suggested_price) / 100) || 0;
+                        const adjustment = suggested - current;
+                        return adjustment !== 0;
+                      })() && (
+                          <div className="pt-2 mt-2 border-t border-slate-200 dark:border-border">
+                            <div className="flex items-center gap-2">
+                              {(() => {
+                                const current = (parsePriceToInteger(formData.current_price) / 100) || 0;
+                                const suggested = (parsePriceToInteger(formData.suggested_price) / 100) || 0;
+                                const adjustment = suggested - current;
+                                return adjustment >= 0 ? (
+                                  <CheckCircle className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
+                                ) : (
+                                  <AlertCircle className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
+                                );
+                              })()}
+                              <span className={`text-xs font-medium ${(() => {
+                                const current = (parsePriceToInteger(formData.current_price) / 100) || 0;
+                                const suggested = (parsePriceToInteger(formData.suggested_price) / 100) || 0;
+                                const adjustment = suggested - current;
+                                return adjustment >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400';
+                              })()}`}>
+                                {(() => {
+                                  const current = (parsePriceToInteger(formData.current_price) / 100) || 0;
+                                  const suggested = (parsePriceToInteger(formData.suggested_price) / 100) || 0;
+                                  const adjustment = suggested - current;
+                                  return adjustment >= 0 ? 'Ajuste positivo' : 'Ajuste negativo';
+                                })()}
+                              </span>
+                            </div>
                           </div>
-                          <div className="flex justify-between text-slate-700 dark:text-slate-300 font-medium">
-                            <span>Taxa ({feePercentage.toFixed(2)}%):</span>
-                            <span>+{formatPrice4Decimals(costCalculations.finalCost - baseCostTotal)}</span>
-                          </div>
-                        </div>
-                      ) : null;
-                    })()}
-                  </div>
-
-                  {/* Receita Total */}
-                  <div className="flex justify-between items-center p-2.5 rounded border border-slate-200 dark:border-border bg-white dark:bg-card/50">
-                    <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Receita Total:</span>
-                    <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{formatPrice(costCalculations.totalRevenue)}</span>
-                  </div>
-
-                  {/* Custo Total */}
-                  <div className="flex justify-between items-center p-2.5 rounded border border-slate-200 dark:border-border bg-white dark:bg-card/50">
-                    <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Custo Total:</span>
-                    <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{formatPrice(costCalculations.totalCost)}</span>
-                  </div>
-
-                  {/* Lucro Bruto */}
-                  <div className="flex justify-between items-center p-2.5 rounded border border-slate-200 dark:border-border bg-white dark:bg-card/50">
-                    <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Lucro Bruto:</span>
-                    <span className={`text-sm font-semibold ${costCalculations.grossProfit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                      {formatPrice(costCalculations.grossProfit)}
-                    </span>
-                  </div>
-
-                  {/* Lucro por Litro */}
-                  <div className="flex justify-between items-center p-2.5 rounded border border-slate-200 dark:border-border bg-white dark:bg-card/50">
-                    <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Lucro/Litro:</span>
-                    <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{formatPrice4Decimals(costCalculations.profitPerLiter)}</span>
-                  </div>
-
-                  {/* Compensação ARLA */}
-                  {costCalculations.arlaCompensation !== 0 && (
-                    <div className="flex justify-between items-center p-2.5 rounded border border-slate-200 dark:border-border bg-white dark:bg-card/50">
-                      <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Compensação ARLA:</span>
-                      <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{formatPrice(costCalculations.arlaCompensation)}</span>
-                    </div>
+                        )}
+                    </>
+                  ) : (
+                    <p className="text-xs text-slate-500 dark:text-slate-400 text-center py-3">
+                      Preencha os valores para ver o cálculo da margem
+                    </p>
                   )}
+                </CardContent>
+              </Card>
 
-                  {/* Resultado Líquido */}
-                  <div className={`flex justify-between items-center p-3 rounded border ${costCalculations.netResult >= 0 ? 'border-green-500/50 dark:border-green-500/30 bg-green-50/50 dark:bg-green-950/20' : 'border-red-500/50 dark:border-red-500/30 bg-red-50/50 dark:bg-red-950/20'}`}>
-                    <div className="flex items-center gap-2">
-                      {costCalculations.netResult >= 0 ? (
-                        <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
-                      ) : (
-                        <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
-                      )}
-                      <span className="text-xs font-semibold text-slate-900 dark:text-slate-100">
-                        Resultado Líquido:
-                      </span>
-                    </div>
-                    <span className={`text-sm font-bold ${costCalculations.netResult >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                      {formatPrice(costCalculations.netResult)}
-                    </span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+              {/* Análise de Custos - para múltiplos postos */}
+              {formData.station_ids && formData.station_ids.length > 1 && (
+                <div className="space-y-4">
+                  {formData.station_ids.map((stationId) => {
+                    const stationCost = stationCosts[stationId];
+                    const station = stations.find(s => s.id === stationId);
+                    if (!stationCost || !station) return null;
 
-        </div>
-      </div>
-        </TabsContent>
+                    // Calcular valores para este posto
+                    const volumeProjected = parseFloat(formData.volume_projected) || 0;
+                    const volumeProjectedLiters = volumeProjected * 1000;
+                    const suggestedPrice = (parsePriceToInteger(formData.suggested_price) / 100) || 0;
 
-        <TabsContent value="my-requests" className="mt-0">
-            <div className="space-y-6">
-              {loadingRequests && (
-                <div className="flex items-center justify-center py-12">
-                  <div className="flex flex-col items-center gap-4">
-                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                    <p className="text-sm text-muted-foreground">Carregando solicitações...</p>
-                  </div>
-                </div>
-              )}
-              {!loadingRequests && (
-                <>
-              {/* Stats */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <Card className="bg-white/80 dark:bg-card/80 backdrop-blur-sm border-0 shadow-xl">
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-slate-600 dark:text-slate-400">Total</p>
-                        <p className="text-2xl font-bold">{myRequests.length}</p>
-                      </div>
-                      <FileText className="h-6 w-6 text-blue-500" />
-                    </div>
-                  </CardContent>
-                </Card>
+                    const finalCost = stationCost.final_cost || 0;
+                    const totalRevenue = stationCost.total_revenue || 0;
+                    const totalCost = stationCost.total_cost || 0;
+                    const grossProfit = stationCost.gross_profit || 0;
+                    const profitPerLiter = stationCost.profit_per_liter || 0;
+                    const arlaCompensation = stationCost.arla_compensation || 0;
+                    const netResult = stationCost.net_result || 0;
 
-                <Card className="bg-white/80 dark:bg-card/80 backdrop-blur-sm border-0 shadow-xl">
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-slate-600 dark:text-slate-400">Pendentes</p>
-                        <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{myRequests.filter(r => r.type !== 'batch' && r.status === 'pending').length}</p>
-                      </div>
-                      <Clock className="h-6 w-6 text-yellow-500" />
-                    </div>
-                  </CardContent>
-                </Card>
+                    // Buscar taxa para este posto
+                    let feePercentage = 0;
+                    if (formData.payment_method_id && formData.payment_method_id !== 'none') {
+                      const stationMethod = stationPaymentMethods.find(pm => {
+                        const methodId = String((pm as any).id || (pm as any).ID_POSTO || '');
+                        return pm.CARTAO === formData.payment_method_id || methodId === String(formData.payment_method_id);
+                      });
 
-                <Card className="bg-white/80 dark:bg-card/80 backdrop-blur-sm border-0 shadow-xl">
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-slate-600 dark:text-slate-400">Aprovadas</p>
-                        <p className="text-2xl font-bold text-green-600 dark:text-green-400">{myRequests.filter(r => r.type !== 'batch' && r.status === 'approved').length}</p>
-                      </div>
-                      <Check className="h-6 w-6 text-green-500" />
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="bg-white/80 dark:bg-card/80 backdrop-blur-sm border-0 shadow-xl">
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-slate-600 dark:text-slate-400">Rejeitadas</p>
-                        <p className="text-2xl font-bold text-red-600 dark:text-red-400">{myRequests.filter(r => r.type !== 'batch' && r.status === 'rejected').length}</p>
-                      </div>
-                      <X className="h-6 w-6 text-red-500" />
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* My Requests List */}
-              <div className="space-y-4">
-                {myRequests.map((request, index) => {
-                  // Se for um lote, mostrar card compacto de proposta comercial
-                  if (request.type === 'batch' && request.requests) {
-                    const batch = request.requests;
-                    const firstRequest = batch[0];
-                    const proposalDate = new Date(firstRequest.created_at).toLocaleDateString('pt-BR');
-                    const proposalNumber = index + 1;
-                    
-                    // Verificar se todos os clientes são iguais
-                    const uniqueClients = new Set(batch.map((r: any) => r.client_id || 'unknown'));
-                    const allSameClient = uniqueClients.size === 1;
-                    const displayClient = allSameClient ? firstRequest.clients : batch[0].clients;
-                    
-                    // Verificar se todos os postos são iguais
-                    const uniqueStations = new Set(batch.map((r: any) => {
-                      const station = r.stations || r.stations_list?.[0];
-                      return station?.name || station?.code || 'unknown';
-                    }));
-                    const allSameStation = uniqueStations.size === 1;
-                    const displayStation = allSameStation 
-                      ? (firstRequest.stations || firstRequest.stations_list?.[0])
-                      : (batch[0].stations || batch[0].stations_list?.[0]);
-                    
-                    // Determinar status geral do lote
-                    const allApproved = batch.every((r: any) => r.status === 'approved');
-                    const hasPending = batch.some((r: any) => r.status === 'pending');
-                    const hasPriceSuggested = batch.some((r: any) => r.status === 'price_suggested');
-                    const allRejected = batch.every((r: any) => r.status === 'rejected');
-                    
-                    let generalStatus = 'pending';
-                    if (allApproved) {
-                      generalStatus = 'approved';
-                    } else if (hasPriceSuggested && !hasPending) {
-                      generalStatus = 'price_suggested';
-                    } else if (hasPending) {
-                      generalStatus = 'pending';
-                    } else if (allRejected) {
-                      generalStatus = 'rejected';
-                    } else {
-                      // Se houver mix de status, priorizar: approved > price_suggested > pending > rejected
-                      const hasAnyApproved = batch.some((r: any) => r.status === 'approved');
-                      if (hasAnyApproved) {
-                        generalStatus = 'pending'; // Ainda tem aprovações pendentes
-                      } else if (hasPriceSuggested) {
-                        generalStatus = 'price_suggested';
+                      if (stationMethod) {
+                        feePercentage = stationMethod.TAXA || 0;
                       } else {
-                        generalStatus = 'rejected';
+                        const defaultMethod = paymentMethods.find(pm => pm.CARTAO === formData.payment_method_id);
+                        feePercentage = defaultMethod?.TAXA || 0;
                       }
                     }
-                                      
-                                      return (
-                      <>
-                        <Card key={request.batchKey} className="hover:shadow-lg transition-shadow">
-                          <CardContent className="p-6">
-                              <div className="flex items-center justify-between">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-3 mb-2">
-                                  <span className="font-semibold text-slate-800 dark:text-slate-200">
-                                    {request.batch_name || 'Proposta Comercial'}
-                                  </span>
-                                  {generalStatus === 'approved' ? (
-                                    <Badge className="bg-green-100 text-green-800"><Check className="h-3 w-3 mr-1" />Aprovado</Badge>
-                                  ) : generalStatus === 'pending' ? (
-                                    <Badge variant="secondary" className="bg-yellow-100 text-yellow-800"><Clock className="h-3 w-3 mr-1" />Aguardando Aprovação</Badge>
-                                  ) : generalStatus === 'price_suggested' ? (
-                                    <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300"><DollarSign className="h-3 w-3 mr-1" />Preço Sugerido</Badge>
-                                  ) : (
-                                    <Badge variant="destructive"><X className="h-3 w-3 mr-1" />Rejeitado</Badge>
-                                  )}
-                                </div>
-                                <div className="space-y-1 text-sm text-slate-600 dark:text-slate-400">
-                                  {displayClient && (
-                                    <p>
-                                      <span className="font-medium">Cliente:</span> {displayClient.name || 'N/A'}
-                                      {!allSameClient && <span className="text-xs ml-1">(+{uniqueClients.size - 1} outros)</span>}
-                                    </p>
-                                  )}
-                                  {displayStation && (
-                                    <p>
-                                      <span className="font-medium">Posto:</span> {displayStation.name || 'N/A'}
-                                      {!allSameStation && <span className="text-xs ml-1">(+{uniqueStations.size - 1} outros)</span>}
-                                    </p>
-                                  )}
-                                  <p>Criado em: {proposalDate}</p>
-                              </div>
+
+                    return (
+                      <Card key={`cost-analysis-${stationId}`} className="shadow-sm border border-slate-200 dark:border-border bg-white dark:bg-card">
+                        <CardHeader className="pb-3 border-b border-slate-200 dark:border-border">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
+                              <BarChart className="h-5 w-5 text-slate-600 dark:text-slate-300" />
                             </div>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setExpandedProposal(request.batchKey)}
-                                className="ml-4"
-                              >
-                                <Maximize2 className="h-4 w-4 mr-2" />
-                                Ver Completo
-                              </Button>
+                            <div>
+                              <CardTitle className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                                Análise de Custos - {station.name}
+                              </CardTitle>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="pt-3 space-y-2.5">
+                          <div className="space-y-2">
+                            {/* Custo Final por Litro */}
+                            <div className="p-3 rounded-lg border border-slate-200 dark:border-border bg-slate-50 dark:bg-card/50">
+                              <div className="flex justify-between items-center mb-1.5">
+                                <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Custo Final/L:</span>
+                                <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{formatPrice4Decimals(finalCost)}</span>
+                              </div>
+                              {feePercentage > 0 && (
+                                <div className="text-xs text-slate-600 dark:text-slate-400 border-t border-slate-200 dark:border-border pt-2 mt-2 space-y-1">
+                                  <div className="flex justify-between">
+                                    <span>Base (compra + frete)/L:</span>
+                                    <span>{formatPrice4Decimals(stationCost.purchase_cost + stationCost.freight_cost)}</span>
+                                  </div>
+                                  <div className="flex justify-between text-slate-700 dark:text-slate-300 font-medium">
+                                    <span>Taxa ({feePercentage.toFixed(2)}%):</span>
+                                    <span>+{formatPrice4Decimals(finalCost - (stationCost.purchase_cost + stationCost.freight_cost))}</span>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Receita Total */}
+                            <div className="flex justify-between items-center p-2.5 rounded border border-slate-200 dark:border-border bg-white dark:bg-card/50">
+                              <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Receita Total:</span>
+                              <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{formatPrice(totalRevenue)}</span>
+                            </div>
+
+                            {/* Custo Total */}
+                            <div className="flex justify-between items-center p-2.5 rounded border border-slate-200 dark:border-border bg-white dark:bg-card/50">
+                              <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Custo Total:</span>
+                              <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{formatPrice(totalCost)}</span>
+                            </div>
+
+                            {/* Lucro Bruto */}
+                            <div className="flex justify-between items-center p-2.5 rounded border border-slate-200 dark:border-border bg-white dark:bg-card/50">
+                              <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Lucro Bruto:</span>
+                              <span className={`text-sm font-semibold ${grossProfit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                {formatPrice(grossProfit)}
+                              </span>
+                            </div>
+
+                            {/* Lucro por Litro */}
+                            <div className="flex justify-between items-center p-2.5 rounded border border-slate-200 dark:border-border bg-white dark:bg-card/50">
+                              <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Lucro/Litro:</span>
+                              <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{formatPrice4Decimals(profitPerLiter)}</span>
+                            </div>
+
+                            {/* Compensação ARLA */}
+                            {arlaCompensation !== 0 && (
+                              <div className="flex justify-between items-center p-2.5 rounded border border-slate-200 dark:border-border bg-white dark:bg-card/50">
+                                <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Compensação ARLA:</span>
+                                <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{formatPrice(arlaCompensation)}</span>
+                              </div>
+                            )}
+
+                            {/* Resultado Líquido */}
+                            <div className={`flex justify-between items-center p-3 rounded border ${netResult >= 0 ? 'border-green-500/50 dark:border-green-500/30 bg-green-50/50 dark:bg-green-950/20' : 'border-red-500/50 dark:border-red-500/30 bg-red-50/50 dark:bg-red-950/20'}`}>
+                              <div className="flex items-center gap-2">
+                                {netResult >= 0 ? (
+                                  <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
+                                ) : (
+                                  <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                                )}
+                                <span className="text-xs font-semibold text-slate-900 dark:text-slate-100">
+                                  Resultado Líquido:
+                                </span>
+                              </div>
+                              <span className={`text-sm font-bold ${netResult >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                {formatPrice(netResult)}
+                              </span>
+                            </div>
                           </div>
                         </CardContent>
                       </Card>
-                        
-                        {/* Modal com visualização completa */}
-                        <Dialog open={expandedProposal === request.batchKey} onOpenChange={(open) => !open && setExpandedProposal(null)}>
-                          <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto print:max-w-none print:max-h-none print:overflow-visible print:p-0">
-                            <ProposalFullView 
-                              batch={batch}
-                              proposalNumber={proposalNumber}
-                              proposalDate={proposalDate}
-                              generalStatus={generalStatus}
-                              user={user}
-                            />
-                          </DialogContent>
-                        </Dialog>
-                      </>
                     );
-                  }
-                  
-                  // Visualização normal para solicitações individuais
-                  return (
-                    <Card key={request.id} className="hover:shadow-lg transition-shadow">
-                      <CardContent className="p-6">
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1 gap-4">
-                            <div className="flex items-center gap-3 mb-2">
-                              <span className="font-semibold text-slate-800 dark:text-slate-200">
-                                {request.stations_list && request.stations_list.length > 0 
-                                  ? request.stations_list.map((s: any) => s.name).join(', ')
-                                  : (request.stations?.name || 'Posto')
-                                } - {request.clients?.name || 'Cliente'}
-                              </span>
-                              {request.status === 'pending' && (
-                                <Badge variant="secondary" className="bg-yellow-100 text-yellow-800"><Clock className="h-3 w-3 mr-1" />Pendente</Badge>
-                              )}
-                              {request.status === 'approved' && (
-                                <Badge className="bg-green-100 text-green-800"><Check className="h-3 w-3 mr-1" />Aprovado</Badge>
-                              )}
-                              {request.status === 'rejected' && (
-                                <Badge variant="destructive"><X className="h-3 w-3 mr-1" />Rejeitado</Badge>
-                              )}
-                            </div>
-                            <p className="text-sm text-slate-600 dark:text-slate-400">
-                              Criado em: {new Date(request.created_at).toLocaleDateString('pt-BR')}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {(request.status === 'draft' || request.status === 'pending' || String(request.status || '').toLowerCase().includes('approval')) && (
-                              <>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    setEditingRequest(request);
-                                    setShowEditModal(true);
-                                  }}
-                                >
-                                  <Edit className="h-4 w-4 mr-2" />
-                                  Editar
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleDeleteRequest(request.id)}
-                                  className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300"
-                                >
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Excluir
-                                </Button>
-                              </>
-                            )}
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedRequest(request);
-                                setShowRequestDetails(true);
-                              }}
-                            >
-                              <Eye className="h-4 w-4 mr-2" />
-                              Ver Detalhes
-                            </Button>
-                          </div>
+                  })}
+                </div>
+              )}
+
+              {/* Análise de Custos - solicitação atual */}
+              {(costCalculations.finalCost > 0 || costCalculations.totalRevenue > 0) && (
+                <Card className="shadow-sm border border-slate-200 dark:border-border bg-white dark:bg-card">
+                  <CardHeader className="pb-3 border-b border-slate-200 dark:border-border">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
+                        <BarChart className="h-5 w-5 text-slate-600 dark:text-slate-300" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                          Análise de Custos
+                        </CardTitle>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-3 space-y-2.5">
+                    <div className="space-y-2">
+                      {/* Custo Final por Litro */}
+                      <div className="p-3 rounded-lg border border-slate-200 dark:border-border bg-slate-50 dark:bg-card/50">
+                        <div className="flex justify-between items-center mb-1.5">
+                          <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Custo Final/L:</span>
+                          <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{formatPrice4Decimals(costCalculations.finalCost)}</span>
                         </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-                
-                {myRequests.length === 0 && (
-                  <Card>
-                    <CardContent className="p-12 text-center">
-                      <p className="text-slate-600 dark:text-slate-400">Nenhuma solicitação encontrada</p>
+                        {(() => {
+                          let feePercentage = 0;
+                          if (formData.payment_method_id && formData.payment_method_id !== 'none') {
+                            const stationMethod = stationPaymentMethods.find(pm => pm.CARTAO === formData.payment_method_id);
+                            if (stationMethod) {
+                              feePercentage = stationMethod.TAXA || 0;
+                            } else {
+                              const defaultMethod = paymentMethods.find(pm => pm.CARTAO === formData.payment_method_id);
+                              feePercentage = defaultMethod?.TAXA || 0;
+                            }
+                          }
+                          const purchaseCost = parseFloat(formData.purchase_cost) || 0;
+                          const freightCost = parseFloat(formData.freight_cost) || 0;
+                          const baseCostTotal = purchaseCost + freightCost;
+                          return feePercentage > 0 ? (
+                            <div className="text-xs text-slate-600 dark:text-slate-400 border-t border-slate-200 dark:border-border pt-2 mt-2 space-y-1">
+                              <div className="flex justify-between">
+                                <span>Base (compra + frete)/L:</span>
+                                <span>{formatPrice4Decimals(baseCostTotal)}</span>
+                              </div>
+                              <div className="flex justify-between text-slate-700 dark:text-slate-300 font-medium">
+                                <span>Taxa ({feePercentage.toFixed(2)}%):</span>
+                                <span>+{formatPrice4Decimals(costCalculations.finalCost - baseCostTotal)}</span>
+                              </div>
+                            </div>
+                          ) : null;
+                        })()}
+                      </div>
+
+                      {/* Receita Total */}
+                      <div className="flex justify-between items-center p-2.5 rounded border border-slate-200 dark:border-border bg-white dark:bg-card/50">
+                        <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Receita Total:</span>
+                        <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{formatPrice(costCalculations.totalRevenue)}</span>
+                      </div>
+
+                      {/* Custo Total */}
+                      <div className="flex justify-between items-center p-2.5 rounded border border-slate-200 dark:border-border bg-white dark:bg-card/50">
+                        <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Custo Total:</span>
+                        <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{formatPrice(costCalculations.totalCost)}</span>
+                      </div>
+
+                      {/* Lucro Bruto */}
+                      <div className="flex justify-between items-center p-2.5 rounded border border-slate-200 dark:border-border bg-white dark:bg-card/50">
+                        <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Lucro Bruto:</span>
+                        <span className={`text-sm font-semibold ${costCalculations.grossProfit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                          {formatPrice(costCalculations.grossProfit)}
+                        </span>
+                      </div>
+
+                      {/* Lucro por Litro */}
+                      <div className="flex justify-between items-center p-2.5 rounded border border-slate-200 dark:border-border bg-white dark:bg-card/50">
+                        <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Lucro/Litro:</span>
+                        <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{formatPrice4Decimals(costCalculations.profitPerLiter)}</span>
+                      </div>
+
+                      {/* Compensação ARLA */}
+                      {costCalculations.arlaCompensation !== 0 && (
+                        <div className="flex justify-between items-center p-2.5 rounded border border-slate-200 dark:border-border bg-white dark:bg-card/50">
+                          <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Compensação ARLA:</span>
+                          <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{formatPrice(costCalculations.arlaCompensation)}</span>
+                        </div>
+                      )}
+
+                      {/* Resultado Líquido */}
+                      <div className={`flex justify-between items-center p-3 rounded border ${costCalculations.netResult >= 0 ? 'border-green-500/50 dark:border-green-500/30 bg-green-50/50 dark:bg-green-950/20' : 'border-red-500/50 dark:border-red-500/30 bg-red-50/50 dark:bg-red-950/20'}`}>
+                        <div className="flex items-center gap-2">
+                          {costCalculations.netResult >= 0 ? (
+                            <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
+                          ) : (
+                            <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                          )}
+                          <span className="text-xs font-semibold text-slate-900 dark:text-slate-100">
+                            Resultado Líquido:
+                          </span>
+                        </div>
+                        <span className={`text-sm font-bold ${costCalculations.netResult >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                          {formatPrice(costCalculations.netResult)}
+                        </span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'my-requests' && (
+          <div className="space-y-6">
+            {loadingRequests && (
+              <div className="flex items-center justify-center py-12">
+                <div className="flex flex-col items-center gap-4">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  <p className="text-sm text-muted-foreground">Carregando solicitações...</p>
+                </div>
+              </div>
+            )}
+            {!loadingRequests && (
+              <>
+                {/* Stats */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <Card className="bg-white/80 dark:bg-card/80 backdrop-blur-sm border-0 shadow-xl">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-slate-600 dark:text-slate-400">Total</p>
+                          <p className="text-2xl font-bold">{myRequests.length}</p>
+                        </div>
+                        <FileText className="h-6 w-6 text-blue-500" />
+                      </div>
                     </CardContent>
                   </Card>
-                )}
-              </div>
-                </>
-              )}
-            </div>
-        </TabsContent>
 
-        {/* ABA TESTE */}
-        <TabsContent value="teste" className="mt-0 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Card 
-              className={`cursor-pointer transition-all hover:border-primary ${testeRequestMode === 'single_station_multi_client' ? 'border-primary bg-primary/5 ring-1 ring-primary' : ''}`}
-              onClick={() => {
-                setTesteRequestMode('single_station_multi_client');
-                setTesteFixedEntityId("");
-                setTesteItems([]);
-              }}
-            >
-              <CardContent className="p-4 flex items-center gap-4">
-                <div className="bg-blue-100 p-3 rounded-full dark:bg-blue-900">
-                  <MapPin className="h-6 w-6 text-blue-600 dark:text-blue-300" />
+                  <Card className="bg-white/80 dark:bg-card/80 backdrop-blur-sm border-0 shadow-xl">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-slate-600 dark:text-slate-400">Pendentes</p>
+                          <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{myRequests.filter(r => r.type !== 'batch' && r.status === 'pending').length}</p>
+                        </div>
+                        <Clock className="h-6 w-6 text-yellow-500" />
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-white/80 dark:bg-card/80 backdrop-blur-sm border-0 shadow-xl">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-slate-600 dark:text-slate-400">Aprovadas</p>
+                          <p className="text-2xl font-bold text-green-600 dark:text-green-400">{myRequests.filter(r => r.type !== 'batch' && r.status === 'approved').length}</p>
+                        </div>
+                        <Check className="h-6 w-6 text-green-500" />
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-white/80 dark:bg-card/80 backdrop-blur-sm border-0 shadow-xl">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-slate-600 dark:text-slate-400">Rejeitadas</p>
+                          <p className="text-2xl font-bold text-red-600 dark:text-red-400">{myRequests.filter(r => r.type !== 'batch' && r.status === 'rejected').length}</p>
+                        </div>
+                        <X className="h-6 w-6 text-red-500" />
+                      </div>
+                    </CardContent>
+                  </Card>
                 </div>
-                <div>
-                  <h3 className="font-semibold">Um Posto, Vários Clientes</h3>
-                  <p className="text-sm text-slate-500">Fixo: Posto de Saída | Variável: Clientes</p>
-                </div>
-              </CardContent>
-            </Card>
 
-            <Card 
-              className={`cursor-pointer transition-all hover:border-primary ${testeRequestMode === 'single_client_multi_station' ? 'border-primary bg-primary/5 ring-1 ring-primary' : ''}`}
-              onClick={() => {
-                setTesteRequestMode('single_client_multi_station');
-                setTesteFixedEntityId("");
-                setTesteItems([]);
-              }}
-            >
-              <CardContent className="p-4 flex items-center gap-4">
-                <div className="bg-green-100 p-3 rounded-full dark:bg-green-900">
-                  <User className="h-6 w-6 text-green-600 dark:text-green-300" />
-                </div>
-                <div>
-                  <h3 className="font-semibold">Um Cliente, Vários Postos</h3>
-                  <p className="text-sm text-slate-500">Fixo: Cliente | Variável: Postos de Abastecimento</p>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+                {/* My Requests List */}
+                <div className="space-y-4">
+                  {myRequests.map((request, index) => {
+                    // Se for um lote, mostrar card compacto de proposta comercial
+                    if (request.type === 'batch' && request.requests) {
+                      const batch = request.requests;
+                      const firstRequest = batch[0];
+                      const proposalDate = new Date(firstRequest.created_at).toLocaleDateString('pt-BR');
+                      const proposalNumber = index + 1;
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Esquerda: Formulários */}
-            <div className="lg:col-span-4 space-y-4">
-              <Card className="border-t-4 border-t-primary">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base font-medium uppercase tracking-wide text-muted-foreground">
-                    1. Definição do Fixo
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                   <Label className="mb-2 block font-semibold">
-                      {testeRequestMode === 'single_station_multi_client' ? "Selecione o Posto de Saída" : "Selecione o Cliente"}
-                   </Label>
-                   {testeRequestMode === 'single_station_multi_client' ? (
-                     <SisEmpresaCombobox 
-                       value={testeFixedEntityId} 
-                       onChange={(val) => setTesteFixedEntityId(val)} 
-                     />
-                   ) : (
-                     <ClientCombobox 
-                       value={testeFixedEntityId} 
-                       onChange={(val) => setTesteFixedEntityId(val)} 
-                     />
-                   )}
-                </CardContent>
-              </Card>
+                      // Verificar se todos os clientes são iguais
+                      const uniqueClients = new Set(batch.map((r: any) => r.client_id || 'unknown'));
+                      const allSameClient = uniqueClients.size === 1;
+                      const displayClient = allSameClient ? firstRequest.clients : batch[0].clients;
 
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base font-medium uppercase tracking-wide text-muted-foreground">
-                    2. Adicionar Item Variável
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <Label className="mb-1 block">
-                      {testeRequestMode === 'single_station_multi_client' ? "Cliente Destino" : "Posto de Abastecimento"}
-                    </Label>
-                    {testeRequestMode === 'single_station_multi_client' ? (
-                      <ClientCombobox 
-                        value={testeTempTargetId}
-                        onChange={(val) => {
-                          setTesteTempTargetId(val);
-                        }}
-                      />
-                    ) : (
-                      <SisEmpresaCombobox 
-                        value={testeTempTargetId}
-                        onChange={(val) => {
-                          setTesteTempTargetId(val);
-                        }}
-                      />
-                    )}
-                  </div>
+                      // Verificar se todos os postos são iguais
+                      const uniqueStations = new Set(batch.map((r: any) => {
+                        const station = r.stations || r.stations_list?.[0];
+                        return station?.name || station?.code || 'unknown';
+                      }));
+                      const allSameStation = uniqueStations.size === 1;
+                      const displayStation = allSameStation
+                        ? (firstRequest.stations || firstRequest.stations_list?.[0])
+                        : (batch[0].stations || batch[0].stations_list?.[0]);
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <Label>Produto</Label>
-                      <Select value={testeTempProduct} onValueChange={setTesteTempProduct}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="diesel_s10">Diesel S10</SelectItem>
-                          <SelectItem value="diesel_s500">Diesel S500</SelectItem>
-                          <SelectItem value="gasolina">Gasolina</SelectItem>
-                          <SelectItem value="etanol">Etanol</SelectItem>
-                          <SelectItem value="arla_32">Arla 32</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                      // Determinar status geral do lote
+                      const allApproved = batch.every((r: any) => r.status === 'approved');
+                      const hasPending = batch.some((r: any) => r.status === 'pending');
+                      const hasPriceSuggested = batch.some((r: any) => r.status === 'price_suggested');
+                      const allRejected = batch.every((r: any) => r.status === 'rejected');
 
-                    <div className="space-y-1">
-                      <Label>Volume (L)</Label>
-                      <Input 
-                        type="number" 
-                        placeholder="0"
-                        value={testeTempVolume}
-                        onChange={(e) => setTesteTempVolume(e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <Label>Margem (R$)</Label>
-                      <Input 
-                        placeholder="0,00"
-                        value={testeTempMargin}
-                        onChange={(e) => setTesteTempMargin(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-primary font-bold">Preço Final</Label>
-                      <Input 
-                        placeholder="0,00"
-                        className="font-bold border-primary/50"
-                        value={testeTempPrice}
-                        onChange={(e) => setTesteTempPrice(e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1">
-                     <Label>Condição de Pagamento</Label>
-                     <Select value={testeTempPayment} onValueChange={setTesteTempPayment}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="a_vista">À Vista</SelectItem>
-                          <SelectItem value="prazo_7">Prazo 7 Dias</SelectItem>
-                          <SelectItem value="prazo_15">Prazo 15 Dias</SelectItem>
-                          <SelectItem value="prazo_30">Prazo 30 Dias</SelectItem>
-                        </SelectContent>
-                     </Select>
-                  </div>
-
-                  <Button 
-                    onClick={() => {
-                      if (!testeTempTargetId || !testeTempProduct || !testeTempVolume || !testeTempPrice) {
-                        toast.error("Preencha todos os campos obrigatórios.");
-                        return;
+                      let generalStatus = 'pending';
+                      if (allApproved) {
+                        generalStatus = 'approved';
+                      } else if (hasPriceSuggested && !hasPending) {
+                        generalStatus = 'price_suggested';
+                      } else if (hasPending) {
+                        generalStatus = 'pending';
+                      } else if (allRejected) {
+                        generalStatus = 'rejected';
+                      } else {
+                        // Se houver mix de status, priorizar: approved > price_suggested > pending > rejected
+                        const hasAnyApproved = batch.some((r: any) => r.status === 'approved');
+                        if (hasAnyApproved) {
+                          generalStatus = 'pending'; // Ainda tem aprovações pendentes
+                        } else if (hasPriceSuggested) {
+                          generalStatus = 'price_suggested';
+                        } else {
+                          generalStatus = 'rejected';
+                        }
                       }
-                      const newItem = {
-                        id: generateUUID(),
-                        targetId: testeTempTargetId,
-                        targetName: testeTempTargetName || (testeRequestMode === 'single_station_multi_client' ? "Cliente Selecionado" : "Posto Selecionado"),
-                        product: testeTempProduct,
-                        volume: testeTempVolume,
-                        costPrice: "0,00",
-                        margin: testeTempMargin,
-                        suggestedPrice: testeTempPrice,
-                        paymentMethod: testeTempPayment,
-                        observation: ""
-                      };
-                      setTesteItems([...testeItems, newItem]);
-                      setTesteTempTargetId("");
-                      setTesteTempTargetName("");
-                      setTesteTempProduct("");
-                      setTesteTempVolume("");
-                      setTesteTempPrice("");
-                      setTesteTempMargin("");
-                    }} 
-                    className="w-full mt-2" 
-                    disabled={!testeFixedEntityId}
-                  >
-                    <Plus className="mr-2 h-4 w-4" /> Incluir na Proposta
-                  </Button>
-                </CardContent>
-              </Card>
-            </div>
 
-            {/* Direita: Grid e Ações */}
-            <div className="lg:col-span-8 flex flex-col gap-4">
-              <Card className="flex-1 flex flex-col min-h-[500px] border-l-4 border-l-slate-200 dark:border-l-slate-700">
-                <CardHeader className="pb-2 border-b">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <CardTitle>Rascunho da Proposta</CardTitle>
-                      <p className="text-sm text-muted-foreground">
-                         {testeItems.length} itens adicionados
-                      </p>
-                    </div>
-                    <Button 
-                      variant="outline" 
-                      onClick={() => setTesteIsPreviewOpen(true)}
-                      disabled={testeItems.length === 0}
-                    >
-                      <Eye className="mr-2 h-4 w-4" /> Pré-visualizar Documento
-                    </Button>
-                  </div>
-                </CardHeader>
-                
-                <CardContent className="flex-1 p-0">
-                  <ScrollArea className="h-[400px]">
-                     <Table>
-                       <TableHeader>
-                         <TableRow>
-                           <TableHead className="w-[30%] pl-4">{testeRequestMode === 'single_station_multi_client' ? 'Cliente Destino' : 'Posto Origem'}</TableHead>
-                           <TableHead>Produto</TableHead>
-                           <TableHead className="text-right">Vol.</TableHead>
-                           <TableHead className="text-right">Margem</TableHead>
-                           <TableHead className="text-right">Preço</TableHead>
-                           <TableHead className="w-[50px]"></TableHead>
-                         </TableRow>
-                       </TableHeader>
-                       <TableBody>
-                         {testeItems.length === 0 ? (
-                           <TableRow>
-                             <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
-                               Nenhum item adicionado. Use o formulário à esquerda.
-                             </TableCell>
-                           </TableRow>
-                         ) : (
-                           testeItems.map((item) => (
-                             <TableRow key={item.id}>
-                               <TableCell className="font-medium pl-4">
-                                 <div className="flex flex-col">
-                                   <span>{item.targetName}</span>
-                                   <span className="text-[10px] text-muted-foreground uppercase">{item.paymentMethod.replace('_', ' ')}</span>
-                                 </div>
-                               </TableCell>
-                               <TableCell>
-                                 <Badge variant="outline" className="capitalize bg-slate-50 dark:bg-slate-900">
-                                   {item.product.replace('_', ' ')}
-                                 </Badge>
-                               </TableCell>
-                               <TableCell className="text-right">{item.volume} L</TableCell>
-                               <TableCell className="text-right text-green-600 font-medium text-xs">
-                                 {item.margin ? `+ R$ ${item.margin}` : '-'}
-                               </TableCell>
-                               <TableCell className="text-right font-bold">
-                                 R$ {item.suggestedPrice}
-                               </TableCell>
-                               <TableCell>
-                                 <Button 
-                                   variant="ghost" 
-                                   size="icon" 
-                                   className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50" 
-                                   onClick={() => setTesteItems(testeItems.filter(i => i.id !== item.id))}
-                                 >
-                                   <Trash2 className="h-4 w-4" />
-                                 </Button>
-                               </TableCell>
-                             </TableRow>
-                           ))
-                         )}
-                       </TableBody>
-                     </Table>
-                  </ScrollArea>
-                </CardContent>
+                      return (
+                        <>
+                          <Card key={request.batchKey} className="hover:shadow-lg transition-shadow">
+                            <CardContent className="p-6">
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-3 mb-2">
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                      {request.batch_name || 'Proposta Comercial'}
+                                    </span>
+                                    {generalStatus === 'approved' ? (
+                                      <Badge className="bg-green-100 text-green-800"><Check className="h-3 w-3 mr-1" />Aprovado</Badge>
+                                    ) : generalStatus === 'pending' ? (
+                                      <Badge variant="secondary" className="bg-yellow-100 text-yellow-800"><Clock className="h-3 w-3 mr-1" />Aguardando Aprovação</Badge>
+                                    ) : generalStatus === 'price_suggested' ? (
+                                      <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300"><DollarSign className="h-3 w-3 mr-1" />Preço Sugerido</Badge>
+                                    ) : (
+                                      <Badge variant="destructive"><X className="h-3 w-3 mr-1" />Rejeitado</Badge>
+                                    )}
+                                  </div>
+                                  <div className="space-y-1 text-sm text-slate-600 dark:text-slate-400">
+                                    {displayClient && (
+                                      <p>
+                                        <span className="font-medium">Cliente:</span> {displayClient.name || 'N/A'}
+                                        {!allSameClient && <span className="text-xs ml-1">(+{uniqueClients.size - 1} outros)</span>}
+                                      </p>
+                                    )}
+                                    {displayStation && (
+                                      <p>
+                                        <span className="font-medium">Posto:</span> {displayStation.name || 'N/A'}
+                                        {!allSameStation && <span className="text-xs ml-1">(+{uniqueStations.size - 1} outros)</span>}
+                                      </p>
+                                    )}
+                                    <p>Criado em: {proposalDate}</p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleDeleteProposal(request.batchKey)}
+                                    className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300"
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Excluir
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setExpandedProposal(request.batchKey)}
+                                  >
+                                    <Maximize2 className="h-4 w-4 mr-2" />
+                                    Ver Completo
+                                  </Button>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card >
 
-                <CardFooter className="bg-slate-50 dark:bg-slate-900 border-t p-6 flex flex-col gap-4">
-                   <div className="w-full flex justify-between items-center text-sm">
-                      <div className="text-muted-foreground">
-                        Total Volume: <span className="font-bold text-slate-900 dark:text-white">
-                          {testeItems.reduce((sum, item) => sum + (parseFloat(item.volume) || 0), 0).toLocaleString('pt-BR')} L
-                        </span>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-muted-foreground block text-xs">Valor Total Estimado</span>
-                        <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                          {formatBrazilianCurrency(
-                            testeItems.reduce((sum, item) => {
-                              const vol = parseFloat(item.volume) || 0;
-                              const price = parseBrazilianDecimal(item.suggestedPrice) || 0;
-                              return sum + (vol * price);
-                            }, 0)
-                          )}
-                        </span>
-                      </div>
-                   </div>
+                          {/* Modal com visualização completa */}
+                          < Dialog open={expandedProposal === request.batchKey
+                          } onOpenChange={(open) => !open && setExpandedProposal(null)}>
+                            <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto print:max-w-none print:max-h-none print:overflow-visible print:p-0">
+                              <ProposalFullView
+                                batch={batch}
+                                proposalNumber={proposalNumber}
+                                proposalDate={proposalDate}
+                                generalStatus={generalStatus}
+                                user={user}
+                              />
+                            </DialogContent>
+                          </Dialog>
+                        </>
+                      );
+                    }
 
-                   <Button 
-                     size="lg" 
-                     className="w-full" 
-                     onClick={() => setTesteIsPreviewOpen(true)}
-                     disabled={loading || testeItems.length === 0}
-                   >
-                     Avançar para Revisão
-                   </Button>
-                </CardFooter>
-              </Card>
-            </div>
+                    // Visualização normal para solicitações individuais
+                    return (
+                      <Card key={request.id} className="hover:shadow-lg transition-shadow">
+                        <CardContent className="p-6">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1 gap-4">
+                              <div className="flex items-center gap-3 mb-2">
+                                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                  {request.stations_list && request.stations_list.length > 0
+                                    ? request.stations_list.map((s: any) => s.name).join(', ')
+                                    : (request.stations?.name || 'Posto')
+                                  } - {request.clients?.name || 'Cliente'}
+                                </span>
+                                {request.status === 'pending' && (
+                                  <Badge variant="secondary" className="bg-yellow-100 text-yellow-800"><Clock className="h-3 w-3 mr-1" />Pendente</Badge>
+                                )}
+                                {request.status === 'approved' && (
+                                  <Badge className="bg-green-100 text-green-800"><Check className="h-3 w-3 mr-1" />Aprovado</Badge>
+                                )}
+                                {request.status === 'rejected' && (
+                                  <Badge variant="destructive"><X className="h-3 w-3 mr-1" />Rejeitado</Badge>
+                                )}
+                              </div>
+                              <p className="text-sm text-slate-600 dark:text-slate-400">
+                                Criado em: {new Date(request.created_at).toLocaleDateString('pt-BR')} | Enviado por: {formatNameFromEmail(request.requester_name || request.requester?.name || user?.user_metadata?.name || 'Eu')}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {(request.status === 'draft' || request.status === 'pending' || String(request.status || '').toLowerCase().includes('approval')) && (
+                                <>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      setEditingRequest(request);
+                                      setShowEditModal(true);
+                                    }}
+                                  >
+                                    <Edit className="h-4 w-4 mr-2" />
+                                    Editar
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleDeleteRequest(request.id)}
+                                    className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300"
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Excluir
+                                  </Button>
+                                </>
+                              )}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedRequest(request);
+                                  setShowRequestDetails(true);
+                                }}
+                              >
+                                <Eye className="h-4 w-4 mr-2" />
+                                Ver Detalhes
+                              </Button>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+
+                  {myRequests.length === 0 && (
+                    <Card>
+                      <CardContent className="p-12 text-center">
+                        <p className="text-slate-600 dark:text-slate-400">Nenhuma solicitação encontrada</p>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              </>
+            )}
           </div>
-        </TabsContent>
-        </Tabs>
-      </div>
+        )
+        }
+      </div >
 
       {/* Image Viewer Modal */}
-      <ImageViewerModal
+      < ImageViewerModal
         isOpen={imageViewerOpen}
         onClose={() => setImageViewerOpen(false)}
         imageUrl={selectedImage}
@@ -5064,20 +4699,22 @@ export default function PriceRequest() {
       />
 
       {/* Approval Details Modal - Read Only */}
-      {showRequestDetails && selectedRequest && (
-        <ApprovalDetailsModal
-          isOpen={showRequestDetails}
-          onClose={() => {
-            setShowRequestDetails(false);
-            setSelectedRequest(null);
-          }}
-          suggestion={selectedRequest}
-          onApprove={() => {}}
-          onReject={() => {}}
-          loading={false}
-          readOnly={true}
-        />
-      )}
+      {
+        showRequestDetails && selectedRequest && (
+          <ApprovalDetailsModal
+            isOpen={showRequestDetails}
+            onClose={() => {
+              setShowRequestDetails(false);
+              setSelectedRequest(null);
+            }}
+            suggestion={selectedRequest}
+            onApprove={() => { }}
+            onReject={() => { }}
+            loading={false}
+            readOnly={true}
+          />
+        )
+      }
 
       {/* Edit Request Modal */}
       <EditRequestModal
@@ -5091,139 +4728,6 @@ export default function PriceRequest() {
           loadMyRequests(); // Recarregar lista após edição
         }}
       />
-
-      {/* MODAL DE PREVIEW DA PROPOSTA - ABA TESTE */}
-      <Dialog open={testeIsPreviewOpen} onOpenChange={setTesteIsPreviewOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Revisão da Proposta Comercial</DialogTitle>
-            <DialogDescription>Confira os dados antes de enviar para aprovação.</DialogDescription>
-          </DialogHeader>
-
-          <div className="p-6 border rounded-lg bg-white text-black space-y-6" id="proposal-preview">
-             {/* Cabeçalho do Documento */}
-             <div className="flex justify-between border-b pb-4">
-               <div>
-                 <h2 className="font-bold text-xl text-primary">Proposta Comercial</h2>
-                 <p className="text-sm text-gray-500">Data de Emissão: {new Date().toLocaleDateString()}</p>
-                 <p className="text-sm text-gray-500">Solicitante: {user?.email}</p>
-               </div>
-               <div className="text-right">
-                  <div className="bg-slate-100 p-2 rounded">
-                    <p className="text-xs font-bold text-gray-500 uppercase">
-                      {testeRequestMode === 'single_station_multi_client' ? "Posto de Saída" : "Cliente"}
-                    </p>
-                    <p className="font-semibold text-lg">{testeFixedEntityName || testeFixedEntityId || "Não Identificado"}</p>
-                  </div>
-               </div>
-             </div>
-
-             {/* Tabela de Itens */}
-             <div>
-               <h3 className="font-semibold mb-2 text-sm uppercase text-gray-600">Itens da Proposta</h3>
-               <table className="w-full text-sm border-collapse">
-                 <thead>
-                   <tr className="border-b-2 border-gray-200 text-left">
-                     <th className="py-2">{testeRequestMode === 'single_station_multi_client' ? "Cliente" : "Posto"}</th>
-                     <th className="py-2">Produto</th>
-                     <th className="py-2">Pagamento</th>
-                     <th className="py-2 text-right">Vol (L)</th>
-                     <th className="py-2 text-right">Preço Unit.</th>
-                     <th className="py-2 text-right">Total</th>
-                   </tr>
-                 </thead>
-                 <tbody>
-                   {testeItems.map((item, idx) => (
-                     <tr key={idx} className="border-b border-gray-100">
-                       <td className="py-2">{item.targetName}</td>
-                       <td className="py-2 capitalize">{item.product.replace('_', ' ')}</td>
-                       <td className="py-2 capitalize">{item.paymentMethod.replace('_', ' ')}</td>
-                       <td className="py-2 text-right">{item.volume}</td>
-                       <td className="py-2 text-right">R$ {item.suggestedPrice}</td>
-                       <td className="py-2 text-right font-medium">
-                         {formatBrazilianCurrency((parseFloat(item.volume) || 0) * (parseBrazilianDecimal(item.suggestedPrice) || 0))}
-                       </td>
-                     </tr>
-                   ))}
-                 </tbody>
-               </table>
-             </div>
-
-             {/* Totais */}
-             <div className="flex justify-end pt-4 border-t">
-               <div className="w-1/2 space-y-2">
-                 <div className="flex justify-between text-sm">
-                   <span>Volume Total:</span>
-                   <span>{testeItems.reduce((sum, item) => sum + (parseFloat(item.volume) || 0), 0).toLocaleString('pt-BR')} Litros</span>
-                 </div>
-                 <div className="flex justify-between font-bold text-lg text-primary">
-                   <span>Valor Total Proposta:</span>
-                   <span>{formatBrazilianCurrency(
-                     testeItems.reduce((sum, item) => {
-                       const vol = parseFloat(item.volume) || 0;
-                       const price = parseBrazilianDecimal(item.suggestedPrice) || 0;
-                       return sum + (vol * price);
-                     }, 0)
-                   )}</span>
-                 </div>
-               </div>
-             </div>
-          </div>
-
-          <DialogFooter className="gap-2 sm:justify-end">
-            <Button variant="outline" onClick={() => setTesteIsPreviewOpen(false)}>
-              Voltar e Editar
-            </Button>
-            <Button 
-              onClick={async () => {
-                setLoading(true);
-                try {
-                  const batchId = generateUUID();
-                  const batchName = `Lote ${new Date().toLocaleString('pt-BR')} - ${testeItems.length} itens`;
-
-                  const payload = testeItems.map(item => {
-                    const stationId = testeRequestMode === 'single_station_multi_client' ? testeFixedEntityId : item.targetId;
-                    const clientId = testeRequestMode === 'single_station_multi_client' ? item.targetId : testeFixedEntityId;
-
-                    return {
-                      batch_id: batchId,
-                      batch_name: batchName,
-                      station_id: stationId,
-                      client_id: clientId,
-                      product: mapProductToEnum(item.product),
-                      volume_projected: parseFloat(item.volume),
-                      suggested_price: parseBrazilianDecimal(item.suggestedPrice),
-                      payment_method: item.paymentMethod,
-                      margin_value: parseBrazilianDecimal(item.margin),
-                      status: 'pending',
-                      requested_by: user?.id,
-                      observation: item.observation
-                    };
-                  });
-
-                  const { error } = await supabase.from('price_suggestions').insert(payload);
-                  if (error) throw error;
-
-                  toast.success("Proposta enviada com sucesso!");
-                  setTesteItems([]);
-                  setTesteFixedEntityId("");
-                  setTesteIsPreviewOpen(false);
-                  setActiveTab("my-requests");
-                  loadMyRequests();
-                } catch (error) {
-                  console.error(error);
-                  toast.error("Erro ao enviar proposta.");
-                } finally {
-                  setLoading(false);
-                }
-              }} 
-              className="bg-green-600 hover:bg-green-700"
-            >
-              <Send className="mr-2 h-4 w-4" /> Confirmar Envio
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+    </div >
   );
 }

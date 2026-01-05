@@ -3,12 +3,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { 
-  Check, 
-  X, 
-  Clock, 
-  Filter, 
-  Search, 
+import {
+  Check,
+  X,
+  Clock,
+  Filter,
+  Search,
   Eye,
   MessageSquare,
   Edit,
@@ -20,6 +20,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { ApprovalDetailsModal } from "@/components/ApprovalDetailsModal";
 import { EditRequestModal } from "@/components/EditRequestModal";
 import { formatBrazilianCurrency } from "@/lib/utils";
+import { removeCache } from "@/lib/cache";
 
 export default function MyRequests() {
   const { user } = useAuth();
@@ -31,7 +32,7 @@ export default function MyRequests() {
   const [editingRequest, setEditingRequest] = useState<any>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [requestsWithHistory, setRequestsWithHistory] = useState<Set<string>>(new Set());
-  
+
   const [filters, setFilters] = useState({
     status: "all",
     search: ""
@@ -47,7 +48,7 @@ export default function MyRequests() {
   // Load my requests when component mounts
   useEffect(() => {
     loadMyRequests();
-    
+
     // Listener de tempo real para atualizar quando houver mudanças
     if (user) {
       const channel = supabase
@@ -80,7 +81,7 @@ export default function MyRequests() {
         .subscribe((status) => {
           console.log('📡 MyRequests realtime status:', status);
         });
-      
+
       return () => {
         supabase.removeChannel(channel);
       };
@@ -128,31 +129,31 @@ export default function MyRequests() {
       console.log('=== CARREGANDO MINHAS SOLICITAÇÕES ===');
       console.log('👤 User ID:', user.id);
       console.log('👤 User Email:', user.email);
-      
+
       // Tentar buscar por ID primeiro
       const userId = String(user.id);
       const userEmail = user.email ? String(user.email) : null;
-      
+
       // Buscar todas as solicitações e filtrar no cliente (mais confiável)
       const { data: allData, error: allError } = await supabase
         .from('price_suggestions')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(1000); // Limite alto para garantir que pegamos todas
-      
+
       if (allError) {
         console.error('❌ Erro ao buscar solicitações:', allError);
         throw allError;
       }
-      
+
       console.log('🔍 Total de solicitações no banco:', allData?.length || 0);
-      
+
       // Filtrar no cliente por ID ou email
       const data = (allData || []).filter((suggestion: any) => {
         const reqBy = String(suggestion.requested_by || '');
         const creBy = String(suggestion.created_by || '');
-        return reqBy === userId || creBy === userId || 
-               (userEmail && (reqBy === userEmail || creBy === userEmail));
+        return reqBy === userId || creBy === userId ||
+          (userEmail && (reqBy === userEmail || creBy === userEmail));
       });
 
       console.log('🔍 Total de solicitações do usuário:', data?.length);
@@ -166,11 +167,11 @@ export default function MyRequests() {
             return { data: [], error: res.error };
           }
           return { data: res.data, error: null };
-        }).catch(err => {
+        }, err => {
           console.error('❌ Erro ao chamar get_sis_empresa_stations:', err);
           return { data: [], error: err };
         }),
-        supabase.from('clientes' as any).select('id_cliente, nome').catch(err => {
+        supabase.from('clientes' as any).select('id_cliente, nome').then(res => res, err => {
           console.error('❌ Erro ao buscar clientes:', err);
           return { data: [], error: err };
         })
@@ -183,14 +184,14 @@ export default function MyRequests() {
           const suggStationId = String(suggestion.station_id);
           station = (stationsRes.data as any)?.find((s: any) => {
             const stationId = String(s.id || s.id_empresa || s.cnpj_cpf || '');
-            return stationId === suggStationId || 
-                   String(s.cnpj_cpf || '') === suggStationId || 
-                   String(s.id_empresa || '') === suggStationId;
+            return stationId === suggStationId ||
+              String(s.cnpj_cpf || '') === suggStationId ||
+              String(s.id_empresa || '') === suggStationId;
           });
-          
+
           if (!station) {
-            console.log('⚠️ Posto não encontrado:', { 
-              suggestion_id: suggStationId, 
+            console.log('⚠️ Posto não encontrado:', {
+              suggestion_id: suggStationId,
               available_stations: (stationsRes.data as any)?.slice(0, 3).map((s: any) => ({
                 id: s.id,
                 id_empresa: s.id_empresa,
@@ -200,7 +201,7 @@ export default function MyRequests() {
             });
           }
         }
-        
+
         let client = null;
         if (suggestion.client_id) {
           const suggClientId = String(suggestion.client_id);
@@ -208,9 +209,9 @@ export default function MyRequests() {
             const clientId = String(c.id_cliente || c.id || '');
             return clientId === suggClientId;
           });
-          
+
           if (!client) {
-            console.log('⚠️ Cliente não encontrado:', { 
+            console.log('⚠️ Cliente não encontrado:', {
               suggestion_id: suggClientId,
               available_clients: (clientsRes.data as any)?.slice(0, 3).map((c: any) => ({
                 id_cliente: c.id_cliente,
@@ -223,7 +224,7 @@ export default function MyRequests() {
 
         // Garantir que status sempre existe com fallback
         const finalStatus = suggestion.status || 'pending';
-        
+
         // Log para debug - verificar status sendo atribuído
         if (!suggestion.status) {
           console.log('⚠️ Status ausente, usando fallback "pending":', {
@@ -232,7 +233,7 @@ export default function MyRequests() {
             finalStatus: finalStatus
           });
         }
-        
+
         return {
           ...suggestion,
           status: finalStatus, // Garantir que sempre tenha status
@@ -240,19 +241,19 @@ export default function MyRequests() {
           clients: client ? { name: client.nome || client.name || 'Cliente sem nome', code: String(client.id_cliente || client.id) } : null
         };
       });
-      
+
       setMyRequests(enrichedData);
       setFilteredRequests(enrichedData);
 
       // Verificar histórico de aprovações para solicitações pendentes/draft
       checkApprovalHistoryForRequests(enrichedData);
-      
+
       // Calcular stats
       const total = enrichedData.length;
       const pending = enrichedData.filter(s => s.status === 'pending').length;
       const approved = enrichedData.filter(s => s.status === 'approved').length;
       const rejected = enrichedData.filter(s => s.status === 'rejected').length;
-      
+
       setStats({ total, pending, approved, rejected });
     } catch (error: any) {
       console.error('❌ Erro ao carregar minhas solicitações:', error);
@@ -279,7 +280,7 @@ export default function MyRequests() {
 
     if (filterValues.search) {
       const searchLower = filterValues.search.toLowerCase();
-      filtered = filtered.filter(s => 
+      filtered = filtered.filter(s =>
         s.stations?.name?.toLowerCase().includes(searchLower) ||
         s.clients?.name?.toLowerCase().includes(searchLower) ||
         s.product?.toLowerCase().includes(searchLower)
@@ -327,38 +328,38 @@ export default function MyRequests() {
       requestId: request?.id,
       requestStatus: request?.status
     });
-    
+
     if (!request) {
       console.log('❌ shouldShowEditDeleteButtons: request é null/undefined');
       return false;
     }
-    
+
     // Garantir que status existe - fallback para 'pending' se não houver
     const rawStatus = request.status || 'pending';
     const status = String(rawStatus).toLowerCase().trim();
-    
+
     // Verificar se deve mostrar botões - incluir variações de 'in approval'
     // Normalizar removendo espaços e underscores para comparação
     const normalizedStatus = status.replace(/\s+/g, '_').replace(/_+/g, '_');
-    
+
     const editableStatuses = [
-      'draft', 
-      'pending', 
-      'in_approval', 
+      'draft',
+      'pending',
+      'in_approval',
       'inapproval',
       'awaiting_approval',
       'awaitingapproval'
     ];
-    
+
     // Verificar se status normalizado está na lista OU se contém "approval" e não é "approved"
     // IMPORTANTE: Qualquer status que contenha "approval" (exceto "approved") deve mostrar botões
     const containsApproval = normalizedStatus.includes('approval');
     const isApproved = normalizedStatus === 'approved';
-    const isEditableStatus = editableStatuses.includes(normalizedStatus) || 
-                            (containsApproval && !isApproved);
-    
+    const isEditableStatus = editableStatuses.includes(normalizedStatus) ||
+      (containsApproval && !isApproved);
+
     const shouldShow = isEditableStatus || !rawStatus;
-    
+
     // Log CRÍTICO - sempre executar
     if (shouldShow) {
       console.warn('✅ BOTÕES DEVEM APARECER!', {
@@ -370,7 +371,7 @@ export default function MyRequests() {
         isApproved
       });
     }
-    
+
     // Log detalhado para debug - sempre logar para ver o que está acontecendo
     console.log('🔍 shouldShowEditDeleteButtons DETALHADO:', {
       id: request.id,
@@ -388,7 +389,7 @@ export default function MyRequests() {
       containsApproval: normalizedStatus.includes('approval'),
       isNotApproved: normalizedStatus !== 'approved'
     });
-    
+
     // Mostrar botões se for status editável ou se status não existir
     return shouldShow;
   };
@@ -408,12 +409,17 @@ export default function MyRequests() {
       if (error) throw error;
 
       // Invalidar cache de outras páginas também
-      localStorage.removeItem('approvals_suggestions_cache');
-      localStorage.removeItem('approvals_suggestions_cache_timestamp');
+      // Invalidar cache de outras páginas também
+      removeCache('approvals_suggestions_cache');
+
+      if (user?.id) {
+        localStorage.removeItem(`price_request_my_requests_cache_${user.id}`);
+        localStorage.removeItem(`price_request_my_requests_cache_timestamp_${user.id}`);
+      }
 
       toast.success("Solicitação excluída com sucesso!");
       loadMyRequests(); // Recarregar lista
-      
+
       // O listener de tempo real já vai atualizar automaticamente
       // Mas forçar uma atualização imediata também
       setTimeout(() => {
@@ -452,257 +458,258 @@ export default function MyRequests() {
           </div>
         </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-all duration-300">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Total</p>
-                <p className="text-2xl font-bold">{stats.total}</p>
-              </div>
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 flex items-center justify-center">
-                <MessageSquare className="h-6 w-6 text-white" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-all duration-300">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Pendentes</p>
-                <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{stats.pending}</p>
-              </div>
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-blue-900 to-blue-900 flex items-center justify-center">
-                <Clock className="h-6 w-6 text-white" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-all duration-300">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Aprovadas</p>
-                <p className="text-2xl font-bold text-green-600 dark:text-green-400">{stats.approved}</p>
-              </div>
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-blue-900 to-blue-900 flex items-center justify-center">
-                <Check className="h-6 w-6 text-white" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-all duration-300">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Rejeitadas</p>
-                <p className="text-2xl font-bold text-red-600 dark:text-red-400">{stats.rejected}</p>
-              </div>
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-blue-900 to-blue-900 flex items-center justify-center">
-                <X className="h-6 w-6 text-white" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filters */}
-      <Card className="shadow-xl border-0 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Filter className="h-5 w-5" />
-            Filtros
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                Status
-              </label>
-              <select 
-                className="w-full px-3 py-2 border rounded-lg bg-background"
-                value={filters.status} 
-                onChange={(e) => handleFilterChange("status", e.target.value)}
-              >
-                <option value="all">Todos</option>
-                <option value="pending">Pendente</option>
-                <option value="approved">Aprovado</option>
-                <option value="rejected">Rejeitado</option>
-              </select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                Buscar
-              </label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar por posto, cliente..."
-                  value={filters.search}
-                  onChange={(e) => handleFilterChange("search", e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* My Requests List */}
-      <Card className="shadow-xl border-0 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm">
-        <CardHeader>
-          <CardTitle>Minhas Solicitações ({filteredRequests.length})</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {(() => {
-              console.log('📋 RENDERIZANDO LISTA DE REQUESTS:', {
-                totalRequests: filteredRequests.length,
-                requests: filteredRequests.map(r => ({
-                  id: r.id,
-                  status: r.status,
-                  station: r.stations?.name,
-                  client: r.clients?.name
-                }))
-              });
-              return null;
-            })()}
-            {filteredRequests.map((request) => {
-              // Log para cada request sendo renderizado
-              console.log('🔄 Renderizando request:', {
-                id: request.id,
-                status: request.status,
-                hasStatus: !!request.status,
-                statusType: typeof request.status,
-                statusValue: request.status
-              });
-              
-              return (
-              <div key={request.id} className="p-4 bg-gradient-to-r from-white to-slate-50 dark:from-card dark:to-secondary rounded-xl border border-slate-200 dark:border-border hover:shadow-lg transition-all duration-300">
-                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">
-                        {request.stations?.name || (request.station_id ? `Posto (${String(request.station_id).substring(0, 8)}...)` : 'Posto não informado')} - {request.clients?.name || (request.client_id ? `Cliente (${String(request.client_id).substring(0, 8)}...)` : 'Cliente não informado')}
-                      </span>
-                      {getStatusBadge(request.status)}
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-slate-700 dark:text-slate-300">Produto:</span> 
-                        <span className="text-slate-600 dark:text-slate-400">{getProductName(request.product)}</span>
-                      </div>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-slate-600 dark:text-slate-400">
-                        <div>
-                          <span className="font-medium">Preço Atual:</span> {request.current_price ? formatBrazilianCurrency(request.current_price) : 'N/A'}
-                        </div>
-                        <div>
-                          <span className="font-medium">Preço Sugerido:</span> <span className="text-green-600 font-bold">{request.final_price ? formatBrazilianCurrency(request.final_price) : 'N/A'}</span>
-                        </div>
-                        <div>
-                          <span className="font-medium">Criado:</span> {formatDate(request.created_at)}
-                        </div>
-                        <div>
-                          <span className="font-medium">Código:</span> {request.stations?.code || '-'}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center gap-2">
-                    {/* FORÇAR BOTÕES A APARECEREM - REMOVER CONDIÇÕES TEMPORARIAMENTE */}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        console.log('✏️ Clicou em Editar:', request.id);
-                        setEditingRequest(request);
-                        setShowEditModal(true);
-                      }}
-                    >
-                      <Edit className="h-4 w-4 mr-2" />
-                      Editar
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        console.log('🗑️ Clicou em Excluir:', request.id);
-                        handleDelete(request.id);
-                      }}
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300"
-                    >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Excluir
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedSuggestion(request);
-                        setShowDetails(true);
-                      }}
-                    >
-                      <Eye className="h-4 w-4 mr-2" />
-                      Ver Detalhes
-                    </Button>
-                  </div>
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <Card className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-all duration-300">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Total</p>
+                  <p className="text-2xl font-bold">{stats.total}</p>
+                </div>
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 flex items-center justify-center">
+                  <MessageSquare className="h-6 w-6 text-white" />
                 </div>
               </div>
-            ))}
-            
-            {filteredRequests.length === 0 && myRequests.length === 0 && (
-              <div className="text-center py-8">
-                <p className="text-slate-600 dark:text-slate-400">Nenhuma solicitação encontrada</p>
-              </div>
-            )}
-            
-            {filteredRequests.length === 0 && myRequests.length > 0 && (
-              <div className="text-center py-8">
-                <p className="text-slate-600 dark:text-slate-400">Nenhuma solicitação encontrada com os filtros aplicados</p>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
 
-      {/* Modal de Detalhes */}
-      <ApprovalDetailsModal
-        isOpen={showDetails}
-        onClose={() => {
-          setShowDetails(false);
-          setSelectedSuggestion(null);
-        }}
-        suggestion={selectedSuggestion}
-        onApprove={() => {}}
-        onReject={() => {}}
-        loading={false}
-        readOnly={true}
-      />
+          <Card className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-all duration-300">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Pendentes</p>
+                  <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{stats.pending}</p>
+                </div>
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-blue-900 to-blue-900 flex items-center justify-center">
+                  <Clock className="h-6 w-6 text-white" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
-      {/* Modal de Edição */}
-      <EditRequestModal
-        isOpen={showEditModal}
-        onClose={() => {
-          setShowEditModal(false);
-          setEditingRequest(null);
-        }}
-        request={editingRequest}
-        onSuccess={() => {
-          loadMyRequests(); // Recarregar lista após edição
-        }}
-      />
+          <Card className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-all duration-300">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Aprovadas</p>
+                  <p className="text-2xl font-bold text-green-600 dark:text-green-400">{stats.approved}</p>
+                </div>
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-blue-900 to-blue-900 flex items-center justify-center">
+                  <Check className="h-6 w-6 text-white" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-all duration-300">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Rejeitadas</p>
+                  <p className="text-2xl font-bold text-red-600 dark:text-red-400">{stats.rejected}</p>
+                </div>
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-blue-900 to-blue-900 flex items-center justify-center">
+                  <X className="h-6 w-6 text-white" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Filters */}
+        <Card className="shadow-xl border-0 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Filter className="h-5 w-5" />
+              Filtros
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                  Status
+                </label>
+                <select
+                  className="w-full px-3 py-2 border rounded-lg bg-background"
+                  value={filters.status}
+                  onChange={(e) => handleFilterChange("status", e.target.value)}
+                >
+                  <option value="all">Todos</option>
+                  <option value="pending">Pendente</option>
+                  <option value="approved">Aprovado</option>
+                  <option value="rejected">Rejeitado</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                  Buscar
+                </label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar por posto, cliente..."
+                    value={filters.search}
+                    onChange={(e) => handleFilterChange("search", e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* My Requests List */}
+        <Card className="shadow-xl border-0 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm">
+          <CardHeader>
+            <CardTitle>Minhas Solicitações ({filteredRequests.length})</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {(() => {
+                console.log('📋 RENDERIZANDO LISTA DE REQUESTS:', {
+                  totalRequests: filteredRequests.length,
+                  requests: filteredRequests.map(r => ({
+                    id: r.id,
+                    status: r.status,
+                    station: r.stations?.name,
+                    client: r.clients?.name
+                  }))
+                });
+                return null;
+              })()}
+              {filteredRequests.map((request) => {
+                // Log para cada request sendo renderizado
+                console.log('🔄 Renderizando request:', {
+                  id: request.id,
+                  status: request.status,
+                  hasStatus: !!request.status,
+                  statusType: typeof request.status,
+                  statusValue: request.status
+                });
+
+                return (
+                  <div key={request.id} className="p-4 bg-gradient-to-r from-white to-slate-50 dark:from-card dark:to-secondary rounded-xl border border-slate-200 dark:border-border hover:shadow-lg transition-all duration-300">
+                    <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">
+                            {request.stations?.name || (request.station_id ? `Posto (${String(request.station_id).substring(0, 8)}...)` : 'Posto não informado')} - {request.clients?.name || (request.client_id ? `Cliente (${String(request.client_id).substring(0, 8)}...)` : 'Cliente não informado')}
+                          </span>
+                          {getStatusBadge(request.status)}
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-slate-700 dark:text-slate-300">Produto:</span>
+                            <span className="text-slate-600 dark:text-slate-400">{getProductName(request.product)}</span>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-slate-600 dark:text-slate-400">
+                            <div>
+                              <span className="font-medium">Preço Atual:</span> {request.current_price ? formatBrazilianCurrency(request.current_price) : 'N/A'}
+                            </div>
+                            <div>
+                              <span className="font-medium">Preço Sugerido:</span> <span className="text-green-600 font-bold">{request.final_price ? formatBrazilianCurrency(request.final_price) : 'N/A'}</span>
+                            </div>
+                            <div>
+                              <span className="font-medium">Criado:</span> {formatDate(request.created_at)}
+                            </div>
+                            <div>
+                              <span className="font-medium">Código:</span> {request.stations?.code || '-'}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {/* FORÇAR BOTÕES A APARECEREM - REMOVER CONDIÇÕES TEMPORARIAMENTE */}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            console.log('✏️ Clicou em Editar:', request.id);
+                            setEditingRequest(request);
+                            setShowEditModal(true);
+                          }}
+                        >
+                          <Edit className="h-4 w-4 mr-2" />
+                          Editar
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            console.log('🗑️ Clicou em Excluir:', request.id);
+                            handleDelete(request.id);
+                          }}
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300"
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Excluir
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedSuggestion(request);
+                            setShowDetails(true);
+                          }}
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          Ver Detalhes
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {filteredRequests.length === 0 && myRequests.length === 0 && (
+                <div className="text-center py-8">
+                  <p className="text-slate-600 dark:text-slate-400">Nenhuma solicitação encontrada</p>
+                </div>
+              )}
+
+              {filteredRequests.length === 0 && myRequests.length > 0 && (
+                <div className="text-center py-8">
+                  <p className="text-slate-600 dark:text-slate-400">Nenhuma solicitação encontrada com os filtros aplicados</p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Modal de Detalhes */}
+        <ApprovalDetailsModal
+          isOpen={showDetails}
+          onClose={() => {
+            setShowDetails(false);
+            setSelectedSuggestion(null);
+          }}
+          suggestion={selectedSuggestion}
+          onApprove={() => { }}
+          onReject={() => { }}
+          loading={false}
+          readOnly={true}
+        />
+
+        {/* Modal de Edição */}
+        <EditRequestModal
+          isOpen={showEditModal}
+          onClose={() => {
+            setShowEditModal(false);
+            setEditingRequest(null);
+          }}
+          request={editingRequest}
+          onSuccess={() => {
+            loadMyRequests(); // Recarregar lista após edição
+          }}
+        />
       </div>
     </div>
   );

@@ -45,7 +45,7 @@ export default function MapView() {
       // Buscar referências sem depender de FKs/joins
       const { data, error } = await supabase
         .from('referencias')
-        .select('*')
+        .select('id, produto, preco_referencia, created_at, anexo, posto_id, latitude, longitude, uf, cidade, observacoes, cliente_id')
         .order('created_at', { ascending: false });
 
       console.log('🔍 Erro ao buscar referências:', error);
@@ -75,7 +75,7 @@ export default function MapView() {
         }
       } catch {}
 
-      // Fallback: buscar em price_suggestions e normalizar quando não houver registros
+      // Fallback: buscar em price_suggestions referências (status='reference' ou is_reference=true) e normalizar quando não houver registros
       if (!normalized || normalized.length === 0) {
         const { data: ps, error: psError } = await supabase
           .from('price_suggestions')
@@ -85,24 +85,46 @@ export default function MapView() {
             final_price,
             created_at,
             attachments,
+            observations,
+            latitude,
+            longitude,
+            uf,
+            cidade,
             stations:station_id ( id, name, latitude, longitude ),
             clients:client_id ( id, name )
           `)
+          .or('status.eq.reference,is_reference.eq.true')
           .order('created_at', { ascending: false });
 
         console.log('🔍 Fallback price_suggestions erro:', psError);
         console.log('🔍 Fallback price_suggestions encontrados:', ps?.length, ps);
 
         if (!psError && ps) {
-          normalized = ps.map((row: any) => ({
-            id: row.id,
-            produto: row.product,
-            preco_referencia: (row.final_price ?? 0) / 100, // converter de cents
-            created_at: row.created_at,
-            anexo: Array.isArray(row.attachments) ? row.attachments.join(',') : row.attachments ?? null,
-            stations: row.stations,
-            clients: row.clients
-          }));
+          normalized = ps.map((row: any) => {
+            // Extrair posto_id das observações se for referência de concorrente
+            let postoId = null;
+            if (row.observations && typeof row.observations === 'string') {
+              const match = row.observations.match(/\[Referência de Concorrente - ID: (\d+)\]/);
+              if (match) {
+                postoId = match[1];
+              }
+            }
+            
+            return {
+              id: row.id,
+              produto: row.product,
+              preco_referencia: (row.final_price ?? 0) / 100, // converter de cents
+              created_at: row.created_at,
+              anexo: Array.isArray(row.attachments) ? row.attachments.join(',') : row.attachments ?? null,
+              posto_id: postoId, // ID do concorrente extraído das observações
+              latitude: row.latitude,
+              longitude: row.longitude,
+              uf: row.uf,
+              cidade: row.cidade,
+              stations: row.stations,
+              clients: row.clients
+            };
+          });
         }
       }
 

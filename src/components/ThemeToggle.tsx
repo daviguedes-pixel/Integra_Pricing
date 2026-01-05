@@ -1,5 +1,5 @@
 import { Moon, Sun } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { useEffect, useState } from "react";
 
 export function ThemeToggle() {
@@ -8,7 +8,7 @@ export function ThemeToggle() {
   useEffect(() => {
     // Check if user has a saved theme preference
     const savedTheme = localStorage.getItem("theme") as "light" | "dark" | null;
-    
+
     if (savedTheme) {
       setTheme(savedTheme);
       applyTheme(savedTheme);
@@ -28,30 +28,26 @@ export function ThemeToggle() {
     }
   };
 
-  const toggleTheme = () => {
-    const newTheme = theme === "light" ? "dark" : "light";
+  const toggleTheme = (checked: boolean) => {
+    const newTheme = checked ? "dark" : "light";
     setTheme(newTheme);
-    
+
     // Save preference
     localStorage.setItem("theme", newTheme);
-    
+
     // Apply theme to document
     applyTheme(newTheme);
   };
 
   return (
-    <Button
-      variant="ghost"
-      size="sm"
-      onClick={toggleTheme}
-      className="text-foreground hover:bg-accent"
-      aria-label={theme === "light" ? "Alternar para tema escuro" : "Alternar para tema claro"}
-    >
-      {theme === "light" ? (
-        <Moon className="h-5 w-5" />
-      ) : (
-        <Sun className="h-5 w-5" />
-      )}
-    </Button>
+    <div className="flex items-center gap-2">
+      <Sun className="h-4 w-4 text-muted-foreground" />
+      <Switch
+        checked={theme === "dark"}
+        onCheckedChange={toggleTheme}
+        aria-label="Alternar tema"
+      />
+      <Moon className="h-4 w-4 text-muted-foreground" />
+    </div>
   );
 }

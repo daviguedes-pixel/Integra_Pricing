@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings, Users, Shield, Plus, Trash2 } from "lucide-react";
+import { Settings, Users, Shield, Plus, Trash2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { ClientForm } from "@/components/ClientForm";
 import { StationForm } from "@/components/StationForm";
@@ -30,6 +30,50 @@ export default function Admin() {
   const [backupLoading, setBackupLoading] = useState(false);
   const [users, setUsers] = useState<any[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
+  const [updatingCosts, setUpdatingCosts] = useState(false);
+  const [updateCostsDateRange, setUpdateCostsDateRange] = useState({
+    start: new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0],
+    end: new Date().toISOString().split('T')[0]
+  });
+
+  // Função para atualizar custos
+  const handleUpdateCosts = async () => {
+    if (!updateCostsDateRange.start || !updateCostsDateRange.end) {
+      toast.error("Selecione as datas inicial e final");
+      return;
+    }
+
+    try {
+      setUpdatingCosts(true);
+      const { data, error } = await supabase.rpc('admin_update_approval_costs', {
+        p_start_date: updateCostsDateRange.start,
+        p_end_date: updateCostsDateRange.end
+      });
+
+      if (error) throw error;
+
+      toast.success(`Custos atualizados com sucesso! ${data?.updated_count || 0} registros afetados.`);
+
+      // Log da ação
+      await supabase.rpc('log_system_action', {
+        p_action: 'UPDATE_COSTS',
+        p_resource_type: 'system',
+        p_details: {
+          start_date: updateCostsDateRange.start,
+          end_date: updateCostsDateRange.end,
+          updated_count: data?.updated_count || 0
+        }
+      });
+
+      await loadLogs();
+
+    } catch (error: any) {
+      console.error('Erro ao atualizar custos:', error);
+      toast.error("Erro ao atualizar custos: " + (error.message || "Erro desconhecido"));
+    } finally {
+      setUpdatingCosts(false);
+    }
+  };
 
   const loadUsers = async () => {
     try {
@@ -52,7 +96,7 @@ export default function Admin() {
         .select('*')
         .order('created_at', { ascending: false })
         .limit(50);
-      
+
       if (error) throw error;
       setLogs(data || []);
     } catch (error) {
@@ -66,11 +110,11 @@ export default function Admin() {
   const handleBackup = async () => {
     try {
       setBackupLoading(true);
-      
+
       // Criar backup das principais tabelas
       const tables = [
         'price_suggestions',
-        'competitor_research', 
+        'competitor_research',
         'referencias',
         'user_profiles',
         'clients',
@@ -78,26 +122,26 @@ export default function Admin() {
         'payment_methods',
         'system_logs'
       ];
-      
+
       const backupData: any = {};
-      
+
       for (const table of tables) {
         const { data, error } = await supabase
           .from(table)
           .select('*');
-        
+
         if (error) {
           console.error(`Erro ao fazer backup da tabela ${table}:`, error);
           continue;
         }
-        
+
         backupData[table] = data || [];
       }
-      
+
       // Criar arquivo JSON para download
       const dataStr = JSON.stringify(backupData, null, 2);
       const dataBlob = new Blob([dataStr], { type: 'application/json' });
-      
+
       const url = URL.createObjectURL(dataBlob);
       const link = document.createElement('a');
       link.href = url;
@@ -106,7 +150,7 @@ export default function Admin() {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      
+
       // Log da ação
       await supabase.rpc('log_system_action', {
         p_action: 'BACKUP_COMPLETED',
@@ -117,12 +161,12 @@ export default function Admin() {
           timestamp: new Date().toISOString()
         }
       });
-      
+
       toast.success('Backup criado com sucesso!');
-      
+
       // Recarregar logs para mostrar a ação
       await loadLogs();
-      
+
     } catch (error) {
       console.error('Erro ao criar backup:', error);
       toast.error('Erro ao criar backup');
@@ -138,7 +182,7 @@ export default function Admin() {
 
   const handleSyncUsers = async () => {
     const loadingToast = toast.loading('Sincronizando usuários com Auth...');
-    
+
     try {
       const { data, error } = await supabase.functions.invoke('sync-auth-users', {
         method: 'POST'
@@ -149,7 +193,7 @@ export default function Admin() {
       if (error) throw error;
 
       const { summary } = data;
-      
+
       if (summary.created > 0) {
         toast.success(`Sincronização concluída! ${summary.created} novo(s) usuário(s) adicionado(s).`);
       } else if (summary.errors > 0) {
@@ -170,7 +214,7 @@ export default function Admin() {
   const getProfileDisplayName = (perfil: string) => {
     const names = {
       'diretor_comercial': 'Diretor Comercial',
-      'assessor_comercial': 'Assessor Comercial', 
+      'assessor_comercial': 'Assessor Comercial',
       'supervisor_comercial': 'Supervisor Comercial',
       'diretor_pricing': 'Diretor de Pricing',
       'analista_pricing': 'Analista de Pricing',
@@ -194,23 +238,23 @@ export default function Admin() {
   const handleRoleChange = async (profileId: string, newRole: string) => {
     try {
       console.log('Atualizando perfil:', { profileId, newRole });
-      
+
       const { data, error } = await supabase
         .from('user_profiles' as any)
-        .update({ 
+        .update({
           role: newRole,
-          perfil: newRole 
+          perfil: newRole
         })
         .eq('id', profileId)
         .select();
-      
+
       if (error) throw error;
-      
+
       console.log('Perfil atualizado com sucesso:', data);
-      
+
       setUsers(prev => prev.map(u => u.id === profileId ? { ...u, role: newRole, perfil: newRole } : u));
       toast.success('Perfil atualizado com sucesso');
-      
+
       // Recarregar lista para garantir sincronização
       await loadUsers();
     } catch (error) {
@@ -284,7 +328,7 @@ export default function Admin() {
                       id="nome"
                       placeholder="Digite o nome"
                       value={newUser.nome}
-                      onChange={(e) => setNewUser({...newUser, nome: e.target.value})}
+                      onChange={(e) => setNewUser({ ...newUser, nome: e.target.value })}
                     />
                   </div>
 
@@ -295,13 +339,13 @@ export default function Admin() {
                       type="email"
                       placeholder="usuario@redesaoroque.com.br"
                       value={newUser.email}
-                      onChange={(e) => setNewUser({...newUser, email: e.target.value})}
+                      onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
                     />
                   </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="perfil">Perfil</Label>
-                    <Select value={newUser.perfil} onValueChange={(value) => setNewUser({...newUser, perfil: value})}>
+                    <Select value={newUser.perfil} onValueChange={(value) => setNewUser({ ...newUser, perfil: value })}>
                       <SelectTrigger>
                         <SelectValue placeholder="Selecione o perfil" />
                       </SelectTrigger>
@@ -318,7 +362,7 @@ export default function Admin() {
 
                   <div className="space-y-2">
                     <Label htmlFor="posto">Posto (opcional)</Label>
-                    <Select value={newUser.posto} onValueChange={(value) => setNewUser({...newUser, posto: value})}>
+                    <Select value={newUser.posto} onValueChange={(value) => setNewUser({ ...newUser, posto: value })}>
                       <SelectTrigger>
                         <SelectValue placeholder="Selecione o posto" />
                       </SelectTrigger>
@@ -452,7 +496,7 @@ export default function Admin() {
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm font-medium">Sugestões Hoje:</span>
-                  <span className="text-sm font-bold">{suggestions.filter(s => 
+                  <span className="text-sm font-bold">{suggestions.filter(s =>
                     new Date(s.created_at).toDateString() === new Date().toDateString()
                   ).length}</span>
                 </div>
@@ -518,8 +562,8 @@ export default function Admin() {
                 <Button className="w-full bg-primary hover:bg-primary-hover text-primary-foreground">
                   Salvar Configurações
                 </Button>
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   className="w-full mt-2"
                   onClick={handleBackup}
                   disabled={backupLoading}
@@ -529,14 +573,65 @@ export default function Admin() {
               </CardContent>
             </Card>
 
+
+
+            {/* Update Costs */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Atualizar Custos de Aprovações</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="startDate">Data Inicial</Label>
+                    <Input
+                      id="startDate"
+                      type="date"
+                      value={updateCostsDateRange.start}
+                      onChange={(e) => setUpdateCostsDateRange(prev => ({ ...prev, start: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="endDate">Data Final</Label>
+                    <Input
+                      id="endDate"
+                      type="date"
+                      value={updateCostsDateRange.end}
+                      onChange={(e) => setUpdateCostsDateRange(prev => ({ ...prev, end: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                <Button
+                  className="w-full"
+                  onClick={handleUpdateCosts}
+                  disabled={updatingCosts}
+                >
+                  {updatingCosts ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Atualizando...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Atualizar Custos
+                    </>
+                  )}
+                </Button>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Isso irá recalcular o custo base e financeiro de todas as aprovações no intervalo selecionado, usando a cotação mais recente para a data de cada aprovação.
+                </p>
+              </CardContent>
+            </Card>
+
             {/* Logs and Monitoring */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
                   Logs do Sistema
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={loadLogs}
                     disabled={logsLoading}
                   >
@@ -656,8 +751,8 @@ export default function Admin() {
               </CardContent>
             </Card>
           </div>
-        </TabsContent>
-      </Tabs>
-    </div>
+        </TabsContent >
+      </Tabs >
+    </div >
   );
 }

@@ -1,9 +1,9 @@
 import { useState, useCallback, memo } from "react";
 import { Button } from "./ui/button";
-import { 
-  BarChart3, 
-  DollarSign, 
-  Settings, 
+import {
+  BarChart3,
+  DollarSign,
+  Settings,
   Bell,
   Menu,
   LogOut,
@@ -24,7 +24,9 @@ import {
   Percent,
   Building2,
   Briefcase,
-  Gauge
+  Gauge,
+  Shield,
+  Rocket
 } from "lucide-react";
 import {
   Collapsible,
@@ -41,9 +43,11 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useNavigate, useLocation } from "react-router-dom";
 import { IntegraLogo } from "./IntegraLogo";
-import { ThemeToggle } from "./ThemeToggle";
 import { NotificationCenter } from "./NotificationCenter";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import RealtimeNotifications from "./RealtimeNotifications";
+import { formatNameFromEmail } from "@/lib/utils";
+import { useApprovalCounts } from "@/hooks/useApprovalCounts";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -52,7 +56,7 @@ interface LayoutProps {
 const getProfileDisplayName = (perfil: string) => {
   const names = {
     'diretor_comercial': 'Diretor Comercial',
-    'assessor_comercial': 'Assessor Comercial', 
+    'assessor_comercial': 'Assessor Comercial',
     'supervisor_comercial': 'Supervisor Comercial',
     'diretor_pricing': 'Diretor de Pricing',
     'analista_pricing': 'Analista de Pricing',
@@ -108,7 +112,6 @@ const menuStructure: MenuGroupWithIcon[] = [
         label: "Gestoria",
         items: [
           { icon: Users, label: "Gestão", href: "/gestao", permission: "gestao" },
-          { icon: Settings, label: "Configurações", href: "/settings", permission: "settings" },
         ]
       }
     ]
@@ -117,11 +120,18 @@ const menuStructure: MenuGroupWithIcon[] = [
     label: "Pricing",
     icon: Gauge,
     items: [
-      { icon: Percent, label: "Descontos Indevidos (Desenvolvimento)", href: "/descontos-indevidos", permission: "pricing" },
       { icon: Map, label: "Mapa Contatos (Desenvolvimento)", href: "/mapa-contatos", permission: "pricing" },
       { icon: Truck, label: "Cargas (Desenvolvimento)", href: "/cargas", permission: "pricing" },
       { icon: FileCheck, label: "NFs Incorretas (Desenvolvimento)", href: "/nfs-incorretas", permission: "pricing" },
       { icon: TrendingUp, label: "Paridade (Desenvolvimento)", href: "/paridade", permission: "pricing" },
+    ]
+  },
+  {
+    label: "Integra",
+    icon: Rocket,
+    items: [
+      { icon: Shield, label: "Administração", href: "/settings", permission: "settings" },
+      { icon: Settings, label: "Configurações", href: "/profile-settings", permission: "dashboard" },
     ]
   }
 ];
@@ -136,10 +146,12 @@ function Layout({ children }: LayoutProps) {
   const { unreadCount } = useNotifications();
   const navigate = useNavigate();
   const location = useLocation();
-  
+  const { pendingCount } = useApprovalCounts();
+
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     "Comercial": false,
-    "Pricing": false
+    "Pricing": false,
+    "Integra": false
   });
   const [openSubGroups, setOpenSubGroups] = useState<Record<string, boolean>>({
     "Precificação": false,
@@ -178,7 +190,7 @@ function Layout({ children }: LayoutProps) {
   return (
     <div className="min-h-screen bg-background flex">
       {/* Sidebar - Navy Blue */}
-      <aside 
+      <aside
         className={`
           bg-sidebar border-r border-sidebar-border transition-all duration-300 flex flex-col relative
           ${sidebarOpen ? 'fixed' : 'hidden lg:flex'}
@@ -194,24 +206,24 @@ function Layout({ children }: LayoutProps) {
               e.preventDefault();
               const startX = e.clientX;
               const startWidth = sidebarWidth;
-              
+
               const handleMouseMove = (e: MouseEvent) => {
                 const diff = e.clientX - startX;
                 const newWidth = Math.max(200, Math.min(400, startWidth + diff));
                 setSidebarWidth(newWidth);
               };
-              
+
               const handleMouseUp = () => {
                 document.removeEventListener('mousemove', handleMouseMove);
                 document.removeEventListener('mouseup', handleMouseUp);
               };
-              
+
               document.addEventListener('mousemove', handleMouseMove);
               document.addEventListener('mouseup', handleMouseUp);
             }}
           />
         )}
-        
+
         {/* Logo Area */}
         <div className="h-12 flex items-center justify-between px-3 border-b border-sidebar-border">
           {sidebarCollapsed ? (
@@ -242,7 +254,7 @@ function Layout({ children }: LayoutProps) {
                   <Menu className="h-5 w-5" />
                 </Button>
                 {/* Logo completa */}
-                <button 
+                <button
                   onClick={handleLogoClick}
                   className="flex items-center hover:opacity-80 transition-opacity cursor-pointer flex-1 min-w-0 justify-start"
                   title="Integra"
@@ -268,11 +280,10 @@ function Layout({ children }: LayoutProps) {
           {canAccess(homeItem.permission) && (
             <Button
               variant="ghost"
-              className={`w-full justify-start gap-2 h-9 transition-all mb-2 ${
-                location.pathname === homeItem.href 
-                  ? 'bg-sidebar-accent text-sidebar-foreground font-medium' 
-                  : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50'
-              }`}
+              className={`w-full justify-start gap-2 h-9 transition-all mb-2 ${location.pathname === homeItem.href
+                ? 'bg-sidebar-accent text-sidebar-foreground font-medium'
+                : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50'
+                }`}
               onClick={() => handleMenuClick(homeItem.href)}
             >
               <homeItem.icon className="h-4 w-4 flex-shrink-0" />
@@ -282,10 +293,10 @@ function Layout({ children }: LayoutProps) {
 
           {/* Grupos */}
           {menuStructure.map((group) => {
-            const hasAccessibleItems = group.subgroups 
+            const hasAccessibleItems = group.subgroups
               ? group.subgroups.some(sub => sub.items.some(item => canAccess(item.permission)))
               : group.items?.some(item => canAccess(item.permission));
-            
+
             if (!hasAccessibleItems) return null;
 
             // Se estiver minimizado, mostrar apenas o ícone com popover
@@ -323,6 +334,11 @@ function Layout({ children }: LayoutProps) {
                               >
                                 <item.icon className="h-3.5 w-3.5 flex-shrink-0" />
                                 <span>{item.label}</span>
+                                {item.label === 'Aprovações' && pendingCount > 0 && (
+                                  <span className="ml-auto bg-yellow-500 text-white text-[9px] font-bold px-1 rounded-full min-w-[16px] h-[16px] flex items-center justify-center">
+                                    {pendingCount > 99 ? '99+' : pendingCount}
+                                  </span>
+                                )}
                               </Button>
                             ))}
                           </div>
@@ -337,6 +353,11 @@ function Layout({ children }: LayoutProps) {
                         >
                           <item.icon className="h-3.5 w-3.5 flex-shrink-0" />
                           <span>{item.label}</span>
+                          {item.label === 'Aprovações' && pendingCount > 0 && (
+                            <span className="ml-auto bg-yellow-500 text-white text-[9px] font-bold px-1 rounded-full min-w-[16px] h-[16px] flex items-center justify-center">
+                              {pendingCount > 99 ? '99+' : pendingCount}
+                            </span>
+                          )}
                         </Button>
                       ))}
                     </div>
@@ -396,15 +417,19 @@ function Layout({ children }: LayoutProps) {
                               <Button
                                 key={item.href}
                                 variant="ghost"
-                                className={`w-full justify-start gap-2 h-8 px-2 transition-all ${
-                                  location.pathname === item.href 
-                                    ? 'bg-sidebar-accent text-sidebar-foreground font-medium' 
-                                    : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50'
-                                }`}
+                                className={`w-full justify-start gap-2 h-8 px-2 transition-all ${location.pathname === item.href
+                                  ? 'bg-sidebar-accent text-sidebar-foreground font-medium'
+                                  : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50'
+                                  }`}
                                 onClick={() => handleMenuClick(item.href)}
                               >
                                 <item.icon className="h-3.5 w-3.5 flex-shrink-0" />
                                 {!sidebarCollapsed && <span className="text-[11px]">{item.label}</span>}
+                                {!sidebarCollapsed && item.label === 'Aprovações' && pendingCount > 0 && (
+                                  <span className="ml-auto bg-yellow-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center">
+                                    {pendingCount > 99 ? '99+' : pendingCount}
+                                  </span>
+                                )}
                               </Button>
                             ))}
                           </CollapsibleContent>
@@ -416,15 +441,19 @@ function Layout({ children }: LayoutProps) {
                     <Button
                       key={item.href}
                       variant="ghost"
-                      className={`w-full justify-start gap-2 h-8 px-2 transition-all ${
-                        location.pathname === item.href 
-                          ? 'bg-sidebar-accent text-sidebar-foreground font-medium' 
-                          : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50'
-                      }`}
+                      className={`w-full justify-start gap-2 h-8 px-2 transition-all ${location.pathname === item.href
+                        ? 'bg-sidebar-accent text-sidebar-foreground font-medium'
+                        : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50'
+                        }`}
                       onClick={() => handleMenuClick(item.href)}
                     >
                       <item.icon className="h-3.5 w-3.5 flex-shrink-0" />
                       {!sidebarCollapsed && <span className="text-[11px]">{item.label}</span>}
+                      {!sidebarCollapsed && item.label === 'Aprovações' && pendingCount > 0 && (
+                        <span className="ml-auto bg-yellow-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center">
+                          {pendingCount > 99 ? '99+' : pendingCount}
+                        </span>
+                      )}
                     </Button>
                   ))}
                 </CollapsibleContent>
@@ -436,12 +465,15 @@ function Layout({ children }: LayoutProps) {
         {/* User Info at bottom */}
         <div className="p-2 border-t border-sidebar-border">
           <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-sidebar-accent/30">
-            <div className="w-7 h-7 rounded-full bg-sidebar-primary flex items-center justify-center">
-              <User className="h-3.5 w-3.5 text-sidebar-primary-foreground" />
-            </div>
+            <Avatar className="w-8 h-8">
+              <AvatarImage src={profile?.avatar_url} alt={profile?.nome || 'User'} />
+              <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground">
+                <User className="h-4 w-4" />
+              </AvatarFallback>
+            </Avatar>
             {!sidebarCollapsed && (
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-sidebar-foreground truncate">{profile?.nome}</p>
+                <p className="text-xs font-medium text-sidebar-foreground truncate">{formatNameFromEmail(profile?.nome || profile?.email)}</p>
                 <p className="text-[10px] text-sidebar-foreground/60 truncate">
                   {profile ? getProfileDisplayName(profile.perfil) : 'Carregando...'}
                 </p>
@@ -467,8 +499,8 @@ function Layout({ children }: LayoutProps) {
           </div>
 
           <div className="flex items-center gap-1">
-            <ThemeToggle />
-            
+
+
             <Button
               variant="ghost"
               size="sm"
@@ -482,9 +514,9 @@ function Layout({ children }: LayoutProps) {
                 </span>
               )}
             </Button>
-            
-            <Button 
-              variant="ghost" 
+
+            <Button
+              variant="ghost"
               size="sm"
               className="h-8 w-8 p-0"
               onClick={handleLogout}
@@ -505,7 +537,7 @@ function Layout({ children }: LayoutProps) {
 
       {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/50 z-40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />

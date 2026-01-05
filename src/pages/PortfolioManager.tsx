@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -548,18 +547,10 @@ export default function PortfolioManager() {
           </Card>
         </div>
 
-        {/* Gráficos */}
-        <Tabs defaultValue="evolution" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="evolution">Evolução</TabsTrigger>
-            <TabsTrigger value="requesters">Solicitantes</TabsTrigger>
-            <TabsTrigger value="margins">Margens</TabsTrigger>
-            <TabsTrigger value="products">Produtos</TabsTrigger>
-            <TabsTrigger value="clients">Clientes</TabsTrigger>
-          </TabsList>
-
+        {/* Gráficos - Todas as visualizações em uma única página */}
+        <div className="space-y-6">
           {/* Evolução de Preços */}
-          <TabsContent value="evolution" className="space-y-4">
+          <div className="space-y-4">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <Card>
                 <CardHeader>
@@ -622,10 +613,10 @@ export default function PortfolioManager() {
                 </CardContent>
               </Card>
             </div>
-          </TabsContent>
+          </div>
 
           {/* Top Solicitantes */}
-          <TabsContent value="requesters" className="space-y-4">
+          <div className="space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle>Top 10 - Pessoas que Mais Solicitam Preços</CardTitle>
@@ -649,10 +640,10 @@ export default function PortfolioManager() {
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
+          </div>
 
           {/* Margens Médias */}
-          <TabsContent value="margins" className="space-y-4">
+          <div className="space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle>Margem Média por Pessoa</CardTitle>
@@ -676,10 +667,10 @@ export default function PortfolioManager() {
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
+          </div>
 
           {/* Distribuição por Produto */}
-          <TabsContent value="products" className="space-y-4">
+          <div className="space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle>Distribuição por Produto</CardTitle>
@@ -713,10 +704,10 @@ export default function PortfolioManager() {
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
+          </div>
 
           {/* Volume por Cliente */}
-          <TabsContent value="clients" className="space-y-4">
+          <div className="space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle>Volume de Aprovações por Cliente</CardTitle>
@@ -740,8 +731,8 @@ export default function PortfolioManager() {
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
-        </Tabs>
+          </div>
+        </div>
 
         {/* Cards Adicionais */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

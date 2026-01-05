@@ -3,8 +3,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { Users, UsersRound, Database, TrendingUp, Bell, TestTube } from 'lucide-react';
-import { PushNotificationSetup } from '@/components/PushNotificationSetup';
-import { FirebaseDebug } from '@/components/FirebaseDebug';
 import { FirebaseConfig } from '@/components/FirebaseConfig';
 import { useAuth } from '@/hooks/useAuth';
 import { createNotification } from '@/lib/utils';
@@ -35,14 +33,14 @@ export default function Settings() {
       // Buscar nome do usuário do perfil
       const { supabase } = await import('@/integrations/supabase/client');
       let approverName = user.email || 'Você';
-      
+
       try {
         const { data: userProfile } = await supabase
           .from('user_profiles')
           .select('nome, email')
           .eq('user_id', user.id)
           .maybeSingle();
-        
+
         if (userProfile?.nome) {
           approverName = userProfile.nome;
         } else if (userProfile?.email) {
@@ -88,7 +86,7 @@ export default function Settings() {
       console.log('═══════════════════════════════════════════════════════');
       console.log('🔍 VERIFICANDO STATUS DA PUSH NOTIFICATION');
       console.log('═══════════════════════════════════════════════════════');
-      
+
       // Reutilizar supabase já importado acima
       const { data: tokens, error: tokensError } = await supabase
         .from('push_subscriptions' as any)
@@ -97,7 +95,7 @@ export default function Settings() {
 
       console.log('Tokens encontrados:', tokens?.length || 0);
       console.log('Erro ao buscar tokens:', tokensError);
-      
+
       if (tokensError) {
         console.error('❌ Erro ao buscar tokens FCM:', tokensError);
       } else if (!tokens || tokens.length === 0) {
@@ -109,7 +107,7 @@ export default function Settings() {
           console.log(`   ${index + 1}. Token: ${token.fcm_token?.substring(0, 30)}...`);
         });
       }
-      
+
       console.log('═══════════════════════════════════════════════════════');
       console.log('');
 
@@ -128,8 +126,8 @@ export default function Settings() {
       }
 
       // Disparar evento para refresh das notificações
-      window.dispatchEvent(new CustomEvent('notification-created', { 
-        detail: { userId: user.id } 
+      window.dispatchEvent(new CustomEvent('notification-created', {
+        detail: { userId: user.id }
       }));
 
       // Também disparar via localStorage como fallback
@@ -148,7 +146,7 @@ export default function Settings() {
       console.error('Stack:', error?.stack);
       console.error('═══════════════════════════════════════════════════════');
       console.error('');
-      
+
       toast.error('Erro ao criar notificação de teste', {
         description: error?.message || 'Verifique o console para mais detalhes',
         duration: 8000
@@ -167,13 +165,13 @@ export default function Settings() {
           <div className="relative flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div>
-                <h1 className="text-lg font-bold mb-0.5">Configurações</h1>
+                <h1 className="text-lg font-bold mb-0.5">Administração</h1>
                 <p className="text-slate-200 text-xs">Configurações gerais do sistema</p>
               </div>
             </div>
           </div>
         </div>
-        
+
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate('/gestao')}>
             <CardHeader>
@@ -192,7 +190,7 @@ export default function Settings() {
               </Button>
             </CardContent>
           </Card>
-          
+
           <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate('/admin')}>
             <CardHeader>
               <div className="flex items-center gap-3 mb-2">
@@ -288,7 +286,7 @@ export default function Settings() {
                 <li>O nome do aprovador é exibido corretamente</li>
               </ul>
             </div>
-            <Button 
+            <Button
               onClick={handleTestApprovalNotification}
               disabled={isTestingNotification || !user}
               className="w-full"
@@ -317,12 +315,6 @@ export default function Settings() {
         {/* Configuração do Firebase */}
         <div className="mt-6 space-y-4">
           <FirebaseConfig />
-        </div>
-
-        {/* Notificações Push */}
-        <div className="mt-6 space-y-4">
-          <PushNotificationSetup />
-          <FirebaseDebug />
         </div>
       </div>
     </div>

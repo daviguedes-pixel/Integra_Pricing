@@ -9,13 +9,13 @@ export function cn(...inputs: ClassValue[]) {
 // Função para converter formato brasileiro (vírgula) para internacional (ponto)
 export function parseBrazilianDecimal(value: string | number): number {
   if (typeof value === 'number') return value;
-  
+
   // Remove espaços e converte vírgula para ponto
   const cleanValue = value.toString().trim().replace(',', '.');
-  
+
   // Converte para número
   const parsed = parseFloat(cleanValue);
-  
+
   // Retorna NaN se não conseguir converter
   return isNaN(parsed) ? 0 : parsed;
 }
@@ -57,9 +57,9 @@ export function parsePriceToInteger(priceString: string): number {
  */
 export function mapProductToEnum(product: string | null | undefined): string | null {
   if (!product) return null;
-  
+
   const productLower = product.toLowerCase().trim();
-  
+
   // Mapeamento de valores do frontend para valores do enum
   // Baseado no enum atual: 'gasolina_comum', 'gasolina_aditivada', 'etanol', 's10', 's500'
   // (O enum pode ter 'diesel_s10'/'diesel_s500' ou 's10'/'s500' dependendo da migração)
@@ -69,30 +69,30 @@ export function mapProductToEnum(product: string | null | undefined): string | n
     'diesel_s10': 's10', // Fallback: se o enum usar 's10' ao invés de 'diesel_s10'
     's10_aditivado': 's10', // Mapeia para s10 pois não existe s10_aditivado no enum
     'diesel_s10_aditivado': 's10',
-    
+
     // S500 - mapeia para s500 (versão atual do enum)
     's500': 's500',
     'diesel_s500': 's500', // Fallback: se o enum usar 's500' ao invés de 'diesel_s500'
     's500_aditivado': 's500', // Mapeia para s500 pois não existe s500_aditivado no enum
     'diesel_s500_aditivado': 's500',
-    
+
     // Gasolina
     'gasolina_comum': 'gasolina_comum',
     'gasolina_aditivada': 'gasolina_aditivada',
-    
+
     // Etanol
     'etanol': 'etanol',
-    
+
     // ARLA - não existe no enum, retorna null
     'arla32_granel': null, // ARLA não está no enum
     'arla': null,
   };
-  
+
   // Retorna o valor mapeado ou o próprio valor se já for válido
   if (productMap[productLower] !== undefined) {
     return productMap[productLower];
   }
-  
+
   // Se não encontrou no mapa, retorna o valor original (pode ser válido)
   return productLower;
 }
@@ -103,9 +103,9 @@ export function generateUUID(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
   }
-  
+
   // Fallback: gerar UUID v4 manualmente
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
     const r = Math.random() * 16 | 0;
     const v = c === 'x' ? r : (r & 0x3 | 0x8);
     return v.toString(16);
@@ -150,17 +150,17 @@ export async function createNotification(
   if (!userId || typeof userId !== 'string' || userId.trim().length === 0) {
     throw new Error('userId inválido: deve ser uma string não vazia');
   }
-  
+
   // Sanitizar inputs para prevenir XSS
   const sanitizedTitle = sanitizeText(title);
   const sanitizedMessage = sanitizeText(message);
   const sanitizedData = data ? sanitizeObject(data) : undefined;
-  
+
   const { supabase } = await import('@/integrations/supabase/client');
-  
+
   // IMPORTANTE: Não há verificação de "mesmo usuário" aqui
   // A notificação será criada SEMPRE, independente de quem está criando
-  
+
   interface NotificationInsert {
     user_id: string;
     type: string;
@@ -219,13 +219,13 @@ export async function createNotification(
   // Verificar se suggestion_id é obrigatório tentando inserir primeiro
   let insertedData: any = null;
   let error: any = null;
-  
+
   try {
     const result = await supabase
       .from('notifications')
       .insert([notificationData])
       .select();
-    
+
     insertedData = result.data;
     error = result.error;
   } catch (err: any) {
@@ -241,19 +241,19 @@ export async function createNotification(
       errorHint: error.hint,
       notificationData
     });
-    
+
     // Se o erro for sobre coluna 'data' não encontrada, tentar sem ela
     if (error.message?.includes("'data' column") || error.message?.includes('schema cache')) {
       console.log('⚠️ Coluna "data" não encontrada. Tentando inserir sem ela...');
-      
+
       // Remover campo 'data' e tentar novamente
       const { data: dataField, ...notificationDataWithoutData } = notificationData;
-      
+
       const retryResult = await supabase
         .from('notifications')
         .insert([notificationDataWithoutData])
         .select();
-      
+
       if (retryResult.error) {
         console.error('❌ Erro ao criar notificação (retry sem data):', retryResult.error);
         // Continuar para outras tentativas
@@ -263,32 +263,32 @@ export async function createNotification(
         error = null; // Marcar como sucesso
       }
     }
-    
+
     // Se o erro for sobre suggestion_id obrigatório (23502 = not null violation)
     if (error && (error.message?.includes('suggestion_id') || error.code === '23502') && !notificationData.suggestion_id) {
       console.log('⚠️ suggestion_id é obrigatório mas não foi fornecido. Gerando UUID temporário...');
-      
+
       // Gerar UUID temporário para suggestion_id (não ideal, mas necessário se a tabela exige)
       const notificationDataWithSuggestionId = {
         ...notificationData,
         suggestion_id: generateUUID()
       };
-      
+
       // Remover 'data' se ainda estiver presente e causar erro
       if (error.message?.includes("'data' column")) {
         delete notificationDataWithSuggestionId.data;
       }
-      
+
       const retryResult = await supabase
         .from('notifications')
         .insert([notificationDataWithSuggestionId])
         .select();
-      
+
       if (retryResult.error) {
         console.error('❌ Erro ao criar notificação (retry com suggestion_id):', retryResult.error);
         throw retryResult.error;
       }
-      
+
       insertedData = retryResult.data;
       console.log('✅ Notificação inserida no banco (com suggestion_id gerado):', insertedData);
       error = null; // Marcar como sucesso
@@ -296,7 +296,7 @@ export async function createNotification(
       throw error;
     }
   }
-  
+
   if (!error) {
     console.log('');
     console.log('═══════════════════════════════════════════════════════');
@@ -313,18 +313,18 @@ export async function createNotification(
     console.log('═══════════════════════════════════════════════════════');
     console.log('');
   }
-  
+
   // Verificar se a notificação foi realmente criada e é visível para o usuário
   if (insertedData?.[0]?.id) {
     // Aguardar um pouco para garantir que a transação foi commitada
     await new Promise(resolve => setTimeout(resolve, 100));
-    
+
     const { data: verifyData, error: verifyError } = await supabase
       .from('notifications')
       .select('*')
       .eq('id', insertedData[0].id)
       .single();
-    
+
     if (verifyError) {
       console.error('⚠️ Notificação criada mas não encontrada na verificação:', {
         error: verifyError,
@@ -341,7 +341,7 @@ export async function createNotification(
         read: verifyData?.read,
         title: verifyData?.title
       });
-      
+
       // Se o user_id não corresponde, há um problema
       if (verifyData?.user_id !== userId) {
         console.error('❌ PROBLEMA CRÍTICO: user_id da notificação não corresponde!', {
@@ -356,7 +356,7 @@ export async function createNotification(
   // Enviar notificação push também (usando a mesma função que funciona no PushNotificationSetup)
   try {
     const { sendPushNotification } = await import('@/lib/pushNotification');
-    
+
     // Preparar payload exatamente como no PushNotificationSetup que funciona
     const pushPayload = {
       title,
@@ -365,7 +365,7 @@ export async function createNotification(
       tag: type,
       data: data || {}
     };
-    
+
     // Chamar exatamente como no PushNotificationSetup
     await sendPushNotification(userId, pushPayload);
   } catch (pushError: any) {
@@ -385,7 +385,7 @@ export async function createNotificationForUsers(
   data?: Record<string, any>
 ) {
   const { supabase } = await import('@/integrations/supabase/client');
-  
+
   const notifications = userIds.map(userId => ({
     user_id: userId,
     type,
@@ -411,7 +411,6 @@ export async function createNotificationForUsers(
       title,
       body: message,
       data: data || {},
-      url: data?.url || '/dashboard',
       tag: type
     });
   } catch (pushError) {
@@ -420,4 +419,35 @@ export async function createNotificationForUsers(
   }
 
   return true;
+}
+
+// Função para formatar nome a partir de email ou string similar
+// Ex: davi.guedes@exemplo.com -> Davi Guedes
+// Ex: davi.guedes -> Davi Guedes
+export function formatNameFromEmail(input: string | undefined | null): string {
+  if (!input) return 'N/A';
+  if (input === 'Desconhecido') return input;
+
+  let result = input;
+
+  // Se for email, pega a primeira parte
+  if (result.includes('@')) {
+    result = result.split('@')[0];
+  }
+
+  // Se o resultado contiver pontos ou underscores, substitui por espaços e capitaliza
+  // Verifica se tem ponto ou underscore E não tem espaço (para evitar alterar nomes normais que tenham ponto como Sr. Silva)
+  // Mas como a ordem veio de email, vamos assumir que pontos devem virar espaços
+  if (result.includes('.') || result.includes('_')) {
+    result = result.replace(/[._]/g, ' ');
+    // Capitaliza cada palavra
+    result = result.toLowerCase().split(' ').map(word =>
+      word.charAt(0).toUpperCase() + word.slice(1)
+    ).join(' ');
+  } else if (!result.includes(' ') && result !== input) {
+    // Se era um email simples sem pontos (ex: admin@...), apenas capitaliza
+    result = result.charAt(0).toUpperCase() + result.slice(1).toLowerCase();
+  }
+
+  return result;
 }
