@@ -30,6 +30,7 @@ import ApprovalOrderConfig from "./pages/ApprovalOrderConfig";
 import MapaContatos from "./pages/MapaContatos";
 import Layout from "./components/Layout";
 import NotFound from "./pages/NotFound";
+import { AppRoute } from "./components/AppRoute";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -89,23 +90,23 @@ const App = () => {
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
               <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
               <Route path="/pricing-suggestion" element={<Navigate to="/solicitacao-preco" replace />} />
-              <Route path="/solicitacao-preco" element={<ProtectedRoute><PriceRequest /></ProtectedRoute>} />
-              <Route path="/approvals" element={<ProtectedRoute><Approvals /></ProtectedRoute>} />
-              <Route path="/map" element={<ProtectedRoute><MapView /></ProtectedRoute>} />
-              <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
-              <Route path="/price-history" element={<ProtectedRoute><PriceHistory /></ProtectedRoute>} />
-              <Route path="/portfolio-manager" element={<ProtectedRoute><PortfolioManager /></ProtectedRoute>} />
-              <Route path="/reference-registration" element={<ProtectedRoute><ReferenceRegistration /></ProtectedRoute>} />
-              <Route path="/tax-management" element={<ProtectedRoute><TaxManagement /></ProtectedRoute>} />
-              <Route path="/station-management" element={<ProtectedRoute><StationManagement /></ProtectedRoute>} />
-              <Route path="/client-management" element={<ProtectedRoute><ClientManagement /></ProtectedRoute>} />
-              <Route path="/audit-logs" element={<ProtectedRoute><AuditLogs /></ProtectedRoute>} />
-              <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+              <Route path="/solicitacao-preco" element={<ProtectedRoute><AppRoute permission="price_request"><PriceRequest /></AppRoute></ProtectedRoute>} />
+              <Route path="/approvals" element={<ProtectedRoute><AppRoute permission="approvals"><Approvals /></AppRoute></ProtectedRoute>} />
+              <Route path="/map" element={<ProtectedRoute><AppRoute permission="map"><MapView /></AppRoute></ProtectedRoute>} />
+              <Route path="/admin" element={<ProtectedRoute><AppRoute permission="admin"><Admin /></AppRoute></ProtectedRoute>} />
+              <Route path="/price-history" element={<ProtectedRoute><AppRoute permission="price_history"><PriceHistory /></AppRoute></ProtectedRoute>} />
+              <Route path="/portfolio-manager" element={<ProtectedRoute><AppRoute permission="price_history"><PortfolioManager /></AppRoute></ProtectedRoute>} />
+              <Route path="/reference-registration" element={<ProtectedRoute><AppRoute permission="reference_registration"><ReferenceRegistration /></AppRoute></ProtectedRoute>} />
+              <Route path="/tax-management" element={<ProtectedRoute><AppRoute permission="tax_management"><TaxManagement /></AppRoute></ProtectedRoute>} />
+              <Route path="/station-management" element={<ProtectedRoute><AppRoute permission="station_management"><StationManagement /></AppRoute></ProtectedRoute>} />
+              <Route path="/client-management" element={<ProtectedRoute><AppRoute permission="client_management"><ClientManagement /></AppRoute></ProtectedRoute>} />
+              <Route path="/audit-logs" element={<ProtectedRoute><AppRoute permission="audit_logs"><AuditLogs /></AppRoute></ProtectedRoute>} />
+              <Route path="/settings" element={<ProtectedRoute><AppRoute permission="settings"><Settings /></AppRoute></ProtectedRoute>} />
               <Route path="/profile-settings" element={<ProtectedRoute><ProfileSettings /></ProtectedRoute>} />
-              <Route path="/gestao" element={<ProtectedRoute><Gestao /></ProtectedRoute>} />
-              <Route path="/approval-margin-config" element={<ProtectedRoute><ApprovalMarginConfig /></ProtectedRoute>} />
-              <Route path="/approval-order-config" element={<ProtectedRoute><ApprovalOrderConfig /></ProtectedRoute>} />
-              <Route path="/mapa-contatos" element={<ProtectedRoute><MapaContatos /></ProtectedRoute>} />
+              <Route path="/gestao" element={<ProtectedRoute><AppRoute permission="gestao"><Gestao /></AppRoute></ProtectedRoute>} />
+              <Route path="/approval-margin-config" element={<ProtectedRoute><AppRoute permission="approval_margin_config"><ApprovalMarginConfig /></AppRoute></ProtectedRoute>} />
+              <Route path="/approval-order-config" element={<ProtectedRoute><AppRoute permission="admin"><ApprovalOrderConfig /></AppRoute></ProtectedRoute>} />
+              <Route path="/mapa-contatos" element={<ProtectedRoute><AppRoute permission="pricing"><MapaContatos /></AppRoute></ProtectedRoute>} />
               <Route path="/change-password" element={<PasswordChange />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
