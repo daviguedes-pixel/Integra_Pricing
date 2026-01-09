@@ -125,7 +125,7 @@ BEGIN
     RETURN QUERY
     WITH cotacoes AS (
       -- Cotação GERAL (Apenas se Bandeira Branca)
-      SELECT 
+      SELECT DISTINCT
         bf.id_base_fornecedor::text AS base_id,
         COALESCE(bf.nome,'Base')::text AS base_nome,
         COALESCE(bf.codigo_base,'')::text AS base_codigo,
@@ -149,7 +149,7 @@ BEGIN
       UNION ALL
 
       -- Cotação ESPECÍFICA (Para Bandeirados e Brancas)
-      SELECT 
+      SELECT DISTINCT
         bf.id_base_fornecedor::text AS base_id,
         COALESCE(bf.nome,'Base')::text AS base_nome,
         COALESCE(bf.codigo_base,'')::text AS base_codigo,
@@ -173,7 +173,7 @@ BEGIN
       UNION ALL
 
       -- Cotação ARLA (CIF)
-      SELECT 
+      SELECT DISTINCT
         ca.id_empresa::text AS base_id,
         COALESCE(ca.nome_empresa, 'ARLA')::text AS base_nome,
         ''::text AS base_codigo,

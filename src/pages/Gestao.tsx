@@ -10,7 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Search, Edit, Save, Package, Plus } from 'lucide-react';
+import { Search, Edit, Save, Package, Plus, RefreshCcw } from 'lucide-react';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
   Dialog,
@@ -130,6 +130,81 @@ export default function Gestao() {
   const [editPaymentCard, setEditPaymentCard] = useState('');
   const [editPaymentTaxa, setEditPaymentTaxa] = useState('');
   const [editPaymentPrazo, setEditPaymentPrazo] = useState('');
+
+  const [syncingN8N, setSyncingN8N] = useState(false);
+
+  // Função para acionar fluxo n8n
+  const handleN8NSync = async () => {
+    try {
+      setSyncingN8N(true);
+      const loadingToast = toast.loading("Executando sincronização no n8n... Aguarde a conclusão.");
+
+      // URL do Webhook do n8n
+      const WEBHOOK_URL = "http://n8n.hetz.com/webhook/c3c95968-cf5e-4b85-8a89-9a9fd5112eb6";
+
+      // Buscar usuário atual de forma segura
+      const { data: { user } } = await supabase.auth.getUser();
+      const currentUserEmail = user?.email;
+
+      let currentUserName = 'Admin';
+      if (user) {
+        const { data: profile } = await supabase.from('user_profiles').select('nome').eq('user_id', user.id).single();
+        if (profile) currentUserName = profile.nome;
+      }
+
+      const response = await fetch(WEBHOOK_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'sync_costs',
+          requested_by: currentUserName,
+          user_email: currentUserEmail,
+          timestamp: new Date().toISOString()
+        })
+      });
+
+      toast.dismiss(loadingToast);
+
+      if (response.ok) {
+        let responseDetails = "";
+        try {
+          const data = await response.json();
+          if (data && data.message) responseDetails = `: ${data.message}`;
+          else if (typeof data === 'string') responseDetails = `: ${data}`;
+        } catch (e) {
+          // Ignore parse errors
+        }
+
+        toast.success(`Sincronização concluída com sucesso${responseDetails}!`, {
+          duration: 5000,
+        });
+
+        // Log da ação no sistema (silencioso se a função não existir)
+        try {
+          await supabase.rpc('log_system_action', {
+            p_action: 'N8N_SYNC_COMPLETED',
+            p_resource_type: 'system',
+            p_details: {
+              webhook: WEBHOOK_URL,
+              timestamp: new Date().toISOString(),
+              status: 'completed'
+            }
+          });
+        } catch (e) {
+          console.warn('Log do sistema indisponível:', e);
+        }
+      } else {
+        throw new Error(`Erro na resposta do n8n: ${response.statusText}`);
+      }
+    } catch (error: any) {
+      console.error('Erro ao acionar n8n:', error);
+      toast.error(`Falha ao iniciar sincronização: ${error.message}`);
+    } finally {
+      setSyncingN8N(false);
+    }
+  };
 
   // Carregar postos
   const loadStations = async () => {
@@ -457,7 +532,7 @@ export default function Gestao() {
           </Card>
         ) : (
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className={`grid w-full ${hasStationsAccess && hasClientsAccess && hasPaymentMethodsAccess ? 'grid-cols-3' : (hasStationsAccess && hasClientsAccess) || (hasStationsAccess && hasPaymentMethodsAccess) || (hasClientsAccess && hasPaymentMethodsAccess) ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4 bg-muted p-1 rounded-lg">
               {hasStationsAccess && (
                 <TabsTrigger value="stations">Postos</TabsTrigger>
               )}
@@ -467,6 +542,10 @@ export default function Gestao() {
               {hasPaymentMethodsAccess && (
                 <TabsTrigger value="payment-methods">Tipos de Pagamento</TabsTrigger>
               )}
+              <TabsTrigger value="sync" className="flex items-center gap-2">
+                <RefreshCcw className="h-4 w-4" />
+                Sincronização
+              </TabsTrigger>
             </TabsList>
 
             {hasStationsAccess && (
@@ -513,8 +592,8 @@ export default function Gestao() {
                                   {station.cnpj_cpf && <p>CNPJ/CPF: {station.cnpj_cpf}</p>}
                                   <div className="flex items-center gap-4 mt-2">
                                     <span className={`px-2 py-1 rounded text-xs ${station.brinde_enabled
-                                        ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
-                                        : 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400'
+                                      ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                                      : 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400'
                                       }`}>
                                       Brinde: {station.brinde_enabled ? 'Ativo' : 'Inativo'}
                                     </span>
@@ -688,6 +767,23 @@ export default function Gestao() {
                 </Card>
               </TabsContent>
             )}
+            <TabsContent value="sync" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <RefreshCcw className={`h-5 w-5 ${syncingN8N ? 'animate-spin' : ''}`} />
+                    Sincronização de Custos
+                  </CardTitle>
+                  <CardDescription>Atualize os custos via integração n8n</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <p className="text-sm text-muted-foreground">Clique para iniciar a sincronização de custos. Este processo pode levar alguns instantes.</p>
+                  <Button className="w-full sm:w-auto" onClick={handleN8NSync} disabled={syncingN8N}>
+                    {syncingN8N ? "Sincronizando..." : "Sincronizar Agora"}
+                  </Button>
+                </CardContent>
+              </Card>
+            </TabsContent>
           </Tabs>
         )}
 

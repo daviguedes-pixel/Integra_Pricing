@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { MapPin, AlertCircle, TrendingDown, Building2, CheckCircle, Loader2 } from "lucide-react";
+import { MapPin, AlertCircle, TrendingDown, Building2, CheckCircle, Loader2, Upload } from "lucide-react";
+import * as XLSX from 'xlsx';
 import { MapContainer, TileLayer, GeoJSON, useMap, Tooltip, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -61,11 +62,20 @@ interface ContatoIndividual {
   [key: string]: any;
 }
 
+interface DadosAgregados {
+  total: number;
+  pegos: number;
+  uf: string;
+  estado: string;
+  cidade?: string;
+  regiao: string;
+}
+
 // Função para obter região por UF
 const getRegiaoByUF = (uf: string): string => {
   const ufMap: Record<string, string> = {
     'AC': 'Norte', 'AM': 'Norte', 'AP': 'Norte', 'PA': 'Norte', 'RO': 'Norte', 'RR': 'Norte', 'TO': 'Norte',
-    'AL': 'Nordeste', 'BA': 'Nordeste', 'CE': 'Nordeste', 'MA': 'Nordeste', 'PB': 'Nordeste', 
+    'AL': 'Nordeste', 'BA': 'Nordeste', 'CE': 'Nordeste', 'MA': 'Nordeste', 'PB': 'Nordeste',
     'PE': 'Nordeste', 'PI': 'Nordeste', 'RN': 'Nordeste', 'SE': 'Nordeste',
     'ES': 'Sudeste', 'MG': 'Sudeste', 'RJ': 'Sudeste', 'SP': 'Sudeste',
     'PR': 'Sul', 'RS': 'Sul', 'SC': 'Sul',
@@ -99,61 +109,61 @@ const dadosContatosInicial: ContatoData[] = [
   { regiao: "Sudeste", uf: "SP", estado: "São Paulo", cidade: "São Paulo", contatosTotal: 800, contatosPegos: 680, porcentagem: 85, lat: -23.5505, lng: -46.6333 },
   { regiao: "Sudeste", uf: "SP", estado: "São Paulo", cidade: "Campinas", contatosTotal: 200, contatosPegos: 150, porcentagem: 75, lat: -22.9056, lng: -47.0608 },
   { regiao: "Sudeste", uf: "SP", estado: "São Paulo", cidade: "Santos", contatosTotal: 150, contatosPegos: 120, porcentagem: 80, lat: -23.9608, lng: -46.3331 },
-  
+
   { regiao: "Sudeste", uf: "RJ", estado: "Rio de Janeiro", contatosTotal: 800, contatosPegos: 600, porcentagem: 75, lat: -22.9068, lng: -43.1729, bounds: [[-23.4, -44.9], [-20.8, -41.0]] },
   { regiao: "Sudeste", uf: "RJ", estado: "Rio de Janeiro", cidade: "Rio de Janeiro", contatosTotal: 500, contatosPegos: 400, porcentagem: 80, lat: -22.9068, lng: -43.1729 },
   { regiao: "Sudeste", uf: "RJ", estado: "Rio de Janeiro", cidade: "Niterói", contatosTotal: 100, contatosPegos: 75, porcentagem: 75, lat: -22.8833, lng: -43.1036 },
-  
+
   { regiao: "Sudeste", uf: "MG", estado: "Minas Gerais", contatosTotal: 1200, contatosPegos: 900, porcentagem: 75, lat: -19.9167, lng: -43.9345, bounds: [[-22.9, -51.0], [-14.2, -39.8]] },
   { regiao: "Sudeste", uf: "MG", estado: "Minas Gerais", cidade: "Belo Horizonte", contatosTotal: 400, contatosPegos: 320, porcentagem: 80, lat: -19.9167, lng: -43.9345 },
   { regiao: "Sudeste", uf: "MG", estado: "Minas Gerais", cidade: "Uberlândia", contatosTotal: 200, contatosPegos: 150, porcentagem: 75, lat: -18.9186, lng: -48.2772 },
   { regiao: "Sudeste", uf: "MG", estado: "Minas Gerais", cidade: "Juiz de Fora", contatosTotal: 150, contatosPegos: 110, porcentagem: 73, lat: -21.7595, lng: -43.3398 },
-  
+
   { regiao: "Sudeste", uf: "ES", estado: "Espírito Santo", contatosTotal: 300, contatosPegos: 210, porcentagem: 70, lat: -20.3155, lng: -40.3128, bounds: [[-21.3, -41.8], [-17.9, -39.7]] },
   { regiao: "Sudeste", uf: "ES", estado: "Espírito Santo", cidade: "Vitória", contatosTotal: 150, contatosPegos: 105, porcentagem: 70, lat: -20.3155, lng: -40.3128 },
-  
+
   // Região Sul
   { regiao: "Sul", uf: "PR", estado: "Paraná", contatosTotal: 900, contatosPegos: 720, porcentagem: 80, lat: -25.4284, lng: -49.2733, bounds: [[-26.7, -54.6], [-22.5, -48.0]] },
   { regiao: "Sul", uf: "PR", estado: "Paraná", cidade: "Curitiba", contatosTotal: 400, contatosPegos: 340, porcentagem: 85, lat: -25.4284, lng: -49.2733 },
   { regiao: "Sul", uf: "PR", estado: "Paraná", cidade: "Londrina", contatosTotal: 200, contatosPegos: 160, porcentagem: 80, lat: -23.3105, lng: -51.1628 },
-  
+
   { regiao: "Sul", uf: "SC", estado: "Santa Catarina", contatosTotal: 600, contatosPegos: 480, porcentagem: 80, lat: -27.5954, lng: -48.5480, bounds: [[-29.4, -53.1], [-25.3, -48.6]] },
   { regiao: "Sul", uf: "SC", estado: "Santa Catarina", cidade: "Florianópolis", contatosTotal: 250, contatosPegos: 210, porcentagem: 84, lat: -27.5954, lng: -48.5480 },
   { regiao: "Sul", uf: "SC", estado: "Santa Catarina", cidade: "Joinville", contatosTotal: 150, contatosPegos: 120, porcentagem: 80, lat: -26.3044, lng: -48.8464 },
-  
+
   { regiao: "Sul", uf: "RS", estado: "Rio Grande do Sul", contatosTotal: 1000, contatosPegos: 750, porcentagem: 75, lat: -30.0346, lng: -51.2177, bounds: [[-33.7, -57.6], [-27.0, -49.4]] },
   { regiao: "Sul", uf: "RS", estado: "Rio Grande do Sul", cidade: "Porto Alegre", contatosTotal: 500, contatosPegos: 400, porcentagem: 80, lat: -30.0346, lng: -51.2177 },
   { regiao: "Sul", uf: "RS", estado: "Rio Grande do Sul", cidade: "Caxias do Sul", contatosTotal: 200, contatosPegos: 150, porcentagem: 75, lat: -29.1680, lng: -51.1794 },
-  
+
   // Região Centro-Oeste
   { regiao: "Centro-Oeste", uf: "GO", estado: "Goiás", contatosTotal: 700, contatosPegos: 560, porcentagem: 80, lat: -16.6864, lng: -49.2643, bounds: [[-19.5, -52.0], [-12.4, -46.0]] },
   { regiao: "Centro-Oeste", uf: "GO", estado: "Goiás", cidade: "Goiânia", contatosTotal: 350, contatosPegos: 290, porcentagem: 83, lat: -16.6864, lng: -49.2643 },
   { regiao: "Centro-Oeste", uf: "GO", estado: "Goiás", cidade: "Aparecida de Goiânia", contatosTotal: 100, contatosPegos: 80, porcentagem: 80, lat: -16.8194, lng: -49.2439 },
-  
+
   { regiao: "Centro-Oeste", uf: "DF", estado: "Distrito Federal", contatosTotal: 400, contatosPegos: 340, porcentagem: 85, lat: -15.7942, lng: -47.8822, bounds: [[-16.1, -48.1], [-15.4, -47.3]] },
   { regiao: "Centro-Oeste", uf: "DF", estado: "Distrito Federal", cidade: "Brasília", contatosTotal: 400, contatosPegos: 340, porcentagem: 85, lat: -15.7942, lng: -47.8822 },
-  
+
   { regiao: "Centro-Oeste", uf: "MT", estado: "Mato Grosso", contatosTotal: 500, contatosPegos: 350, porcentagem: 70, lat: -15.6014, lng: -56.0979, bounds: [[-17.8, -65.0], [-7.4, -50.2]] },
   { regiao: "Centro-Oeste", uf: "MT", estado: "Mato Grosso", cidade: "Cuiabá", contatosTotal: 250, contatosPegos: 180, porcentagem: 72, lat: -15.6014, lng: -56.0979 },
-  
+
   { regiao: "Centro-Oeste", uf: "MS", estado: "Mato Grosso do Sul", contatosTotal: 400, contatosPegos: 280, porcentagem: 70, lat: -20.4697, lng: -54.6201, bounds: [[-24.0, -58.0], [-17.5, -50.2]] },
   { regiao: "Centro-Oeste", uf: "MS", estado: "Mato Grosso do Sul", cidade: "Campo Grande", contatosTotal: 200, contatosPegos: 140, porcentagem: 70, lat: -20.4697, lng: -54.6201 },
-  
+
   // Região Nordeste
   { regiao: "Nordeste", uf: "BA", estado: "Bahia", contatosTotal: 1100, contatosPegos: 770, porcentagem: 70, lat: -12.9714, lng: -38.5014, bounds: [[-18.3, -46.8], [-8.5, -37.0]] },
   { regiao: "Nordeste", uf: "BA", estado: "Bahia", cidade: "Salvador", contatosTotal: 500, contatosPegos: 360, porcentagem: 72, lat: -12.9714, lng: -38.5014 },
   { regiao: "Nordeste", uf: "BA", estado: "Bahia", cidade: "Feira de Santana", contatosTotal: 200, contatosPegos: 140, porcentagem: 70, lat: -12.2667, lng: -38.9667 },
-  
+
   { regiao: "Nordeste", uf: "PE", estado: "Pernambuco", contatosTotal: 800, contatosPegos: 560, porcentagem: 70, lat: -8.0476, lng: -34.8770, bounds: [[-10.0, -41.9], [-7.1, -34.7]] },
   { regiao: "Nordeste", uf: "PE", estado: "Pernambuco", cidade: "Recife", contatosTotal: 400, contatosPegos: 280, porcentagem: 70, lat: -8.0476, lng: -34.8770 },
-  
+
   { regiao: "Nordeste", uf: "CE", estado: "Ceará", contatosTotal: 700, contatosPegos: 490, porcentagem: 70, lat: -3.7172, lng: -38.5433, bounds: [[-7.9, -41.3], [-2.5, -37.0]] },
   { regiao: "Nordeste", uf: "CE", estado: "Ceará", cidade: "Fortaleza", contatosTotal: 350, contatosPegos: 245, porcentagem: 70, lat: -3.7172, lng: -38.5433 },
-  
+
   // Região Norte
   { regiao: "Norte", uf: "AM", estado: "Amazonas", contatosTotal: 600, contatosPegos: 360, porcentagem: 60, lat: -3.1190, lng: -60.0217, bounds: [[-9.8, -73.8], [2.2, -56.0]] },
   { regiao: "Norte", uf: "AM", estado: "Amazonas", cidade: "Manaus", contatosTotal: 300, contatosPegos: 180, porcentagem: 60, lat: -3.1190, lng: -60.0217 },
-  
+
   { regiao: "Norte", uf: "PA", estado: "Pará", contatosTotal: 500, contatosPegos: 300, porcentagem: 60, lat: -1.4558, lng: -48.5044, bounds: [[-9.8, -58.0], [2.2, -44.0]] },
   { regiao: "Norte", uf: "PA", estado: "Pará", cidade: "Belém", contatosTotal: 250, contatosPegos: 150, porcentagem: 60, lat: -1.4558, lng: -48.5044 },
 ];
@@ -166,66 +176,66 @@ const contatosIndividuaisInicial: ContatoIndividual[] = [
   { id: '3', regiao: 'Sudeste', uf: 'SP', estado: 'São Paulo', cidade: 'Campinas', base: 'Base Campinas', distribuidora: 'Distribuidora Norte', status: 'faltante' },
   { id: '4', regiao: 'Sudeste', uf: 'SP', estado: 'São Paulo', cidade: 'Campinas', base: 'Base Campinas', distribuidora: 'Distribuidora Sul', status: 'faltante' },
   { id: '5', regiao: 'Sudeste', uf: 'SP', estado: 'São Paulo', cidade: 'Santos', base: 'Base Baixada', distribuidora: 'Distribuidora Litoral', status: 'faltante' },
-  
+
   // Rio de Janeiro - Faltantes
   { id: '6', regiao: 'Sudeste', uf: 'RJ', estado: 'Rio de Janeiro', cidade: 'Rio de Janeiro', base: 'Base RJ Zona Sul', distribuidora: 'Distribuidora Carioca', status: 'faltante' },
   { id: '7', regiao: 'Sudeste', uf: 'RJ', estado: 'Rio de Janeiro', cidade: 'Rio de Janeiro', base: 'Base RJ Zona Norte', distribuidora: 'Distribuidora Fluminense', status: 'faltante' },
   { id: '8', regiao: 'Sudeste', uf: 'RJ', estado: 'Rio de Janeiro', cidade: 'Niterói', base: 'Base Niterói', distribuidora: 'Distribuidora Niterói', status: 'faltante' },
-  
+
   // Minas Gerais - Faltantes
   { id: '9', regiao: 'Sudeste', uf: 'MG', estado: 'Minas Gerais', cidade: 'Belo Horizonte', base: 'Base BH Centro', distribuidora: 'Distribuidora Mineira', status: 'faltante' },
   { id: '10', regiao: 'Sudeste', uf: 'MG', estado: 'Minas Gerais', cidade: 'Belo Horizonte', base: 'Base BH Pampulha', distribuidora: 'Distribuidora Central', status: 'faltante' },
   { id: '11', regiao: 'Sudeste', uf: 'MG', estado: 'Minas Gerais', cidade: 'Uberlândia', base: 'Base Uberlândia', distribuidora: 'Distribuidora Triângulo', status: 'faltante' },
   { id: '12', regiao: 'Sudeste', uf: 'MG', estado: 'Minas Gerais', cidade: 'Juiz de Fora', base: 'Base JF', distribuidora: 'Distribuidora Zona da Mata', status: 'faltante' },
-  
+
   // Espírito Santo - Faltantes
   { id: '13', regiao: 'Sudeste', uf: 'ES', estado: 'Espírito Santo', cidade: 'Vitória', base: 'Base Vitória', distribuidora: 'Distribuidora Capixaba', status: 'faltante' },
-  
+
   // Paraná - Faltantes
   { id: '14', regiao: 'Sul', uf: 'PR', estado: 'Paraná', cidade: 'Curitiba', base: 'Base Curitiba Centro', distribuidora: 'Distribuidora Paranaense', status: 'faltante' },
   { id: '15', regiao: 'Sul', uf: 'PR', estado: 'Paraná', cidade: 'Londrina', base: 'Base Londrina', distribuidora: 'Distribuidora Norte PR', status: 'faltante' },
-  
+
   // Santa Catarina - Faltantes
   { id: '16', regiao: 'Sul', uf: 'SC', estado: 'Santa Catarina', cidade: 'Florianópolis', base: 'Base Floripa', distribuidora: 'Distribuidora Catarinense', status: 'faltante' },
   { id: '17', regiao: 'Sul', uf: 'SC', estado: 'Santa Catarina', cidade: 'Joinville', base: 'Base Joinville', distribuidora: 'Distribuidora Norte SC', status: 'faltante' },
-  
+
   // Rio Grande do Sul - Faltantes
   { id: '18', regiao: 'Sul', uf: 'RS', estado: 'Rio Grande do Sul', cidade: 'Porto Alegre', base: 'Base POA Centro', distribuidora: 'Distribuidora Gaúcha', status: 'faltante' },
   { id: '19', regiao: 'Sul', uf: 'RS', estado: 'Rio Grande do Sul', cidade: 'Porto Alegre', base: 'Base POA Zona Sul', distribuidora: 'Distribuidora Sul RS', status: 'faltante' },
   { id: '20', regiao: 'Sul', uf: 'RS', estado: 'Rio Grande do Sul', cidade: 'Caxias do Sul', base: 'Base Caxias', distribuidora: 'Distribuidora Serra', status: 'faltante' },
-  
+
   // Goiás - Faltantes
   { id: '21', regiao: 'Centro-Oeste', uf: 'GO', estado: 'Goiás', cidade: 'Goiânia', base: 'Base Goiânia Centro', distribuidora: 'Distribuidora Goiana', status: 'faltante' },
   { id: '22', regiao: 'Centro-Oeste', uf: 'GO', estado: 'Goiás', cidade: 'Aparecida de Goiânia', base: 'Base Aparecida', distribuidora: 'Distribuidora Metropolitana', status: 'faltante' },
-  
+
   // Distrito Federal - Faltantes
   { id: '23', regiao: 'Centro-Oeste', uf: 'DF', estado: 'Distrito Federal', cidade: 'Brasília', base: 'Base Brasília Asa Norte', distribuidora: 'Distribuidora Federal', status: 'faltante' },
   { id: '24', regiao: 'Centro-Oeste', uf: 'DF', estado: 'Distrito Federal', cidade: 'Brasília', base: 'Base Brasília Asa Sul', distribuidora: 'Distribuidora Central DF', status: 'faltante' },
-  
+
   // Mato Grosso - Faltantes
   { id: '25', regiao: 'Centro-Oeste', uf: 'MT', estado: 'Mato Grosso', cidade: 'Cuiabá', base: 'Base Cuiabá', distribuidora: 'Distribuidora Pantanal', status: 'faltante' },
   { id: '26', regiao: 'Centro-Oeste', uf: 'MT', estado: 'Mato Grosso', cidade: 'Cuiabá', base: 'Base Cuiabá Centro', distribuidora: 'Distribuidora Centro-Oeste', status: 'faltante' },
-  
+
   // Mato Grosso do Sul - Faltantes
   { id: '27', regiao: 'Centro-Oeste', uf: 'MS', estado: 'Mato Grosso do Sul', cidade: 'Campo Grande', base: 'Base Campo Grande', distribuidora: 'Distribuidora MS', status: 'faltante' },
-  
+
   // Bahia - Faltantes
   { id: '28', regiao: 'Nordeste', uf: 'BA', estado: 'Bahia', cidade: 'Salvador', base: 'Base Salvador Centro', distribuidora: 'Distribuidora Baiana', status: 'faltante' },
   { id: '29', regiao: 'Nordeste', uf: 'BA', estado: 'Bahia', cidade: 'Salvador', base: 'Base Salvador Barra', distribuidora: 'Distribuidora Litoral BA', status: 'faltante' },
   { id: '30', regiao: 'Nordeste', uf: 'BA', estado: 'Bahia', cidade: 'Feira de Santana', base: 'Base Feira', distribuidora: 'Distribuidora Recôncavo', status: 'faltante' },
-  
+
   // Pernambuco - Faltantes
   { id: '31', regiao: 'Nordeste', uf: 'PE', estado: 'Pernambuco', cidade: 'Recife', base: 'Base Recife Centro', distribuidora: 'Distribuidora Pernambucana', status: 'faltante' },
   { id: '32', regiao: 'Nordeste', uf: 'PE', estado: 'Pernambuco', cidade: 'Recife', base: 'Base Recife Boa Viagem', distribuidora: 'Distribuidora Litoral PE', status: 'faltante' },
-  
+
   // Ceará - Faltantes
   { id: '33', regiao: 'Nordeste', uf: 'CE', estado: 'Ceará', cidade: 'Fortaleza', base: 'Base Fortaleza Centro', distribuidora: 'Distribuidora Cearense', status: 'faltante' },
   { id: '34', regiao: 'Nordeste', uf: 'CE', estado: 'Ceará', cidade: 'Fortaleza', base: 'Base Fortaleza Aldeota', distribuidora: 'Distribuidora Litoral CE', status: 'faltante' },
-  
+
   // Amazonas - Faltantes
   { id: '35', regiao: 'Norte', uf: 'AM', estado: 'Amazonas', cidade: 'Manaus', base: 'Base Manaus Centro', distribuidora: 'Distribuidora Amazônica', status: 'faltante' },
   { id: '36', regiao: 'Norte', uf: 'AM', estado: 'Amazonas', cidade: 'Manaus', base: 'Base Manaus Zona Norte', distribuidora: 'Distribuidora Norte AM', status: 'faltante' },
-  
+
   // Pará - Faltantes
   { id: '37', regiao: 'Norte', uf: 'PA', estado: 'Pará', cidade: 'Belém', base: 'Base Belém Centro', distribuidora: 'Distribuidora Paraense', status: 'faltante' },
   { id: '38', regiao: 'Norte', uf: 'PA', estado: 'Pará', cidade: 'Belém', base: 'Base Belém Icoaraci', distribuidora: 'Distribuidora Litoral PA', status: 'faltante' },
@@ -277,7 +287,7 @@ function RegionLayer({ data }: { data: ContatoData[] }) {
           'https://raw.githubusercontent.com/tbrugz/geodata-br/master/geojson/geojs-27-uf.json',
           'https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/brazil-states.geojson'
         ];
-        
+
         for (const url of urls) {
           try {
             const response = await fetch(url);
@@ -298,7 +308,7 @@ function RegionLayer({ data }: { data: ContatoData[] }) {
         console.log('Usando GeoJSON local:', error);
       }
     };
-    
+
     loadPreciseGeoJSON();
   }, []);
 
@@ -306,10 +316,10 @@ function RegionLayer({ data }: { data: ContatoData[] }) {
     const updateZoom = () => {
       setMapZoom(map.getZoom());
     };
-    
+
     map.on('zoomend', updateZoom);
     updateZoom();
-    
+
     return () => {
       map.off('zoomend', updateZoom);
     };
@@ -357,7 +367,7 @@ function RegionLayer({ data }: { data: ContatoData[] }) {
   const getRegiaoByUF = (uf: string): string | null => {
     const ufMap: Record<string, string> = {
       'AC': 'Norte', 'AM': 'Norte', 'AP': 'Norte', 'PA': 'Norte', 'RO': 'Norte', 'RR': 'Norte', 'TO': 'Norte',
-      'AL': 'Nordeste', 'BA': 'Nordeste', 'CE': 'Nordeste', 'MA': 'Nordeste', 'PB': 'Nordeste', 
+      'AL': 'Nordeste', 'BA': 'Nordeste', 'CE': 'Nordeste', 'MA': 'Nordeste', 'PB': 'Nordeste',
       'PE': 'Nordeste', 'PI': 'Nordeste', 'RN': 'Nordeste', 'SE': 'Nordeste',
       'ES': 'Sudeste', 'MG': 'Sudeste', 'RJ': 'Sudeste', 'SP': 'Sudeste',
       'PR': 'Sul', 'RS': 'Sul', 'SC': 'Sul',
@@ -369,7 +379,7 @@ function RegionLayer({ data }: { data: ContatoData[] }) {
   // Função auxiliar para obter UF por nome
   const getUFByName = (name: string): string => {
     const nameMap: Record<string, string> = {
-      'Acre': 'AC', 'Amazonas': 'AM', 'Amapá': 'AP', 'Pará': 'PA', 'Rondônia': 'RO', 
+      'Acre': 'AC', 'Amazonas': 'AM', 'Amapá': 'AP', 'Pará': 'PA', 'Rondônia': 'RO',
       'Roraima': 'RR', 'Tocantins': 'TO',
       'Alagoas': 'AL', 'Bahia': 'BA', 'Ceará': 'CE', 'Maranhão': 'MA', 'Paraíba': 'PB',
       'Pernambuco': 'PE', 'Piauí': 'PI', 'Rio Grande do Norte': 'RN', 'Sergipe': 'SE',
@@ -383,13 +393,13 @@ function RegionLayer({ data }: { data: ContatoData[] }) {
   // Filtrar features do GeoJSON baseado no zoom
   const filteredFeatures = useMemo(() => {
     if (!geoJsonData || !geoJsonData.features) return [];
-    
+
     if (mapZoom < 5) {
       // Zoom baixo: mostrar por região (agrupar estados da mesma região)
       const regiaoMap = new Map<string, any[]>();
       geoJsonData.features.forEach((feature: any) => {
-        const regiao = feature.properties?.regiao || 
-                      getRegiaoByUF(feature.properties?.sigla || feature.properties?.uf || getUFByName(feature.properties?.name || ''));
+        const regiao = feature.properties?.regiao ||
+          getRegiaoByUF(feature.properties?.sigla || feature.properties?.uf || getUFByName(feature.properties?.name || ''));
         if (regiao) {
           if (!regiaoMap.has(regiao)) {
             regiaoMap.set(regiao, []);
@@ -397,14 +407,14 @@ function RegionLayer({ data }: { data: ContatoData[] }) {
           regiaoMap.get(regiao)!.push(feature);
         }
       });
-      
+
       // Criar features agrupadas por região
       return Array.from(regiaoMap.entries()).map(([regiao, features]) => {
         const regiaoData = dataByRegiao.get(regiao);
-        const porcentagem = regiaoData && regiaoData.total > 0 
-          ? Math.round((regiaoData.pegos / regiaoData.total) * 100) 
+        const porcentagem = regiaoData && regiaoData.total > 0
+          ? Math.round((regiaoData.pegos / regiaoData.total) * 100)
           : 0;
-        
+
         // Combinar geometrias dos estados da região em MultiPolygon
         const coordinates: number[][][][] = [];
         features.forEach((f: any) => {
@@ -414,7 +424,7 @@ function RegionLayer({ data }: { data: ContatoData[] }) {
             coordinates.push(...(f.geometry.coordinates as number[][][][]));
           }
         });
-        
+
         return {
           type: "Feature",
           properties: {
@@ -434,11 +444,11 @@ function RegionLayer({ data }: { data: ContatoData[] }) {
     } else {
       // Zoom médio/alto: mostrar por estado individual
       return geoJsonData.features.map((feature: any) => {
-        const uf = feature.properties?.uf || 
-                   feature.properties?.sigla ||
-                   getUFByName(feature.properties?.name || '');
+        const uf = feature.properties?.uf ||
+          feature.properties?.sigla ||
+          getUFByName(feature.properties?.name || '');
         const estadoData = dataByUF.get(uf);
-        
+
         return {
           ...feature,
           properties: {
@@ -459,7 +469,7 @@ function RegionLayer({ data }: { data: ContatoData[] }) {
       // Se não tiver geometria, usar coordenadas padrão do Brasil
       return [-14.2350, -51.9253];
     }
-    
+
     try {
       // Usar Leaflet para calcular o centro
       const layer = L.geoJSON(feature as any);
@@ -471,14 +481,14 @@ function RegionLayer({ data }: { data: ContatoData[] }) {
     } catch (e) {
       // Se falhar, usar método alternativo
     }
-    
+
     // Método alternativo: calcular manualmente
     let lats: number[] = [];
     let lngs: number[] = [];
-    
+
     const extractCoords = (coords: any) => {
       if (!Array.isArray(coords)) return;
-      
+
       if (Array.isArray(coords[0])) {
         // É um array aninhado
         coords.forEach((coord: any) => {
@@ -490,7 +500,7 @@ function RegionLayer({ data }: { data: ContatoData[] }) {
         lats.push(coords[1]);
       }
     };
-    
+
     if (feature.geometry.type === 'Polygon') {
       feature.geometry.coordinates.forEach(extractCoords);
     } else if (feature.geometry.type === 'MultiPolygon') {
@@ -500,7 +510,7 @@ function RegionLayer({ data }: { data: ContatoData[] }) {
         }
       });
     }
-    
+
     if (lats.length === 0 || lngs.length === 0) {
       // Fallback: usar coordenadas conhecidas por UF se disponível
       const uf = feature.properties?.uf || feature.properties?.sigla;
@@ -510,10 +520,10 @@ function RegionLayer({ data }: { data: ContatoData[] }) {
       }
       return [-14.2350, -51.9253];
     }
-    
+
     const avgLat = lats.reduce((a, b) => a + b, 0) / lats.length;
     const avgLng = lngs.reduce((a, b) => a + b, 0) / lngs.length;
-    
+
     return [avgLat, avgLng];
   };
 
@@ -523,18 +533,18 @@ function RegionLayer({ data }: { data: ContatoData[] }) {
         const props = feature.properties;
         const porcentagem = props.porcentagem || 0;
         const center = getFeatureCenter(feature);
-        
+
         // Debug: log para verificar se os dados estão corretos
         if (index === 0) {
-          console.log('Feature sample:', { 
-            name: props.name || props.estado || props.regiao, 
-            porcentagem, 
+          console.log('Feature sample:', {
+            name: props.name || props.estado || props.regiao,
+            porcentagem,
             center,
             contatosTotal: props.contatosTotal,
             contatosPegos: props.contatosPegos
           });
         }
-        
+
         // Criar um ícone customizado para mostrar a porcentagem
         const percentageIcon = L.divIcon({
           className: 'percentage-label',
@@ -564,7 +574,7 @@ function RegionLayer({ data }: { data: ContatoData[] }) {
           iconAnchor: [35, 17.5],
           popupAnchor: [0, -17.5],
         });
-        
+
         return (
           <>
             <GeoJSON
@@ -673,30 +683,301 @@ export default function MapaContatos() {
   const [dadosContatos, setDadosContatos] = useState<ContatoData[]>(dadosContatosInicial);
   const [selectedContatos, setSelectedContatos] = useState<Set<string | number>>(new Set());
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImporting(true);
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer);
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+      console.log('Dados importados:', jsonData);
+
+      // Limpar lista atual
+      const novosContatos: ContatoIndividual[] = [];
+      const novosSelecionados = new Set<string | number>();
+
+      // Função auxiliar para normalizar texto (remover acentos e lowercase)
+      const normalizeText = (text: string) => {
+        return text
+          ? text.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim()
+          : "";
+      };
+
+      // Mapeamento de nomes de estado para UF
+      const getUfFromEstado = (estadoNome: string) => {
+        const map: Record<string, string> = {
+          'acre': 'AC', 'alagoas': 'AL', 'amazonas': 'AM', 'amapa': 'AP', 'bahia': 'BA', 'ceara': 'CE',
+          'distrito federal': 'DF', 'espirito santo': 'ES', 'goias': 'GO', 'maranhao': 'MA',
+          'minas gerais': 'MG', 'mato grosso do sul': 'MS', 'mato grosso': 'MT', 'para': 'PA',
+          'paraiba': 'PB', 'pernambuco': 'PE', 'piaui': 'PI', 'parana': 'PR', 'rio de janeiro': 'RJ',
+          'rio grande do norte': 'RN', 'rondonia': 'RO', 'roraima': 'RR', 'rio grande do sul': 'RS',
+          'santa catarina': 'SC', 'sergipe': 'SE', 'sao paulo': 'SP', 'tocantins': 'TO'
+        };
+        return map[normalizeText(estadoNome)] || estadoNome.substring(0, 2).toUpperCase();
+      };
+
+      for (const [index, row] of (jsonData as any[]).entries()) {
+        const normalizedRow: any = {};
+        // Normalizar chaves E filtrar valores vazios/nulos
+        Object.keys(row).forEach(key => {
+          const val = row[key];
+          if (val !== null && val !== undefined && val !== '') {
+            normalizedRow[key.toLowerCase().trim()] = val;
+          }
+        });
+
+        // Validação preliminar: Se a linha não tem info mínima, pular
+        // Isso evita que linhas vazias no Excel contem como "Faltantes"
+        const hasInfo = normalizedRow['distribuidora'] || normalizedRow['cia'] ||
+          normalizedRow['bandeira'] || normalizedRow['fornecedor'] ||
+          normalizedRow['nom_razao_social'] || normalizedRow['razao_social'] ||
+          normalizedRow['uf'] || normalizedRow['sig_uf'] ||
+          normalizedRow['cidade'] || normalizedRow['municipio'];
+
+        if (!hasInfo) continue;
+
+        // Identificar campos principais
+        const distribuidora = normalizedRow['distribuidora'] || normalizedRow['cia'] ||
+          normalizedRow['bandeira'] || normalizedRow['fornecedor'] ||
+          normalizedRow['nom_razao_social'] || normalizedRow['razao_social'] ||
+          `Distribuidora ${index + 1}`;
+
+        const cidade = normalizedRow['cidade'] || normalizedRow['municipio'] ||
+          normalizedRow['nom_localidade'] || normalizedRow['localidade'] ||
+          "Desconhecida";
+
+        let uf = normalizedRow['uf'] || normalizedRow['estado'] ||
+          normalizedRow['sig_uf'] || normalizedRow['unidade_federativa'] ||
+          "";
+
+        if (uf.length > 2) uf = getUfFromEstado(uf);
+        uf = uf.toUpperCase().trim();
+
+        const base = normalizedRow['base'] || "";
+
+        // Identificar se mapeado - Lógica Ajustada (Foco na coluna MAPEADO)
+        let isMapeado = false;
+
+        // 1. Prioridade absoluta para a coluna 'mapeado'
+        if (normalizedRow['mapeado'] !== undefined) {
+          const val = String(normalizedRow['mapeado']).toLowerCase().trim();
+          isMapeado = ['sim', 's', 'yes', 'y', 'ok', 'ativo', 'true', 'verdadeiro', 'mapped'].includes(val);
+        }
+        // 2. Se não existir a coluna 'mapeado', tentar outras colunas de status, MAS IGNORANDO 'operacao'
+        else {
+          const mapCols = ['status', 'situacao', 'ativo']; // Removido 'operacao'
+          for (const col of mapCols) {
+            if (normalizedRow[col]) {
+              const val = String(normalizedRow[col]).toLowerCase().trim();
+              if (['sim', 's', 'yes', 'y', 'ok', 'ativo', 'true', 'verdadeiro', 'mapped'].includes(val)) {
+                isMapeado = true;
+                break;
+              }
+            }
+          }
+
+          // 3. Fallback genérico: varrer valores mas excluir explicitamente a coluna 'operacao'
+          if (!isMapeado) {
+            isMapeado = Object.keys(normalizedRow).some(key => {
+              if (key.includes('operacao') || key.includes('operation')) return false; // Ignorar coluna operação
+
+              const val = normalizedRow[key];
+              const strVal = String(val).toLowerCase().trim();
+              return ['sim', 's', 'yes', 'y', 'ok', 'ativo', 'mapeado', 'true'].includes(strVal);
+            });
+          }
+        }
+
+        // Debug específico para TO se necessário
+        // if (uf === 'TO') console.log('Row TO:', { distribuidora, isMapeado, row });
+
+        // Região
+        const regiao = getRegiaoByUF(uf);
+
+        // ID único (baseado nos dados para consistência, ou index se falhar)
+        // Usar um hash simples das string para tentar manter consistência entre imports se os dados forem iguais
+        const idContent = `${distribuidora}-${cidade}-${uf}-${base}-${index}`;
+        const id = `import-${index}`; // Simplificado para garantir unicidade na sessão
+
+        if (isMapeado) {
+          novosSelecionados.add(id);
+        }
+
+        novosContatos.push({
+          id,
+          regiao,
+          uf,
+          estado: uf,
+          cidade,
+          base,
+          distribuidora,
+          status: isMapeado ? 'pego' : 'faltante',
+          pego: isMapeado,
+          ...row
+        });
+      }
+
+      console.log(`Importados ${novosContatos.length} novos contatos.`);
+
+      // Atualizar estado
+      setContatosIndividuais(novosContatos);
+      setSelectedContatos(novosSelecionados);
+
+      // Recalcular agregação para o mapa
+      const contatosAgrupados = new Map();
+      novosContatos.forEach(contato => {
+        // Por UF/Estado
+        const keyEstado = `${contato.regiao}-${contato.uf}`;
+        const estadoData = contatosAgrupados.get(keyEstado) || { total: 0, pegos: 0, uf: contato.uf, estado: contato.estado, regiao: contato.regiao };
+        estadoData.total += 1;
+        if (contato.pego) estadoData.pegos += 1;
+        contatosAgrupados.set(keyEstado, estadoData);
+
+        // Por Cidade
+        if (contato.cidade && contato.cidade !== "Desconhecida") {
+          const keyCidade = `${contato.regiao}-${contato.uf}-${contato.cidade}`;
+          const cidadeData = contatosAgrupados.get(keyCidade) || { total: 0, pegos: 0, uf: contato.uf, estado: contato.estado, cidade: contato.cidade, regiao: contato.regiao };
+          cidadeData.total += 1;
+          if (contato.pego) cidadeData.pegos += 1;
+          contatosAgrupados.set(keyCidade, cidadeData);
+        }
+      });
+
+      const dadosContatosProcessados: ContatoData[] = Array.from(contatosAgrupados.values()).map(item => {
+        const coords = getCoordinatesByUF(item.uf);
+        const porcentagem = item.total > 0 ? Math.round((item.pegos / item.total) * 100) : 0;
+        return {
+          regiao: item.regiao,
+          uf: item.uf,
+          estado: item.estado,
+          cidade: item.cidade,
+          contatosTotal: item.total,
+          contatosPegos: item.pegos,
+          porcentagem,
+          lat: coords.lat, // Idealmente teríamos lat/lng da cidade, mas UF serve por enquanto
+          lng: coords.lng
+        };
+      });
+
+      setDadosContatos(dadosContatosProcessados);
+
+      // SALVAR NO BANCO DE DADOS (SUPABASE)
+      try {
+        toast({
+          title: 'Sincronizando...',
+          description: 'Salvando dados no banco de dados...',
+        });
+
+        // 1. Buscar dados existentes para tentar manter IDs e evitar duplicatas
+        // (Assumindo que não há chave única composta no banco, precisamos fazer match manual)
+        const { data: existingData, error: fetchError } = await supabase
+          .from('Contatos' as any)
+          .select('id, distribuidora, cidade, uf, base');
+
+        if (fetchError) throw fetchError;
+
+        const dbMap = new Map<string, any>();
+        existingData?.forEach((item: any) => {
+          const key = `${normalizeText(item.distribuidora)}-${normalizeText(item.cidade)}-${normalizeText(item.uf)}`;
+          dbMap.set(key, item);
+        });
+
+        // 2. Preparar dados para Upsert
+        const upsertBatch = novosContatos.map(contato => {
+          const key = `${normalizeText(contato.distribuidora)}-${normalizeText(contato.cidade)}-${normalizeText(contato.uf)}`;
+          const existing = dbMap.get(key);
+
+          // Payload para o banco
+          return {
+            // Se existir, usa o ID do banco. Se não, deixa undefined para o banco gerar (ou usa o ID gerado se for UUID válido, mas aqui estamos usando random string no frontend, melhor deixar banco gerar se for insert)
+            id: existing?.id || contato.id, // Usar ID gerado (import-N) se não existir
+            distribuidora: contato.distribuidora,
+            cidade: contato.cidade,
+            uf: contato.uf,
+            estado: contato.estado,
+            base: contato.base,
+            pego: contato.pego,
+            status: contato.pego ? 'pego' : 'faltante',
+            regiao: contato.regiao, // Campo importante para filtros
+            updated_at: new Date().toISOString()
+          };
+        });
+
+        // 3. Enviar em lotes (Supabase tem limites de payload)
+        const BATCH_SIZE = 100;
+        let successCount = 0;
+        let insertCount = 0;
+        let updateCount = 0;
+
+        for (let i = 0; i < upsertBatch.length; i += BATCH_SIZE) {
+          const batch = upsertBatch.slice(i, i + BATCH_SIZE);
+
+          const { data, error: upsertError } = await supabase
+            .from('Contatos' as any)
+            .upsert(batch, { onConflict: 'id' }) // Usa ID para conflito (update). Sem ID, faz insert.
+            .select();
+
+          if (upsertError) {
+            console.error('Erro no lote', i, upsertError);
+          } else {
+            successCount += batch.length;
+            // Estimativa simples
+            batch.forEach(b => b.id ? updateCount++ : insertCount++);
+          }
+        }
+
+        toast({
+          title: 'Sincronização Concluída',
+          description: `${successCount} registros processados (${updateCount} atualizados, ${insertCount} novos).`,
+        });
+
+      } catch (dbError: any) {
+        console.error('Erro ao salvar no banco:', dbError);
+        toast({
+          title: 'Erro ao Salvar',
+          description: `Os dados estão visíveis mas não foram salvos: ${dbError.message}`,
+          variant: 'destructive'
+        });
+      }
+
+    } catch (error) {
+      console.error('Erro na importação:', error);
+      toast({
+        title: 'Erro na importação',
+        description: 'Falha ao processar o arquivo Excel.',
+        variant: 'destructive'
+      });
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   // Carregar contatos do banco de dados
   useEffect(() => {
-    const loadContatos = async () => {
+    async function loadContatos() {
       setLoading(true);
       try {
-        console.log('🔍 Iniciando carregamento de contatos do banco...');
-        
-        // Usar função RPC para buscar contatos do schema cotacao
-        console.log('🔍 Buscando contatos via RPC get_contatos...');
-        
         let contatosData: any[] = [];
         let error: any = null;
-        
+
         try {
-          // Tentar chamar a função RPC (sem passar objeto vazio, pois a função não tem parâmetros)
-          const result = await supabase.rpc('get_contatos');
-          contatosData = result.data || [];
-          error = result.error;
-          
-          // Se der erro, tentar novamente após um pequeno delay (pode ser cache)
-          if (error && error.message?.includes('Could not find the function')) {
-            console.log('⏳ Aguardando 1 segundo e tentando novamente (pode ser cache)...');
+          console.log('🔍 Iniciando carregamento de contatos do banco...');
+
+          // Usar função RPC para buscar contatos do schema cotacao
+          console.log('🔍 Buscando contatos via RPC get_contatos...');
+
+          try {
+            // Tentar chamar a função RPC (sem passar objeto vazio, pois a função não tem parâmetros)
             await new Promise(resolve => setTimeout(resolve, 1000));
-            const retryResult = await supabase.rpc('get_contatos');
+            const retryResult = await supabase.rpc('get_contatos' as any);
             if (!retryResult.error) {
               contatosData = retryResult.data || [];
               error = null;
@@ -704,22 +985,24 @@ export default function MapaContatos() {
             } else {
               error = retryResult.error;
             }
+          } catch (retryErr) {
+            console.error('Erro no retry:', retryErr);
           }
-          
+
           if (error) {
             console.error('❌ Erro ao carregar contatos:', error);
             console.error('Código do erro:', error.code);
             console.error('Mensagem:', error.message);
             console.error('Detalhes:', error.details);
             console.error('Hint:', error.hint);
-            
+
             // Se for erro de função não encontrada, tentar recarregar a página após um delay
             const errorMessage = error.message || '';
-            const isFunctionNotFound = errorMessage.includes('Could not find the function') || 
-                                       errorMessage.includes('function') && errorMessage.includes('not found') ||
-                                       errorMessage.includes('does not exist') ||
-                                       error.code === '42883';
-            
+            const isFunctionNotFound = errorMessage.includes('Could not find the function') ||
+              errorMessage.includes('function') && errorMessage.includes('not found') ||
+              errorMessage.includes('does not exist') ||
+              error.code === '42883';
+
             if (isFunctionNotFound) {
               toast({
                 title: 'Função RPC não encontrada',
@@ -775,7 +1058,7 @@ export default function MapaContatos() {
           const cidade = contato.cidade || contato.Cidade || contato.nome_cidade || '';
           const base = contato.base || contato.Base || contato.nome_base || '';
           const distribuidora = contato.distribuidora || contato.Distribuidora || contato.nome_distribuidora || '';
-          
+
           // Verificar se o contato foi pego (pode ser um campo boolean ou status)
           const pego = contato.pego || contato.Pego || contato.status === 'pego' || contato.status_contato === 'pego' || false;
           // Gerar ID único baseado nas informações do contato
@@ -800,7 +1083,7 @@ export default function MapaContatos() {
         setContatosIndividuais(contatosProcessados);
 
         // Agrupar contatos por região/estado/cidade para o mapa
-        const contatosAgrupados = new Map<string, { total: number; pegos: number; uf: string; estado: string; cidade?: string; regiao: string }>();
+        const contatosAgrupados = new Map();
 
         contatosProcessados.forEach(contato => {
           // Por estado
@@ -821,10 +1104,10 @@ export default function MapaContatos() {
         });
 
         // Converter para formato ContatoData
-        const dadosContatosProcessados: ContatoData[] = Array.from(contatosAgrupados.values()).map(item => {
+        const dadosContatosProcessados = Array.from(contatosAgrupados.values()).map(item => {
           const coords = getCoordinatesByUF(item.uf);
           const porcentagem = item.total > 0 ? Math.round((item.pegos / item.total) * 100) : 0;
-          
+
           return {
             regiao: item.regiao,
             uf: item.uf,
@@ -841,17 +1124,12 @@ export default function MapaContatos() {
         setDadosContatos(dadosContatosProcessados);
 
         // Carregar contatos já selecionados (pegos)
-        const pegosIds = new Set(contatosProcessados.filter(c => c.pego).map(c => c.id));
+        const idsPegos = contatosProcessados.filter(c => c.pego).map(c => c.id);
+        const pegosIds = new Set(idsPegos);
         setSelectedContatos(pegosIds);
 
-      } catch (error) {
-        console.error('Erro ao processar contatos:', error);
-        toast({
-          title: 'Erro',
-          description: 'Erro ao processar os dados dos contatos.',
-          variant: 'destructive',
-        });
-        // Garantir que a página renderize mesmo com erro
+      } catch (e) {
+        console.error('❌ Exceção ao carregar contatos:', e);
         setContatosIndividuais([]);
         setDadosContatos([]);
         setSelectedContatos(new Set());
@@ -867,17 +1145,17 @@ export default function MapaContatos() {
   const toggleContatoPego = async (contatoId: string | number) => {
     try {
       const novoStatus = !selectedContatos.has(contatoId);
-      
+
       // Usar função RPC para atualizar (se existir)
       let updateSuccess = false;
       let error: any = null;
-      
+
       try {
-        const { error: rpcError } = await supabase.rpc('update_contato_pego', {
+        const { error: rpcError } = await supabase.rpc('update_contato_pego' as any, {
           p_id: contatoId,
           p_pego: novoStatus
         });
-        
+
         if (!rpcError) {
           updateSuccess = true;
         } else {
@@ -887,10 +1165,10 @@ export default function MapaContatos() {
         // Se RPC não existir, tentar tabela pública
         try {
           const { error: publicError } = await supabase
-            .from('Contatos')
-            .update({ pego: novoStatus })
+            .from('Contatos' as any)
+            .update({ pego: novoStatus } as any)
             .eq('id', contatoId);
-          
+
           if (!publicError) {
             updateSuccess = true;
           } else {
@@ -912,10 +1190,10 @@ export default function MapaContatos() {
 
       // Atualizar contato na lista e recalcular dados do mapa
       setContatosIndividuais(prev => {
-        const contatosAtualizados = prev.map(c => 
+        const contatosAtualizados = prev.map(c =>
           c.id === contatoId ? { ...c, pego: novoStatus, status: novoStatus ? 'pego' : 'faltante' } : c
         );
-        
+
         // Recalcular dados do mapa com os contatos atualizados
         const contatosAgrupados = new Map<string, { total: number; pegos: number; uf: string; estado: string; cidade?: string; regiao: string }>();
         contatosAtualizados.forEach(contato => {
@@ -951,8 +1229,8 @@ export default function MapaContatos() {
         });
 
         setDadosContatos(dadosContatosAtualizados);
-        
-        return contatosAtualizados;
+
+        return contatosAtualizados as any;
       });
 
 
@@ -982,10 +1260,10 @@ export default function MapaContatos() {
         novosSelecionados.delete(contatoId);
       }
       setSelectedContatos(novosSelecionados);
-      setContatosIndividuais(prev => prev.map(c => 
+      setContatosIndividuais(prev => prev.map(c =>
         c.id === contatoId ? { ...c, pego: novoStatusCatch, status: novoStatusCatch ? 'pego' : 'faltante' } : c
       ));
-      
+
       toast({
         title: 'Erro',
         description: 'Erro ao atualizar o contato no banco, mas a mudança foi aplicada localmente.',
@@ -999,7 +1277,7 @@ export default function MapaContatos() {
     const total = dadosContatos.reduce((sum, item) => sum + item.contatosTotal, 0);
     const pegos = dadosContatos.reduce((sum, item) => sum + item.contatosPegos, 0);
     const porcentagemGeral = total > 0 ? Math.round((pegos / total) * 100) : 0;
-    
+
     // Por região
     const porRegiao = dadosContatos.reduce((acc, item) => {
       if (!acc[item.regiao]) {
@@ -1009,7 +1287,7 @@ export default function MapaContatos() {
       acc[item.regiao].pegos += item.contatosPegos;
       return acc;
     }, {} as Record<string, { total: number; pegos: number }>);
-    
+
     return {
       total,
       pegos,
@@ -1043,6 +1321,26 @@ export default function MapaContatos() {
               <p className="text-white/80 mt-1">
                 Visualização da porcentagem de contatos pegos por região
               </p>
+
+              <div className="flex gap-2 mt-4">
+                <input
+                  type="file"
+                  accept=".xlsx, .xls"
+                  className="hidden"
+                  ref={fileInputRef}
+                  onChange={handleFileUpload}
+                />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="gap-2 bg-white/10 hover:bg-white/20 text-white border-white/20"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={importing}
+                >
+                  {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                  Importar Planilha
+                </Button>
+              </div>
             </div>
             <div className="flex gap-3 flex-wrap">
               <Card className="bg-white/10 backdrop-blur-sm border-white/20">
@@ -1109,9 +1407,9 @@ export default function MapaContatos() {
                     </div>
                     <div className="flex items-center gap-2 mt-2">
                       <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                        <div 
+                        <div
                           className="h-full rounded-full transition-all"
-                          style={{ 
+                          style={{
                             width: `${porcentagem}%`,
                             backgroundColor: getColorByPercentage(porcentagem)
                           }}
@@ -1174,7 +1472,7 @@ export default function MapaContatos() {
                 <RegionLayer data={dadosContatos} />
               </MapContainer>
             </div>
-            
+
             <div className="text-sm text-muted-foreground">
               <p className="mb-2">
                 <strong>Instruções:</strong> Dê zoom no mapa para ver mais detalhes:
@@ -1221,10 +1519,10 @@ export default function MapaContatos() {
                     })
                     .map((item) => {
                       const faltantes = item.contatosTotal - item.contatosPegos;
-                      const porcentagem = item.contatosTotal > 0 
-                        ? Math.round((item.contatosPegos / item.contatosTotal) * 100) 
+                      const porcentagem = item.contatosTotal > 0
+                        ? Math.round((item.contatosPegos / item.contatosTotal) * 100)
                         : 0;
-                      
+
                       return (
                         <TableRow key={`${item.uf}-${item.estado}`}>
                           <TableCell className="font-medium">{item.regiao}</TableCell>
@@ -1248,10 +1546,10 @@ export default function MapaContatos() {
                             </span>
                           </TableCell>
                           <TableCell className="text-right">
-                            <Badge 
-                              variant="outline" 
+                            <Badge
+                              variant="outline"
                               className="font-semibold"
-                              style={{ 
+                              style={{
                                 borderColor: getColorByPercentage(porcentagem),
                                 color: getColorByPercentage(porcentagem)
                               }}
@@ -1261,15 +1559,15 @@ export default function MapaContatos() {
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <div 
+                              <div
                                 className="w-3 h-3 rounded-full"
                                 style={{ backgroundColor: getColorByPercentage(porcentagem) }}
                               />
                               <span className="text-xs text-muted-foreground">
                                 {porcentagem >= 80 ? 'Excelente' :
-                                 porcentagem >= 70 ? 'Bom' :
-                                 porcentagem >= 60 ? 'Regular' :
-                                 porcentagem >= 50 ? 'Ruim' : 'Muito Ruim'}
+                                  porcentagem >= 70 ? 'Bom' :
+                                    porcentagem >= 60 ? 'Regular' :
+                                      porcentagem >= 50 ? 'Ruim' : 'Muito Ruim'}
                               </span>
                             </div>
                           </TableCell>
@@ -1279,7 +1577,7 @@ export default function MapaContatos() {
                 </TableBody>
               </Table>
             </div>
-            
+
             {/* Resumo de Faltantes */}
             <div className="mt-4 p-4 bg-red-50 dark:bg-red-950/20 rounded-lg border border-red-200 dark:border-red-900">
               <div className="flex items-center gap-2 mb-2">
@@ -1291,10 +1589,10 @@ export default function MapaContatos() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                 {Object.entries(stats.porRegiao).map(([regiao, dados]) => {
                   const faltantes = dados.total - dados.pegos;
-                  const porcentagem = dados.total > 0 
-                    ? Math.round((dados.pegos / dados.total) * 100) 
+                  const porcentagem = dados.total > 0
+                    ? Math.round((dados.pegos / dados.total) * 100)
                     : 0;
-                  
+
                   return (
                     <div key={regiao} className="space-y-1">
                       <div className="font-medium text-red-800 dark:text-red-200">{regiao}</div>
@@ -1391,8 +1689,8 @@ export default function MapaContatos() {
                             )}
                           </TableCell>
                           <TableCell>
-                            <Badge 
-                              variant={isPego ? "default" : "destructive"} 
+                            <Badge
+                              variant={isPego ? "default" : "destructive"}
                               className={`text-xs ${isPego ? 'bg-green-600' : ''}`}
                             >
                               {isPego ? 'Pego' : 'Faltante'}
@@ -1405,7 +1703,7 @@ export default function MapaContatos() {
                 </TableBody>
               </Table>
             </div>
-            
+
             {contatosIndividuais.length > 0 && contatosIndividuais.filter(c => c.status === 'faltante').length === 0 && (
               <div className="text-center py-8 text-muted-foreground">
                 <CheckCircle className="h-12 w-12 mx-auto mb-2 text-green-500" />

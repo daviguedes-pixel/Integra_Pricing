@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { SisEmpresaCombobox } from "@/components/SisEmpresaCombobox";
+
 import { ClientCombobox } from "@/components/ClientCombobox";
 import { ImageViewerModal } from "@/components/ImageViewerModal";
 import { FileUploader } from "@/components/FileUploader";
@@ -20,7 +21,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { usePermissions } from "@/hooks/usePermissions";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { ArrowLeft, Send, Save, TrendingUp, BarChart, MapPin, CheckCircle, AlertCircle, Eye, DollarSign, Clock, Check, X, FileText, ChevronDown, Plus, Download, Maximize2, Loader2, Edit, Trash2 } from "lucide-react";
+import { ArrowLeft, Send, Save, TrendingUp, BarChart, CheckCircle, AlertCircle, Eye, DollarSign, Clock, Check, X, FileText, ChevronDown, Plus, Download, Maximize2, Loader2, Edit, Trash2, RefreshCcw } from "lucide-react";
 import { removeCache } from "@/lib/cache";
 import { IntegraLogo } from "@/components/IntegraLogo";
 import { SaoRoqueLogo } from "@/components/SaoRoqueLogo";
@@ -41,6 +42,14 @@ interface Reference {
   clients?: { name: string; code: string };
   payment_methods?: { name: string };
 }
+
+const productLabels: Record<string, string> = {
+  's10': 'Diesel S-10',
+  's10_aditivado': 'Diesel S-10 Aditivado',
+  'diesel_s500': 'Diesel S-500',
+  'diesel_s500_aditivado': 'Diesel S-500 Aditivado',
+  'arla32_granel': 'Arla 32 Granel'
+};
 
 // Componente para visualização completa da proposta comercial
 function ProposalFullView({ batch, proposalNumber, proposalDate, generalStatus, user }: any) {
@@ -355,6 +364,67 @@ export default function PriceRequest() {
   const [batchName, setBatchName] = useState<string>('');
   const [editingRequest, setEditingRequest] = useState<any>(null);
   const [showEditModal, setShowEditModal] = useState(false);
+  // Estado para controlar abertura de modais de anexos por card
+  const [openAttachmentModals, setOpenAttachmentModals] = useState<Record<string, number | null>>({});
+
+  const [syncingN8N, setSyncingN8N] = useState(false);
+
+  // Função para acionar fluxo n8n
+  const handleN8NSync = async () => {
+    try {
+      setSyncingN8N(true);
+      const loadingToast = toast.loading("Executando sincronização no n8n... Aguarde a conclusão.");
+
+      // URL do Webhook do n8n
+      const WEBHOOK_URL = "http://n8n.hetz.com/webhook/c3c95968-cf5e-4b85-8a89-9a9fd5112eb6";
+
+      // Buscar usuário atual de forma segura
+      const currentUserEmail = user?.email;
+      let currentUserName = user?.user_metadata?.nome || 'Usuário';
+
+      const response = await fetch(WEBHOOK_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'sync_costs',
+          requested_by: currentUserName,
+          user_email: currentUserEmail,
+          timestamp: new Date().toISOString()
+        })
+      });
+
+      toast.dismiss(loadingToast);
+
+      if (response.ok) {
+        let responseDetails = "";
+        try {
+          const data = await response.json();
+          if (data && data.message) responseDetails = `: ${data.message}`;
+          else if (typeof data === 'string') responseDetails = `: ${data}`;
+        } catch (e) {
+          // Ignore parse errors
+        }
+
+        toast.success(`Sincronização concluída com sucesso${responseDetails}!`, {
+          duration: 5000,
+        });
+
+        // Atualizar custos após sincronização
+        // Forçar atualização removendo cache e disparando reload
+        removeCache('price_request_stations_cache');
+
+      } else {
+        throw new Error(`Erro na resposta do n8n: ${response.statusText}`);
+      }
+    } catch (error: any) {
+      console.error('Erro ao acionar n8n:', error);
+      toast.error(`Falha ao iniciar sincronização: ${error.message}`);
+    } finally {
+      setSyncingN8N(false);
+    }
+  };
 
   // Cards adicionados (Resultados Individuais por Posto)
   const [addedCards, setAddedCards] = useState<Array<{
@@ -383,6 +453,12 @@ export default function PriceRequest() {
     profit_per_liter?: number;
     arla_compensation?: number;
     net_result?: number;
+    feePercentage?: number;
+    base_nome?: string;
+    base_bandeira?: string;
+    forma_entrega?: string;
+    data_referencia?: string;
+    arla_cost?: number;
   }>>({});
 
   const initialFormData = {
@@ -580,7 +656,7 @@ export default function PriceRequest() {
       // Enriquecer dados
       const enrichedData = (data || []).map((request: any) => {
         // Buscar múltiplos postos se station_ids existir, senão usar station_id
-        let stations = [];
+        const stations = [];
         const stationIds = request.station_ids && Array.isArray(request.station_ids)
           ? request.station_ids
           : (request.station_id ? [request.station_id] : []);
@@ -781,40 +857,201 @@ export default function PriceRequest() {
   }, []);
 
   // Auto-fill lowest cost + freight when station and product are selected
-  const [lastSearchedStation, setLastSearchedStation] = useState<string>('');
+  const [lastSearchedStations, setLastSearchedStations] = useState<string[]>([]);
   const [lastSearchedProduct, setLastSearchedProduct] = useState<string>('');
+  const [isFetchingCosts, setIsFetchingCosts] = useState(false);
+
+  // Função auxiliar para buscar custo de um único posto
+  const fetchCostForStation = async (stationId: string, product: string, today: string) => {
+    try {
+      console.log(`🔍 Buscando custos para posto ${stationId}...`);
+      const selectedStation = stations.find(s => s.id === stationId);
+      if (!selectedStation) return null;
+
+      const rawId = selectedStation.code || selectedStation.id;
+      const cleanedId = rawId.replace(/-\d+\.\d+$/, '');
+
+      // 1) Identificar Bandeira do Posto
+      let isBandeiraBranca = false;
+      try {
+        const cot: any = (supabase as any).schema ? (supabase as any).schema('cotacao') : null;
+        if (cot) {
+          const { data: empresaInfo } = await cot
+            .from('sis_empresa')
+            .select('bandeira')
+            .or(`nome_empresa.ilike.%${selectedStation.name}%,cnpj_cpf.eq.${cleanedId},cnpj_cpf.eq.${rawId}`)
+            .limit(1)
+            .maybeSingle();
+          if (empresaInfo) {
+            const b = (empresaInfo.bandeira || '').toUpperCase().trim();
+            isBandeiraBranca = !b || b === '' || b === 'BANDEIRA BRANCA';
+          }
+        }
+      } catch (err) { console.warn('Bandeira err:', err); }
+
+      // 2) Buscar Menor Custo e Frete (RPC)
+      const productMap: Record<string, string> = {
+        s10: 'S10', s10_aditivado: 'S10 Aditivado',
+        diesel_s500: 'S500', diesel_s500_aditivado: 'S500 Aditivado',
+        arla32_granel: 'ARLA'
+      };
+      const produtoBusca = productMap[product] || product;
+
+      let resultData: any[] | null = null;
+      const candidates = [selectedStation.code, cleanedId, selectedStation.name].filter(Boolean);
+
+      for (const cand of candidates) {
+        const { data: d, error: e } = await supabase.rpc('get_lowest_cost_freight', {
+          p_posto_id: cand, p_produto: produtoBusca, p_date: today
+        });
+        if (!e && d && Array.isArray(d) && d.length > 0) {
+          resultData = d;
+          break;
+        }
+      }
+
+      // 3) Buscar Preço ARLA (se for S10, S10 Aditivado ou ARLA)
+      let arlaCost = 0;
+      if (product === 's10' || product === 's10_aditivado' || product === 'arla32_granel') {
+        try {
+          const cot: any = (supabase as any).schema ? (supabase as any).schema('cotacao') : null;
+          if (cot) {
+            const { data: empRes } = await cot.from('sis_empresa').select('id_empresa').ilike('nome_empresa', `%${selectedStation.name}%`).limit(1);
+            const resolvedIdEmpresa = (empRes as any[])?.[0]?.id_empresa;
+            if (resolvedIdEmpresa) {
+              const { data: arlaRows } = await cot.from('cotacao_arla').select('valor_unitario').eq('id_empresa', resolvedIdEmpresa).order('data_cotacao', { ascending: false }).limit(1);
+              if (arlaRows?.[0]) arlaCost = Number(arlaRows[0].valor_unitario);
+            }
+          }
+        } catch (e) { console.warn('ARLA fetch err:', e); }
+      }
+
+      if (resultData && resultData.length > 0) {
+        const res = resultData[0];
+        return {
+          purchase_cost: Number(res.custo || 0),
+          freight_cost: Number(res.frete || 0),
+          final_cost: Number(res.custo_total || 0),
+          base_nome: res.base_nome,
+          base_bandeira: res.base_bandeira || (isBandeiraBranca ? 'BANDEIRA BRANCA' : 'N/A'),
+          forma_entrega: res.forma_entrega,
+          data_referencia: res.data_referencia,
+          arla_cost: arlaCost
+        };
+      }
+      return arlaCost > 0 ? { arla_cost: arlaCost, purchase_cost: 0, freight_cost: 0, final_cost: 0 } : null;
+    } catch (err) {
+      console.error(`Erro no posto ${stationId}:`, err);
+      return null;
+    }
+  };
 
   useEffect(() => {
-    // console.log('🔄 ===== useEffect BUSCA DE CUSTO INICIADO =====');
-    // console.log('🔄 station_id:', formData.station_id, 'tipo:', typeof formData.station_id); 
-    // console.log('🔄 product:', formData.product, 'tipo:', typeof formData.product);
-    // console.log('🔄 stations_length:', stations.length);
-    // console.log('🔄 Condição (!formData.station_id):', !formData.station_id);
-    // console.log('🔄 Condição (!formData.product):', !formData.product);
-
-    const fetchLowestCostAndFreight = async () => {
+    const fetchAllCosts = async () => {
       console.log('🚀 ===== INICIANDO BUSCA DE CUSTO =====');
       console.log('🚀 station_id:', formData.station_id);
+      console.log('🚀 station_ids:', formData.station_ids);
       console.log('🚀 product:', formData.product);
-      console.log('🚀 lastSearchedStation:', lastSearchedStation);
-      console.log('🚀 lastSearchedProduct:', lastSearchedProduct);
 
-      // Só buscar se mudou o posto ou o produto
-      if (formData.station_id === lastSearchedStation && formData.product === lastSearchedProduct) {
-        console.log('⏭️ Pulando busca - mesmo posto e produto');
+      // Só buscar se houver mudança relevante
+      const combinedStations = formData.station_ids.length > 0 ? formData.station_ids.join(',') : formData.station_id;
+      const lastCombined = lastSearchedStations.join(',');
+
+      if (combinedStations === lastCombined && formData.product === lastSearchedProduct) {
+        console.log('⏭️ Pulando busca - mesmos postos e produto');
         return;
       }
 
-      if (!formData.station_id || !formData.product) {
-        console.log('⏭️ Pulando busca - falta station_id ou product');
+      if (!formData.product || (!formData.station_id && formData.station_ids.length === 0)) {
+        console.log('⏭️ Pulando busca - falta posto ou produto');
         return;
       }
 
-      // Atualizar referências
-      setLastSearchedStation(formData.station_id);
+      // Atualizar referências de busca
+      setLastSearchedStations(formData.station_ids.length > 0 ? formData.station_ids : (formData.station_id ? [formData.station_id] : []));
       setLastSearchedProduct(formData.product);
 
       try {
+        setIsFetchingCosts(true);
+        const today = new Date().toISOString().split('T')[0];
+
+        // Determinar quais postos buscar
+        const stationsToFetch = formData.station_id ? [formData.station_id] : [];
+
+        console.log('🔍 Postos a buscar custos:', stationsToFetch);
+
+        const newStationCosts: typeof stationCosts = { ...stationCosts };
+        let firstStationData: any = null;
+
+        // Buscar custos para cada posto em paralelo
+        await Promise.all(stationsToFetch.map(async (stationId) => {
+          const costData = await fetchCostForStation(stationId, formData.product, today);
+          if (costData) {
+            const station = stations.find(s => s.id === stationId);
+
+            // Tentar resolver bandeira do posto se não veio do costData
+            let baseBandeira = costData.base_bandeira;
+            if (!baseBandeira || baseBandeira === 'N/A') {
+              const cot: any = (supabase as any).schema ? (supabase as any).schema('cotacao') : null;
+              if (cot && station) {
+                const { data: emp } = await cot.from('sis_empresa').select('bandeira').eq('cnpj_cpf', station.code || station.id).maybeSingle();
+                if (emp?.bandeira) baseBandeira = emp.bandeira;
+              }
+            }
+
+            newStationCosts[stationId] = {
+              ...costData,
+              station_name: station?.name || stationId,
+              base_bandeira: baseBandeira
+            };
+
+            if (stationId === formData.station_id || (!firstStationData && stationsToFetch[0] === stationId)) {
+              firstStationData = newStationCosts[stationId];
+            }
+          }
+        }));
+
+        setStationCosts(newStationCosts);
+
+        // Se encontrou dados para o posto principal (ou o primeiro da lista), auto-preencher formData
+        if (firstStationData) {
+          console.log('✅ Auto-preenchendo formData com dados do posto:', firstStationData.station_name);
+          setFormData(prev => ({
+            ...prev,
+            purchase_cost: (firstStationData.purchase_cost || 0).toFixed(4),
+            freight_cost: (firstStationData.freight_cost || 0).toFixed(4),
+            arla_cost_price: (firstStationData.arla_cost || 0).toFixed(4)
+          }));
+
+          setPriceOrigin({
+            base_nome: firstStationData.base_nome || '',
+            base_bandeira: firstStationData.base_bandeira || 'N/A',
+            forma_entrega: firstStationData.forma_entrega || '',
+            base_codigo: firstStationData.base_codigo || ''
+          });
+
+          const refDateIso = firstStationData.data_referencia ? new Date(firstStationData.data_referencia).toISOString().split('T')[0] : null;
+          const statusType: any = (firstStationData.base_nome || '').toLowerCase().includes('refer') ? 'reference' : (refDateIso === today ? 'today' : 'latest');
+          setFetchStatus({ type: statusType, date: firstStationData.data_referencia || null });
+        } else {
+          setFetchStatus({ type: 'none' });
+        }
+
+      } catch (error) {
+        console.error('❌ Erro inesperado ao buscar custos:', error);
+        setFetchStatus({ type: 'none' });
+      } finally {
+        setIsFetchingCosts(false);
+      }
+    };
+
+    fetchAllCosts();
+  }, [formData.station_id, formData.station_ids, formData.product, stations]);
+
+  // Remover o useEffect antigo que estava duplicado e tinha o nome errado
+  /*
+  useEffect(() => {
+    const fetchAllCosts = async () => {
         const today = new Date().toISOString().split('T')[0];
         console.log('📅 Data de hoje:', today);
 
@@ -1396,8 +1633,8 @@ export default function PriceRequest() {
             //   toast.success(`Preço de referência encontrado: R$ ${custo.toFixed(4)}`);
             // }
 
-            // Se for S10, buscar também o preço do ARLA
-            if (formData.product === 's10') {
+            // Se for S10 ou S10 Aditivado, buscar também o preço do ARLA
+            if (formData.product === 's10' || formData.product === 's10_aditivado') {
               console.log('🔍 Produto S10 detectado, buscando preço do ARLA...');
               try {
                 let arlaData: any[] | null = null;
@@ -1492,13 +1729,12 @@ export default function PriceRequest() {
       } catch (error) {
         console.error('❌ Erro inesperado ao buscar menor custo:', error);
         setFetchStatus({ type: 'none' });
-        // Silent fail - just don't auto-fill
       }
     };
 
-    fetchLowestCostAndFreight();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    fetchAllCosts();
   }, [formData.station_id, formData.product, lastSearchedStation, lastSearchedProduct]);
+  */
 
 
   const loadReferences = async (useCache = true) => {
@@ -1732,16 +1968,21 @@ export default function PriceRequest() {
 
       let feePercentage = 0;
       if (formData.payment_method_id && formData.payment_method_id !== 'none') {
-        const stationMethod = stationPaymentMethods.find(pm => {
-          const methodId = String((pm as any).id || (pm as any).ID_POSTO || '');
-          return pm.CARTAO === formData.payment_method_id || methodId === String(formData.payment_method_id);
+        const stationMethod = paymentMethods.find(pm => {
+          const methodStationId = String((pm as any).ID_POSTO || '');
+          const methodCard = pm.CARTAO || '';
+          return methodCard === formData.payment_method_id && methodStationId === String(formData.station_id);
         });
 
         if (stationMethod) {
           feePercentage = stationMethod.TAXA || 0;
         } else {
-          const defaultMethod = paymentMethods.find(pm => pm.CARTAO === formData.payment_method_id);
-          feePercentage = defaultMethod?.TAXA || 0;
+          // Fallback para taxa geral do método de pagamento
+          const generalMethod = paymentMethods.find(pm =>
+            pm.CARTAO === formData.payment_method_id &&
+            (pm.ID_POSTO === 'all' || pm.ID_POSTO === 'GENERICO')
+          );
+          feePercentage = generalMethod?.TAXA || 0;
         }
       }
 
@@ -1782,16 +2023,21 @@ export default function PriceRequest() {
       // Buscar taxa específica do posto ou taxa padrão
       let feePercentage = 0;
       if (formData.payment_method_id && formData.payment_method_id !== 'none') {
-        const stationMethod = stationPaymentMethods.find(pm => {
-          const methodId = String((pm as any).id || (pm as any).ID_POSTO || '');
-          return pm.CARTAO === formData.payment_method_id || methodId === String(formData.payment_method_id);
+        const stationMethod = paymentMethods.find(pm => {
+          const methodStationId = String((pm as any).ID_POSTO || '');
+          const methodCard = pm.CARTAO || '';
+          return methodCard === formData.payment_method_id && methodStationId === String(formData.station_id);
         });
 
         if (stationMethod) {
           feePercentage = stationMethod.TAXA || 0;
         } else {
-          const defaultMethod = paymentMethods.find(pm => pm.CARTAO === formData.payment_method_id);
-          feePercentage = defaultMethod?.TAXA || 0;
+          // Fallback para taxa geral
+          const generalMethod = paymentMethods.find(pm =>
+            pm.CARTAO === formData.payment_method_id &&
+            (pm.ID_POSTO === 'all' || pm.ID_POSTO === 'GENERICO')
+          );
+          feePercentage = generalMethod?.TAXA || 0;
         }
       }
 
@@ -1844,8 +2090,8 @@ export default function PriceRequest() {
       const arlaVolume = volumeProjectedLiters * 0.05;
       let arlaCompensation = 0;
 
-      if (formData.product === 's10') {
-        // Para S10: margem = preço de venda do ARLA - preço de compra do ARLA
+      if (formData.product === 's10' || formData.product === 's10_aditivado') {
+        // Para S10 e S10 Aditivado: margem = preço de venda do ARLA - preço de compra do ARLA
         const arlaMargin = (parsePriceToInteger(formData.arla_purchase_price) / 100) - parseFloat(formData.arla_cost_price);
         // Volume de ARLA é 5% do volume de diesel (já em litros)
         // arlaVolume já está em litros (volumeProjectedLiters * 0.05)
@@ -2441,15 +2687,21 @@ export default function PriceRequest() {
 
             let feePercentage = 0;
             if (formData.payment_method_id && formData.payment_method_id !== 'none') {
-              const stationMethod = stationPaymentMethods.find(pm => {
-                const methodId = String((pm as any).id || (pm as any).ID_POSTO || '');
-                return pm.CARTAO === formData.payment_method_id || methodId === String(formData.payment_method_id);
+              // Buscar taxa específica para este posto na lista global de métodos
+              const stationMethod = paymentMethods.find(pm => {
+                const methodStationId = String((pm as any).ID_POSTO || '');
+                const methodCard = pm.CARTAO || '';
+                return methodCard === formData.payment_method_id && methodStationId === String(stationId);
               });
 
               if (stationMethod) {
                 feePercentage = stationMethod.TAXA || 0;
               } else {
-                const defaultMethod = paymentMethods.find(pm => pm.CARTAO === formData.payment_method_id);
+                // Fallback para método geral se não encontrar específico para o posto
+                const defaultMethod = paymentMethods.find(pm =>
+                  pm.CARTAO === formData.payment_method_id &&
+                  (pm.ID_POSTO === 'all' || pm.ID_POSTO === 'GENERICO')
+                );
                 feePercentage = defaultMethod?.TAXA || 0;
               }
             }
@@ -2461,7 +2713,7 @@ export default function PriceRequest() {
 
             // ARLA compensation
             let arlaCompensation = 0;
-            if (formData.product === 's10') {
+            if (formData.product === 's10' || formData.product === 's10_aditivado') {
               const arlaPurchase = parseFloat(formData.arla_purchase_price) || 0;
               const arlaMargin = arlaPurchase - parseFloat(formData.arla_cost_price || '0');
               const arlaVolume = volumeProjectedLiters * 0.05;
@@ -2480,6 +2732,9 @@ export default function PriceRequest() {
               stationCode: stationCode,
               location: '',
               bandeira: bandeira,
+              product: data.product,
+              productLabel: productLabels[data.product as string] || data.product,
+              volume: data.volume_projected,
               netResult: netResult,
               suggestionId: data.id,
               expanded: false,
@@ -2708,7 +2963,7 @@ export default function PriceRequest() {
         const stationCode = stationData?.code || formData.station_id || '';
 
         // Buscar localização do posto (usar dados já disponíveis ou deixar vazio)
-        let location = '';
+        const location = '';
         // Por enquanto, deixar vazio ou usar dados já disponíveis do stationData
         // A localização pode ser adicionada posteriormente se necessário
 
@@ -2722,15 +2977,21 @@ export default function PriceRequest() {
 
         let feePercentage = 0;
         if (formData.payment_method_id && formData.payment_method_id !== 'none') {
-          const stationMethod = stationPaymentMethods.find(pm => {
-            const methodId = String((pm as any).id || (pm as any).ID_POSTO || '');
-            return pm.CARTAO === formData.payment_method_id || methodId === String(formData.payment_method_id);
+          // Buscar taxa específica para este posto na lista global de métodos
+          const stationMethod = paymentMethods.find(pm => {
+            const methodStationId = String((pm as any).ID_POSTO || '');
+            const methodCard = pm.CARTAO || '';
+            return methodCard === formData.payment_method_id && methodStationId === String(formData.station_id);
           });
 
           if (stationMethod) {
             feePercentage = stationMethod.TAXA || 0;
           } else {
-            const defaultMethod = paymentMethods.find(pm => pm.CARTAO === formData.payment_method_id);
+            // Fallback para método geral se não encontrar específico para o posto
+            const defaultMethod = paymentMethods.find(pm =>
+              pm.CARTAO === formData.payment_method_id &&
+              (pm.ID_POSTO === 'all' || pm.ID_POSTO === 'GENERICO')
+            );
             feePercentage = defaultMethod?.TAXA || 0;
           }
         }
@@ -2742,7 +3003,7 @@ export default function PriceRequest() {
 
         // ARLA compensation
         let arlaCompensation = 0;
-        if (formData.product === 's10') {
+        if (formData.product === 's10' || formData.product === 's10_aditivado') {
           const arlaPurchase = parseFloat(formData.arla_purchase_price) || 0;
           const arlaMargin = arlaPurchase - parseFloat(formData.arla_cost_price || '0');
           const arlaVolume = volumeProjectedLiters * 0.05;
@@ -2761,6 +3022,9 @@ export default function PriceRequest() {
           stationCode: stationCode,
           location: location || 'N/A',
           bandeira: bandeira,
+          product: data.product,
+          productLabel: productLabels[data.product as string] || data.product,
+          volume: data.volume_projected,
           netResult: netResult,
           suggestionId: data.id,
           expanded: false,
@@ -2957,6 +3221,9 @@ export default function PriceRequest() {
       setAddedCards([]);
       setBatchName('');
 
+      // Invalida o cache para garantir que os dados novos apareçam
+      invalidarCaches();
+
       // Recarregar lista de solicitações
       if (activeTab === 'my-requests') {
         loadMyRequests();
@@ -2966,6 +3233,32 @@ export default function PriceRequest() {
       toast.error("Erro ao enviar solicitações: " + (error?.message || 'Erro desconhecido'));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteAddedCard = async (cardId: string, suggestionId?: string) => {
+    if (!confirm('Deseja realmente remover esta solicitação do lote?')) return;
+
+    try {
+      if (suggestionId) {
+        setLoading(true);
+        // Deletar do banco de dados já que é um rascunho temporário
+        const { error } = await supabase
+          .from('price_suggestions')
+          .delete()
+          .eq('id', suggestionId);
+
+        if (error) throw error;
+      }
+
+      // Remover do state local
+      setAddedCards(prev => prev.filter(card => card.id !== cardId));
+      toast.success("Solicitação removida com sucesso!");
+    } catch (error: any) {
+      console.error('Erro ao remover card:', error);
+      toast.error("Erro ao remover: " + (error.message || "Erro desconhecido"));
+    } finally {
+      if (suggestionId) setLoading(false);
     }
   };
 
@@ -3238,8 +3531,7 @@ export default function PriceRequest() {
     );
   }
 
-  // Estado para controlar abertura de modais de anexos por card
-  const [openAttachmentModals, setOpenAttachmentModals] = useState<Record<string, number | null>>({});
+
 
   // Componente auxiliar para exibir um item de anexo
   const AttachmentItem = ({ attachment, fileName, cardId, index }: { attachment: string; fileName: string; cardId: string; index: number }) => {
@@ -3277,19 +3569,31 @@ export default function PriceRequest() {
         <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 p-4 text-white shadow-xl">
           <div className="absolute inset-0 bg-black/10"></div>
           <div className="relative flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Button
-                variant="secondary"
-                onClick={() => navigate("/dashboard")}
-                className="flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white border-white/30 backdrop-blur-sm h-8"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" />
-                Voltar ao Dashboard
-              </Button>
-              <div>
-                <h1 className="text-xl font-bold mb-1">Solicitação de Preço</h1>
-                <p className="text-slate-200 text-sm">Solicite novos preços para análise e aprovação</p>
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="secondary"
+                  onClick={() => navigate("/dashboard")}
+                  className="flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white border-white/30 backdrop-blur-sm h-8"
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  Voltar ao Dashboard
+                </Button>
+                <div>
+                  <h1 className="text-xl font-bold mb-1">Solicitação de Preço</h1>
+                  <p className="text-slate-200 text-sm">Solicite novos preços para análise e aprovação</p>
+                </div>
               </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleN8NSync}
+                disabled={syncingN8N}
+                className="text-white/70 hover:text-white hover:bg-white/10 h-8 w-8"
+                title="Sincronizar Custos"
+              >
+                <RefreshCcw className={`h-4 w-4 ${syncingN8N ? 'animate-spin' : ''}`} />
+              </Button>
             </div>
           </div>
         </div>
@@ -3355,7 +3659,7 @@ export default function PriceRequest() {
                           value={formData.station_id}
                           onSelect={(stationId) => {
                             handleInputChange("station_id", stationId);
-                            // Manter station_ids como array com um elemento para compatibilidade
+                            // Maintain compatibility with station_ids array
                             handleInputChange("station_ids", stationId ? [stationId] : []);
                           }}
                           required={true}
@@ -3566,8 +3870,8 @@ export default function PriceRequest() {
                         </div>
                       )}
 
-                      {/* ARLA - Preço de VENDA (aparece ao selecionar Diesel S-10) */}
-                      {formData.product === 's10' && (
+                      {/* ARLA - Preço de VENDA (aparece ao selecionar Diesel S-10 ou S-10 Aditivado) */}
+                      {(formData.product === 's10' || formData.product === 's10_aditivado') && (
                         <div className="space-y-2 md:col-span-2">
                           <div className="bg-slate-50 dark:bg-secondary/20 p-3 rounded-lg border border-slate-200 dark:border-border">
                             <div className="flex items-center justify-between mb-2">
@@ -3809,8 +4113,8 @@ export default function PriceRequest() {
                         />
                       </div>
 
-                      {/* Custo de Compra do ARLA (somente para S10) */}
-                      {formData.product === 's10' && (
+                      {/* Custo de Compra do ARLA (somente para S10 ou S10 Aditivado) */}
+                      {(formData.product === 's10' || formData.product === 's10_aditivado') && (
                         <div className="space-y-2 md:col-span-2">
                           <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
                             <Label htmlFor="arla_cost_price" className="text-sm font-semibold text-blue-700 dark:text-blue-300 mb-2 block">
@@ -3904,10 +4208,13 @@ export default function PriceRequest() {
                               <div className="flex items-center gap-2 mb-1">
                                 <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">
                                   {card.stationName.toUpperCase()}
+                                  <span className="ml-2 text-sm font-medium text-slate-500 dark:text-slate-400">
+                                    {card.productLabel || card.product?.toUpperCase() || ''}
+                                  </span>
                                 </h3>
                               </div>
                               <p className="text-xs text-slate-600 dark:text-slate-400">
-                                {card.bandeira || card.location || 'N/A'}
+                                {card.volume ? `${card.volume} m³` : ''} {card.bandeira || card.location ? `| ${card.bandeira || card.location}` : ''}
                               </p>
                             </div>
                             <div className="flex items-center gap-4">
@@ -3918,23 +4225,34 @@ export default function PriceRequest() {
                                   {formatPrice(card.netResult)}
                                 </p>
                               </div>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  setAddedCards(prev =>
-                                    prev.map(c =>
-                                      c.id === card.id ? { ...c, expanded: !c.expanded } : c
-                                    )
-                                  );
-                                }}
-                                className="h-8 w-8 p-0"
-                              >
-                                <ChevronDown
-                                  className={`h-5 w-5 text-slate-600 dark:text-slate-400 transition-transform ${card.expanded ? 'transform rotate-180' : ''
-                                    }`}
-                                />
-                              </Button>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDeleteAddedCard(card.id, card.suggestionId)}
+                                  className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                  title="Remover solicitação"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setAddedCards(prev =>
+                                      prev.map(c =>
+                                        c.id === card.id ? { ...c, expanded: !c.expanded } : c
+                                      )
+                                    );
+                                  }}
+                                  className="h-8 w-8 p-0"
+                                >
+                                  <ChevronDown
+                                    className={`h-5 w-5 text-slate-600 dark:text-slate-400 transition-transform ${card.expanded ? 'transform rotate-180' : ''
+                                      }`}
+                                  />
+                                </Button>
+                              </div>
                             </div>
                           </div>
 
@@ -4180,34 +4498,54 @@ export default function PriceRequest() {
                     const station = stations.find(s => s.id === stationId);
                     if (!stationCost || !station) return null;
 
-                    // Calcular valores para este posto
-                    const volumeProjected = parseFloat(formData.volume_projected) || 0;
-                    const volumeProjectedLiters = volumeProjected * 1000;
-                    const suggestedPrice = (parsePriceToInteger(formData.suggested_price) / 100) || 0;
-
-                    const finalCost = stationCost.final_cost || 0;
-                    const totalRevenue = stationCost.total_revenue || 0;
-                    const totalCost = stationCost.total_cost || 0;
-                    const grossProfit = stationCost.gross_profit || 0;
-                    const profitPerLiter = stationCost.profit_per_liter || 0;
-                    const arlaCompensation = stationCost.arla_compensation || 0;
-                    const netResult = stationCost.net_result || 0;
-
-                    // Buscar taxa para este posto
+                    // Resolver taxa de pagamento para este posto (ou fallback geral)
                     let feePercentage = 0;
                     if (formData.payment_method_id && formData.payment_method_id !== 'none') {
-                      const stationMethod = stationPaymentMethods.find(pm => {
-                        const methodId = String((pm as any).id || (pm as any).ID_POSTO || '');
-                        return pm.CARTAO === formData.payment_method_id || methodId === String(formData.payment_method_id);
+                      const stationMethod = paymentMethods.find(pm => {
+                        const methodStationId = String((pm as any).ID_POSTO || '');
+                        const methodCard = pm.CARTAO || '';
+                        return methodCard === formData.payment_method_id && methodStationId === String(stationId);
                       });
 
                       if (stationMethod) {
                         feePercentage = stationMethod.TAXA || 0;
                       } else {
-                        const defaultMethod = paymentMethods.find(pm => pm.CARTAO === formData.payment_method_id);
-                        feePercentage = defaultMethod?.TAXA || 0;
+                        // Fallback para taxa geral
+                        const generalMethod = paymentMethods.find(pm =>
+                          pm.CARTAO === formData.payment_method_id &&
+                          (pm.ID_POSTO === 'all' || pm.ID_POSTO === 'GENERICO')
+                        );
+                        feePercentage = generalMethod?.TAXA || 0;
                       }
                     }
+
+                    // Calcular valores para este posto on-the-fly
+                    const volumeProjected = parseFloat(formData.volume_projected) || 0;
+                    const volumeProjectedLiters = volumeProjected * 1000;
+                    const suggestedPrice = (parsePriceToInteger(formData.suggested_price) / 100) || 0;
+
+                    const baseCost = (stationCost.purchase_cost || 0) + (stationCost.freight_cost || 0);
+                    const finalCost = baseCost * (1 + feePercentage / 100);
+                    const totalRevenue = volumeProjectedLiters * suggestedPrice;
+                    const totalCost = volumeProjectedLiters * finalCost;
+                    const grossProfit = totalRevenue - totalCost;
+                    const profitPerLiter = volumeProjectedLiters > 0 ? grossProfit / volumeProjectedLiters : 0;
+
+                    // Compensação ARLA
+                    let arlaCompensation = 0;
+                    if (formData.product === 's10' || formData.product === 's10_aditivado') {
+                      const arlaPurchaseSelection = (parsePriceToInteger(formData.arla_purchase_price) / 100) || 0;
+                      const arlaCostFromDB = stationCost.arla_cost || 0;
+                      const arlaMargin = arlaPurchaseSelection - arlaCostFromDB;
+                      const arlaVolume = volumeProjectedLiters * 0.05;
+                      arlaCompensation = arlaVolume * arlaMargin;
+                    } else if (formData.product === 'arla32_granel') {
+                      const arlaCostFromDB = stationCost.arla_cost || 0;
+                      const arlaMargin = suggestedPrice - arlaCostFromDB;
+                      arlaCompensation = volumeProjectedLiters * arlaMargin;
+                    }
+
+                    const netResult = grossProfit + arlaCompensation;
 
                     return (
                       <Card key={`cost-analysis-${stationId}`} className="shadow-sm border border-slate-200 dark:border-border bg-white dark:bg-card">
@@ -4589,7 +4927,7 @@ export default function PriceRequest() {
                           </Card >
 
                           {/* Modal com visualização completa */}
-                          < Dialog open={expandedProposal === request.batchKey
+                          <Dialog open={expandedProposal === request.batchKey
                           } onOpenChange={(open) => !open && setExpandedProposal(null)}>
                             <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto print:max-w-none print:max-h-none print:overflow-visible print:p-0">
                               <ProposalFullView
@@ -4691,7 +5029,7 @@ export default function PriceRequest() {
       </div >
 
       {/* Image Viewer Modal */}
-      < ImageViewerModal
+      <ImageViewerModal
         isOpen={imageViewerOpen}
         onClose={() => setImageViewerOpen(false)}
         imageUrl={selectedImage}

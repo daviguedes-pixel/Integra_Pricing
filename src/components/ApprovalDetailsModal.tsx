@@ -626,7 +626,7 @@ export const ApprovalDetailsModal = ({
 
 
           {/* Volume e Cálculos S10 */}
-          {dataToShow.product === 's10' && (
+          {(dataToShow.product === 's10' || dataToShow.product === 's10_aditivado') && (
             <>
               <Card>
                 <CardContent className="pt-4 sm:pt-6">
