@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,13 +29,27 @@ import {
   RefreshCw
 } from "lucide-react";
 import { ApprovalDetailsModal } from "@/components/ApprovalDetailsModal";
-import { ApprovalStats } from "@/components/ApprovalStats";
+import { ApprovalStats as ApprovalStatsComponent } from "@/components/ApprovalStats";
 import { ApprovalHeader } from "@/components/ApprovalHeader";
-import { formatBrazilianCurrency, parseBrazilianDecimal, formatNameFromEmail } from "@/lib/utils";
+import { parseBrazilianDecimal, formatNameFromEmail } from "@/lib/utils";
 import { getCache, setCache, removeCache } from "@/lib/cache";
+import { formatPrice, formatDate, getStatusBadge, getProductName, centsToReais, isValidUUID } from "@/lib/pricing-utils";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { useMemo, useCallback } from "react";
+import type {
+  EnrichedApproval,
+  BatchApprovalGroup,
+  ApprovalStats,
+  ApprovalUIFilters,
+  Approver,
+  ApprovalClient,
+  PriceSuggestionRow,
+  StationRow,
+  ClientRow,
+  RequesterRow,
+  PaymentMethodRow,
+} from "@/types";
 
 export default function Approvals() {
   const navigate = useNavigate();
@@ -46,13 +59,13 @@ export default function Approvals() {
   const [loadingData, setLoadingData] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [realtimeStatus, setRealtimeStatus] = useState<'connected' | 'disconnected' | 'connecting'>('connecting');
-  const [suggestions, setSuggestions] = useState<any[]>([]);
-  const [filteredSuggestions, setFilteredSuggestions] = useState<any[]>([]);
-  const [selectedSuggestion, setSelectedSuggestion] = useState<any>(null);
+  const [suggestions, setSuggestions] = useState<EnrichedApproval[]>([]);
+  const [filteredSuggestions, setFilteredSuggestions] = useState<EnrichedApproval[]>([]);
+  const [selectedSuggestion, setSelectedSuggestion] = useState<EnrichedApproval | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [batchApprovals, setBatchApprovals] = useState<any[]>([]);
-  const [individualApprovals, setIndividualApprovals] = useState<any[]>([]);
+  const [batchApprovals, setBatchApprovals] = useState<BatchApprovalGroup[]>([]);
+  const [individualApprovals, setIndividualApprovals] = useState<EnrichedApproval[]>([]);
   const [expandedBatches, setExpandedBatches] = useState<Set<string>>(new Set());
   const [batchObservations, setBatchObservations] = useState<Record<string, string>>({});
   const [batchSuggestedPrices, setBatchSuggestedPrices] = useState<Record<string, string>>({});
@@ -66,7 +79,7 @@ export default function Approvals() {
   const [individualPage, setIndividualPage] = useState(0);
   const ITEMS_PER_PAGE = 5; // Limitar a 5 itens por página para máxima performance
 
-  const [filters, setFilters] = useState({
+  const [filters, setFilters] = useState<ApprovalUIFilters>({
     status: "all",
     station: "all",
     client: "all",
@@ -78,7 +91,7 @@ export default function Approvals() {
     myApprovalsOnly: false
   });
 
-  const [stats, setStats] = useState({
+  const [stats, setStats] = useState<ApprovalStats>({
     total: 0,
     pending: 0,
     approved: 0,
@@ -243,7 +256,7 @@ export default function Approvals() {
   }, [user]);
 
   // Verificar se o usuário pode aprovar uma solicitação baseado na margem
-  const canUserApproveSuggestion = async (suggestion: any): Promise<{ canApprove: boolean; reason?: string }> => {
+  const canUserApproveSuggestion = async (suggestion: EnrichedApproval): Promise<{ canApprove: boolean; reason?: string }> => {
     try {
       // Buscar regra de aprovação baseada na margem
       const marginCents = suggestion.margin_cents || 0;
@@ -304,7 +317,7 @@ export default function Approvals() {
   };
 
   // Buscar todos os usuários que podem aprovar em ordem hierárquica
-  const loadApprovers = async (requiredProfiles?: string[], retryCount = 0) => {
+  const loadApprovers = async (requiredProfiles?: string[], retryCount = 0): Promise<Approver[]> => {
     const MAX_RETRIES = 2;
     const RETRY_DELAY = 1000; // 1 segundo
 
@@ -335,7 +348,7 @@ export default function Approvals() {
       ];
 
       if (!orderError && orderData && orderData.length > 0) {
-        approvalOrder = orderData.map((item: any) => item.perfil);
+        approvalOrder = orderData.map((item: { perfil: string }) => item.perfil);
       }
 
       // Se requiredProfiles foi especificado, usar apenas esses perfis
@@ -364,7 +377,7 @@ export default function Approvals() {
       const orderedProfiles = profilesToLoad.filter(p => perfisComPermissao.includes(p));
 
       // Buscar usuários com esses perfis, mantendo a ordem
-      const approvers: any[] = [];
+      const approvers: Approver[] = [];
 
       for (const perfil of orderedProfiles) {
         const { data: users, error: usersError } = await supabase
@@ -390,7 +403,7 @@ export default function Approvals() {
     }
   };
 
-  const processSuggestionsData = async (enrichedWithCurrentApprover: any[]) => {
+  const processSuggestionsData = async (enrichedWithCurrentApprover: EnrichedApproval[]) => {
     // Otimização: Processar em chunks para não bloquear a UI
     // Usar requestIdleCallback ou setTimeout para processar em background
     const processInChunks = () => {
@@ -399,8 +412,8 @@ export default function Approvals() {
           const canViewAll = permissions?.permissions?.admin || false;
 
           // Processar tudo em um único loop otimizado
-          const filteredForUser: any[] = [];
-          const groupedBatches = new Map<string, any[]>();
+          const filteredForUser: EnrichedApproval[] = [];
+          const groupedBatches = new Map<string, EnrichedApproval[]>();
           const filteredIdsSet = new Set<string>();
           let pending = 0;
           let approved = 0;
@@ -428,8 +441,8 @@ export default function Approvals() {
           }
 
           // Processar batches em um único loop
-          const batches: any[] = [];
-          const individuals: any[] = [];
+          const batches: BatchApprovalGroup[] = [];
+          const individuals: EnrichedApproval[] = [];
           const individualIdsSet = new Set<string>(); // Para evitar duplicatas
 
           for (const [batchKey, batch] of groupedBatches) {
@@ -445,12 +458,12 @@ export default function Approvals() {
               // Batch - verificar se tem solicitações visíveis ou pendentes
               let visibleCount = 0;
               let pendingCount = 0;
-              const visibleRequests: any[] = [];
-              const pendingRequests: any[] = [];
+              const visibleRequests: EnrichedApproval[] = [];
+              const pendingRequests: EnrichedApproval[] = [];
 
               // Calcular clientes únicos de forma otimizada (em um único loop)
               const clientIds = new Set<string>();
-              let firstClient: any = null;
+              let firstClient: ApprovalClient | null = null;
 
               for (const req of batch) {
                 // Coletar clientes únicos
@@ -483,7 +496,7 @@ export default function Approvals() {
                   client: firstClient,
                   clients: clientIds.size > 1
                     ? (() => {
-                      const clientsList: any[] = [];
+                      const clientsList: (ApprovalClient | null)[] = [];
                       const added = new Set<string>();
                       for (const req of batch) {
                         const cid = req.client_id || req.clients?.id || 'unknown';
@@ -862,7 +875,7 @@ export default function Approvals() {
     applyFilters(newFilters);
   };
 
-  const applyFilters = (filterValues: typeof filters, dataToFilter?: any[]) => {
+  const applyFilters = (filterValues: ApprovalUIFilters, dataToFilter?: EnrichedApproval[]) => {
     // Usar dataToFilter se fornecido (carregamento inicial), senão usar estado suggestions
     const sourceData = dataToFilter || suggestions;
 
@@ -1002,7 +1015,7 @@ export default function Approvals() {
 
     // Recriar batchApprovals e individualApprovals a partir dos dados filtrados
     const filteredIdsSet = new Set(filtered.map(s => s.id));
-    const groupedBatches = new Map<string, any[]>();
+    const groupedBatches = new Map<string, EnrichedApproval[]>();
 
     // Agrupar por batch_id apenas os itens filtrados
     for (const s of filtered) {
@@ -1014,8 +1027,8 @@ export default function Approvals() {
     }
 
     // Processar batches e individuals filtrados
-    const filteredBatches: any[] = [];
-    const filteredIndividuals: any[] = [];
+    const filteredBatches: BatchApprovalGroup[] = [];
+    const filteredIndividuals: EnrichedApproval[] = [];
     const individualIdsSet = new Set<string>();
 
     for (const [batchKey, batch] of groupedBatches) {
@@ -1031,12 +1044,12 @@ export default function Approvals() {
         // Batch - verificar se tem solicitações visíveis ou pendentes
         let visibleCount = 0;
         let pendingCount = 0;
-        const visibleRequests: any[] = [];
-        const pendingRequests: any[] = [];
+        const visibleRequests: EnrichedApproval[] = [];
+        const pendingRequests: EnrichedApproval[] = [];
 
         // Calcular clientes únicos
         const clientIds = new Set<string>();
-        let firstClient: any = null;
+        let firstClient: ApprovalClient | null = null;
 
         for (const req of batch) {
           const cid = req.client_id || req.clients?.id || 'unknown';
@@ -1068,7 +1081,7 @@ export default function Approvals() {
             client: firstClient,
             clients: clientIds.size > 1
               ? (() => {
-                const clientsList: any[] = [];
+                const clientsList: (ApprovalClient | null)[] = [];
                 const added = new Set<string>();
                 for (const req of batch) {
                   const cid = req.client_id || req.clients?.id || 'unknown';
@@ -3089,45 +3102,7 @@ export default function Approvals() {
     }
   };
 
-  const formatPrice = (price: number) => {
-    return formatBrazilianCurrency(price);
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-BR');
-  };
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'pending':
-        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800"><Clock className="h-3 w-3 mr-1" />Pendente</Badge>;
-      case 'approved':
-        return <Badge variant="default" className="bg-green-100 text-green-800"><Check className="h-3 w-3 mr-1" />Aprovado</Badge>;
-      case 'rejected':
-        return <Badge variant="destructive"><X className="h-3 w-3 mr-1" />Rejeitado</Badge>;
-      case 'price_suggested':
-        return <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300"><DollarSign className="h-3 w-3 mr-1" />Preço Sugerido</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
-  };
-
-  const getProductName = (product: string) => {
-    const names: { [key: string]: string } = {
-      's10': 'Diesel S-10',
-      's10_aditivado': 'Diesel S-10 Aditivado',
-      'diesel_s500': 'Diesel S-500',
-      'diesel_s500_aditivado': 'Diesel S-500 Aditivado',
-      'arla32_granel': 'Arla 32 Granel',
-      // Mantendo compatibilidade com valores antigos
-      'gasolina_comum': 'Gasolina Comum',
-      'gasolina_aditivada': 'Gasolina Aditivada',
-      'etanol': 'Etanol',
-      'diesel_comum': 'Diesel Comum'
-    };
-    return names[product] || product;
-  };
-
+  // Funções formatPrice, formatDate, getStatusBadge, getProductName foram movidas para @/lib/approvals-utils
   if (loadingData) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">

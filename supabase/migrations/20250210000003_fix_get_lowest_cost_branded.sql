@@ -7,8 +7,8 @@ DROP FUNCTION IF EXISTS public.get_lowest_cost_freight(text, text, date) CASCADE
 -- Corrigindo get_lowest_cost_freight para respeitar regras de Bandeirado vs Bandeira Branca
 -- Bandeirados: Apenas cotacao_combustivel (Tabela específica/contrato)
 -- Bandeira Branca: cotacao_geral_combustivel (Spot) ou cotacao_combustivel (Específica)
-CREATE OR REPLACE FUNCTION public.get_lowest_cost_freight(p_posto_id text, p_produto text, p_date date DEFAULT CURRENT_DATE)
- RETURNS TABLE(base_id text, base_nome text, base_codigo text, base_uf text, custo numeric, frete numeric, custo_total numeric, forma_entrega text, data_referencia timestamp without time zone, base_bandeira text)
+ CREATE OR REPLACE FUNCTION public.get_lowest_cost_freight(p_posto_id text, p_produto text, p_date date DEFAULT CURRENT_DATE)
+ RETURNS TABLE(base_id text, base_nome text, base_codigo text, base_uf text, custo numeric, frete numeric, custo_total numeric, forma_entrega text, data_referencia timestamp without time zone, base_bandeira text, debug_info text)
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO 'public', 'cotacao'
@@ -22,6 +22,8 @@ DECLARE
   v_is_bandeira_branca BOOLEAN;
   v_latest_arla_date DATE;
   v_final_bandeira TEXT;
+  v_debug_info TEXT := '';
+  v_has_general_today BOOLEAN := FALSE;
 BEGIN
   v_clean_posto_id := regexp_replace(p_posto_id, '-\d+\.\d+$', '');
   v_station_name := p_posto_id;
@@ -61,6 +63,18 @@ BEGIN
     ELSE
       v_is_bandeira_branca := false;
       v_final_bandeira := v_bandeira;
+    END IF;
+
+    -- DEBUG: Verificar se existe cotação Geral (Spot) hoje que seria ignorada
+    PERFORM 1 FROM cotacao.cotacao_geral_combustivel cg
+    INNER JOIN cotacao.grupo_codigo_item gci ON cg.id_grupo_codigo_item=gci.id_grupo_codigo_item
+    WHERE DATE(cg.data_cotacao) = p_date
+    AND (gci.nome ILIKE '%'||p_produto||'%' OR gci.descricao ILIKE '%'||p_produto||'%')
+    LIMIT 1;
+    IF FOUND THEN v_has_general_today := TRUE; END IF;
+
+    IF v_has_general_today AND NOT v_is_bandeira_branca THEN
+        v_debug_info := 'Existe cotação Geral (Spot) para esta data, mas foi ignorada pois o posto é Bandeirado (' || v_final_bandeira || ').';
     END IF;
 
     -- 3. Definir Data de Referência (v_latest_date)
@@ -144,7 +158,7 @@ BEGIN
         AND DATE(cg.data_cotacao)=p_date
         AND (gci.nome ILIKE '%'||p_produto||'%' OR gci.descricao ILIKE '%'||p_produto||'%')
         AND UPPER(TRIM(cg.forma_entrega)) = 'FOB'
-        AND COALESCE(fe.frete_real, fe.frete_atual, 0) > 0
+        -- AND COALESCE(fe.frete_real, fe.frete_atual, 0) > 0
 
       UNION ALL
 
@@ -168,7 +182,7 @@ BEGIN
         AND DATE(cc.data_cotacao)=p_date
         AND (gci.nome ILIKE '%'||p_produto||'%' OR gci.descricao ILIKE '%'||p_produto||'%')
         AND UPPER(TRIM(cc.forma_entrega)) = 'FOB'
-        AND COALESCE(fe.frete_real,fe.frete_atual,0) > 0
+        -- AND COALESCE(fe.frete_real,fe.frete_atual,0) > 0
 
       UNION ALL
 
@@ -191,7 +205,8 @@ BEGIN
     )
     SELECT 
       c.base_id, c.base_nome, c.base_codigo, c.base_uf, c.custo, c.frete, c.custo_total, c.forma_entrega, c.data_referencia,
-      v_final_bandeira as base_bandeira
+      v_final_bandeira as base_bandeira,
+      v_debug_info as debug_info
     FROM cotacoes c
     ORDER BY c.custo_total ASC, c.prioridade ASC
     LIMIT 1;
@@ -205,7 +220,8 @@ BEGIN
       r.posto_id::text, 'Referência'::text, r.posto_id::text, ''::text,
       r.preco_referencia::numeric, 0::numeric, r.preco_referencia::numeric,
       'FOB'::text, r.created_at::timestamp,
-      COALESCE(v_final_bandeira, 'N/A')::text as base_bandeira
+      COALESCE(v_final_bandeira, 'N/A')::text as base_bandeira,
+      v_debug_info as debug_info
     FROM public.referencias r
     WHERE (r.posto_id = p_posto_id OR r.posto_id = v_clean_posto_id OR r.posto_id ILIKE '%'||v_station_name||'%')
       AND r.produto ILIKE '%'||p_produto||'%'

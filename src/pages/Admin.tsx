@@ -1,4 +1,22 @@
-// @ts-nocheck
+// Types for Admin page
+interface SystemLog {
+  id: string;
+  action: string;
+  user_id?: string;
+  details?: string;
+  created_at: string;
+}
+
+interface UserProfileRecord {
+  id: string;
+  user_id: string;
+  nome?: string;
+  email?: string;
+  perfil?: string;
+  posto?: string;
+  active?: boolean;
+  created_at?: string;
+}
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,9 +41,9 @@ export default function Admin() {
     posto: ""
   });
 
-  const [logs, setLogs] = useState<any[]>([]);
+  const [logs, setLogs] = useState<SystemLog[]>([]);
   const [backupLoading, setBackupLoading] = useState(false);
-  const [users, setUsers] = useState<any[]>([]);
+  const [users, setUsers] = useState<UserProfileRecord[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [updatingCosts, setUpdatingCosts] = useState(false);
   const [updateCostsDateRange] = useState({
@@ -221,6 +239,7 @@ export default function Admin() {
                         <SelectItem value="assessor_comercial">Assessor Comercial</SelectItem>
                         <SelectItem value="diretor_pricing">Diretor de Pricing</SelectItem>
                         <SelectItem value="analista_pricing">Analista de Pricing</SelectItem>
+                        <SelectItem value="gerente_comercial">Gerente Comercial</SelectItem>
                         <SelectItem value="gerente">Gerente</SelectItem>
                       </SelectContent>
                     </Select>
@@ -256,6 +275,7 @@ export default function Admin() {
                                 <SelectItem value="assessor_comercial">Assessor Comercial</SelectItem>
                                 <SelectItem value="diretor_pricing">Diretor de Pricing</SelectItem>
                                 <SelectItem value="analista_pricing">Analista de Pricing</SelectItem>
+                                <SelectItem value="gerente_comercial">Gerente Comercial</SelectItem>
                                 <SelectItem value="gerente">Gerente</SelectItem>
                               </SelectContent>
                             </Select>

@@ -1,12 +1,19 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { User } from '@supabase/supabase-js';
+import { User, AuthError } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+import { getUserProfileByUserId } from '@/api/profileApi';
+import type { UserProfile } from '@/types';
+
+interface SignInResult {
+  error: AuthError | Error | null;
+  data?: { user: User | null; session: unknown };
+}
 
 interface AuthContextType {
   user: User | null;
-  profile: any | null;
+  profile: UserProfile | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: any, data?: any }>;
+  signIn: (email: string, password: string) => Promise<SignInResult>;
   signOut: () => Promise<void>;
   isConfigured: boolean;
 }
@@ -26,24 +33,15 @@ export const useAuth = () => useContext(AuthContext);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<any | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadProfile = useCallback(async (userId: string) => {
     if (!supabase) return;
     try {
-      const { data, error } = await supabase
-        .from('user_profiles' as any)
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      console.log('[Auth] loadProfile result', { hasData: !!data, hasError: !!error });
-      if (!error && data) {
-        setProfile(data);
-      } else if (error) {
-        console.error('Erro ao carregar perfil:', error);
-      }
+      const data = await getUserProfileByUserId(userId);
+      console.log('[Auth] loadProfile result', { hasData: !!data, hasError: false });
+      if (data) setProfile(data);
     } catch (error) {
       console.error('Erro ao carregar perfil:', error);
     }

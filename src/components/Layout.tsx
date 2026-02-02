@@ -120,10 +120,11 @@ const menuStructure: MenuGroupWithIcon[] = [
     label: "Pricing",
     icon: Gauge,
     items: [
-      { icon: Map, label: "Mapa Contatos (Desenvolvimento)", href: "/mapa-contatos", permission: "pricing" },
-      { icon: Truck, label: "Cargas (Desenvolvimento)", href: "/cargas", permission: "pricing" },
-      { icon: FileCheck, label: "NFs Incorretas (Desenvolvimento)", href: "/nfs-incorretas", permission: "pricing" },
-      { icon: TrendingUp, label: "Paridade (Desenvolvimento)", href: "/paridade", permission: "pricing" },
+      { icon: DollarSign, label: "Custo do Dia", href: "/custo-dia", permission: "price_request" },
+      { icon: Map, label: "Mapa Contatos (Desenvolvimento)", href: "/mapa-contatos", permission: "price_request" },
+      { icon: Truck, label: "Cargas (Desenvolvimento)", href: "/cargas", permission: "price_request" },
+      { icon: FileCheck, label: "NFs Incorretas (Desenvolvimento)", href: "/nfs-incorretas", permission: "price_request" },
+      { icon: TrendingUp, label: "Paridade (Desenvolvimento)", href: "/paridade", permission: "price_request" },
     ]
   },
   {

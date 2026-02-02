@@ -22,6 +22,7 @@ const PROFILE_LABELS: Record<string, string> = {
   'diretor_pricing': 'Diretor Pricing',
   'analista_pricing': 'Analista Pricing',
   'gerente_comercial': 'Gerente Comercial',
+  'gerente': 'Gerente',
   'assessor_comercial': 'Assessor Comercial',
 };
 
@@ -102,7 +103,7 @@ export default function ApprovalOrderConfig() {
       setHasChanges(false);
     } catch (error: any) {
       console.error('Erro ao carregar perfis:', error);
-      
+
       // Mensagem de erro mais amigável
       let errorMessage = 'Erro desconhecido';
       if (error?.message) {
@@ -116,9 +117,9 @@ export default function ApprovalOrderConfig() {
           errorMessage = error.message;
         }
       }
-      
+
       toast.error('Erro ao carregar ordem de aprovação: ' + errorMessage);
-      
+
       // Se ainda não tentou todas as vezes, tentar novamente após um delay maior
       if (retryCount < MAX_RETRIES && (error?.message?.includes('Failed to fetch') || error?.message?.includes('NetworkError'))) {
         setTimeout(() => {
@@ -136,17 +137,17 @@ export default function ApprovalOrderConfig() {
 
   const handleMoveUp = (index: number) => {
     if (index === 0) return;
-    
+
     setProfiles((items) => {
       const newItems = [...items];
       [newItems[index - 1], newItems[index]] = [newItems[index], newItems[index - 1]];
-      
+
       // Atualizar order_position
       const updatedItems = newItems.map((item, idx) => ({
         ...item,
         order_position: idx + 1,
       }));
-      
+
       setHasChanges(true);
       return updatedItems;
     });
@@ -154,17 +155,17 @@ export default function ApprovalOrderConfig() {
 
   const handleMoveDown = (index: number) => {
     if (index === profiles.length - 1) return;
-    
+
     setProfiles((items) => {
       const newItems = [...items];
       [newItems[index], newItems[index + 1]] = [newItems[index + 1], newItems[index]];
-      
+
       // Atualizar order_position
       const updatedItems = newItems.map((item, idx) => ({
         ...item,
         order_position: idx + 1,
       }));
-      
+
       setHasChanges(true);
       return updatedItems;
     });
@@ -200,15 +201,15 @@ export default function ApprovalOrderConfig() {
 
       toast.success('Ordem de aprovação salva com sucesso!');
       setHasChanges(false);
-      
+
       // Invalidar cache de aprovadores em todas as páginas
       try {
         localStorage.removeItem('approvals_approvers_cache');
         localStorage.removeItem('approvals_approvers_cache_timestamp');
         localStorage.removeItem('approvals_suggestions_cache');
         localStorage.removeItem('approvals_suggestions_cache_timestamp');
-      } catch {}
-      
+      } catch { }
+
       await loadProfiles();
     } catch (error: any) {
       console.error('Erro ao salvar ordem:', error);
@@ -283,9 +284,8 @@ export default function ApprovalOrderConfig() {
             {profiles.map((profile, index) => (
               <div
                 key={profile.id}
-                className={`flex items-center gap-3 p-3 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 ${
-                  !profile.is_active ? 'opacity-50' : ''
-                }`}
+                className={`flex items-center gap-3 p-3 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 ${!profile.is_active ? 'opacity-50' : ''
+                  }`}
               >
                 <div className="flex flex-col gap-1">
                   <Button

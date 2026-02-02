@@ -1,4 +1,4 @@
-// @ts-nocheck
+// ClientManagement - Gestão de Clientes
 import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -73,7 +73,7 @@ export default function ClientManagementWithTabs() {
     try {
       setLoading(true)
       const { data, error } = await supabase
-        .from('cliente')
+        .from('cliente' as any)
         .select('*')
         .order('created_at', { ascending: false })
 
@@ -83,7 +83,7 @@ export default function ClientManagementWithTabs() {
         return
       }
 
-      setClientes(data || [])
+      setClientes((data || []) as Cliente[])
     } catch (error) {
       console.error('Erro ao carregar clientes:', error)
       toast.error('Erro ao carregar clientes')
@@ -229,8 +229,8 @@ export default function ClientManagementWithTabs() {
       if (editingCliente) {
         // Atualizar
         const { error } = await supabase
-          .from('cliente')
-          .update(dataToSave)
+          .from('cliente' as any)
+          .update(dataToSave as any)
           .eq('id', editingCliente.id)
 
         if (error) {
@@ -243,8 +243,8 @@ export default function ClientManagementWithTabs() {
       } else {
         // Criar
         const { error } = await supabase
-          .from('cliente')
-          .insert([dataToSave])
+          .from('cliente' as any)
+          .insert([dataToSave] as any)
 
         if (error) {
           console.error('Erro ao criar cliente:', error)
@@ -274,7 +274,7 @@ export default function ClientManagementWithTabs() {
 
     try {
       const { error } = await supabase
-        .from('cliente')
+        .from('cliente' as any)
         .delete()
         .eq('id', id)
 

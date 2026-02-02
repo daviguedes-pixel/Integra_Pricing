@@ -1,5 +1,4 @@
-// @ts-nocheck
-import React, { createContext, useContext, useEffect, useState } from 'react'
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { secureApiClient } from '@/lib/secure-api'
 
@@ -179,8 +178,8 @@ export function SecurityProvider({ children }: { children: React.ReactNode }) {
       
       // Simular envio para o servidor
       if (event.severity === 'critical' || event.severity === 'high') {
-        // Log crítico - enviar imediatamente
-        await secureApiClient.reportSecurityEvent?.(event)
+        // Log crítico - em produção, enviar para servidor de logs
+        console.warn('[Security] Critical event:', event)
       }
     } catch (error) {
       console.error('Erro ao reportar evento de segurança:', error)

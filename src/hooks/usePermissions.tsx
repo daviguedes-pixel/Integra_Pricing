@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { useAuth } from './useAuth';
-import { supabase } from '@/integrations/supabase/client';
+import { getProfilePermissions, getUserProfile } from '@/api/permissionsApi';
 
 interface UserPermissions {
   role: 'admin' | 'user';
@@ -35,6 +35,8 @@ interface UserPermissions {
     can_manage_notifications: boolean;
   };
 }
+
+type PermissionKey = keyof UserPermissions['permissions'];
 
 interface PermissionsContextType {
   permissions: UserPermissions | null;
@@ -143,13 +145,10 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
       }
 
       // Buscar perfil do usuário com tratamento de erro melhorado
-      const { data: profileData, error: profileError } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('user_id', user.id)
-        .single();
-
-      if (profileError) {
+      let profileData: any = null;
+      try {
+        profileData = await getUserProfile(user.id);
+      } catch (profileError) {
         console.error('Error loading profile:', profileError);
         // Se não conseguir carregar o perfil, usar permissões mínimas
         setPermissions({
@@ -205,13 +204,10 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
       console.log('Perfil determinado:', { role, perfil, perfilFromDb });
 
       // Buscar permissões da tabela profile_permissions
-      const { data: perms, error: permsError } = await supabase
-        .from('profile_permissions')
-        .select('*')
-        .eq('perfil', perfil)
-        .single();
-
-      if (permsError || !perms) {
+      let perms: any = null;
+      try {
+        perms = await getProfilePermissions(perfil);
+      } catch (permsError) {
         console.error('Error loading permissions:', permsError);
         // Se não conseguir carregar permissões específicas, usar permissões baseadas no role
         const isAdmin = role === 'admin';
@@ -313,11 +309,12 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
       console.log('✅ canAccess: Admin - acesso total para', tab);
       return true;
     }
-    const hasAccess = permissions.permissions[tab as keyof UserPermissions['permissions']] || false;
+    const key = tab as PermissionKey;
+    const hasAccess = permissions.permissions[key] || false;
     console.log(`🔍 canAccess: ${tab} = ${hasAccess}`, { 
       tab, 
       hasAccess, 
-      permissions: permissions.permissions[tab as keyof UserPermissions['permissions']] 
+      permissions: permissions.permissions[key] 
     });
     return hasAccess;
   };
@@ -325,7 +322,7 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
   const canPerform = (action: string): boolean => {
     if (!permissions) return false;
     if (permissions.role === 'admin') return true;
-    return permissions.permissions[action as keyof UserPermissions['permissions']] || false;
+    return permissions.permissions[action as PermissionKey] || false;
   };
 
   const canApproveMargin = (marginCents: number): boolean => {

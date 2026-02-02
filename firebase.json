@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "notifica-6e935",
     "public": "dist",
     "ignore": [
       "firebase.json",
@@ -60,4 +61,3 @@
     ]
   }
 }
-

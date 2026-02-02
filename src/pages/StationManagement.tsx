@@ -1,4 +1,4 @@
-// @ts-nocheck
+// StationManagement - Gestão de Postos
 import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -111,7 +111,7 @@ export default function StationManagementWithTabs() {
       const postosProprios = (proprios || []).map(p => ({ ...p, tipo: 'proprio' as const }))
       const postosConcorrentes = (concorrentes || []).map(p => ({ ...p, tipo: 'concorrente' as const }))
       
-      setPostos([...postosProprios, ...postosConcorrentes])
+      setPostos([...postosProprios, ...postosConcorrentes] as Posto[])
     } catch (error) {
       console.error('Erro ao carregar postos:', error)
       toast.error('Erro ao carregar postos')
@@ -213,8 +213,8 @@ export default function StationManagementWithTabs() {
         // Atualizar
         const tableName = editingPosto.tipo === 'proprio' ? 'sis_empresa' : 'concorrentes'
         const { error } = await supabase
-          .from(tableName)
-          .update(dataToSave)
+          .from(tableName as any)
+          .update(dataToSave as any)
           .eq('id', editingPosto.id)
 
         if (error) {
@@ -228,8 +228,8 @@ export default function StationManagementWithTabs() {
         // Criar
         const tableName = formData.tipo === 'proprio' ? 'sis_empresa' : 'concorrentes'
         const { error } = await supabase
-          .from(tableName)
-          .insert([dataToSave])
+          .from(tableName as any)
+          .insert([dataToSave] as any)
 
         if (error) {
           console.error('Erro ao criar posto:', error)

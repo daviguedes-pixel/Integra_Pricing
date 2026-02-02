@@ -30,6 +30,8 @@ export function formatBrazilianCurrency(value: number): string {
   });
 }
 
+export const formatCurrency = formatBrazilianCurrency;
+
 // Função para converter número inteiro (centavos) para formato de exibição com vírgula fixa
 // Ex: 350 -> "3,50", 100 -> "1,00"
 export function formatIntegerToPrice(integerValue: string | number): string {

@@ -1,4 +1,4 @@
-// @ts-nocheck
+// Gestao - Página de Gestão
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -139,9 +139,6 @@ export default function Gestao() {
       setSyncingN8N(true);
       const loadingToast = toast.loading("Executando sincronização no n8n... Aguarde a conclusão.");
 
-      // URL do Webhook do n8n
-      const WEBHOOK_URL = "http://n8n.hetz.com/webhook/c3c95968-cf5e-4b85-8a89-9a9fd5112eb6";
-
       // Buscar usuário atual de forma segura
       const { data: { user } } = await supabase.auth.getUser();
       const currentUserEmail = user?.email;
@@ -152,30 +149,22 @@ export default function Gestao() {
         if (profile) currentUserName = profile.nome;
       }
 
-      const response = await fetch(WEBHOOK_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      // Chamar a Edge Function do Supabase (atua como proxy para evitar erros de Mixed Content e SSL)
+      const { data, error } = await supabase.functions.invoke('sync-n8n', {
+        body: {
           action: 'sync_costs',
           requested_by: currentUserName,
           user_email: currentUserEmail,
           timestamp: new Date().toISOString()
-        })
+        }
       });
 
       toast.dismiss(loadingToast);
 
-      if (response.ok) {
+      if (!error) {
         let responseDetails = "";
-        try {
-          const data = await response.json();
-          if (data && data.message) responseDetails = `: ${data.message}`;
-          else if (typeof data === 'string') responseDetails = `: ${data}`;
-        } catch (e) {
-          // Ignore parse errors
-        }
+        if (data && data.message) responseDetails = `: ${data.message}`;
+        else if (typeof data === 'string' && data.length > 0) responseDetails = `: ${data}`;
 
         toast.success(`Sincronização concluída com sucesso${responseDetails}!`, {
           duration: 5000,
@@ -187,7 +176,6 @@ export default function Gestao() {
             p_action: 'N8N_SYNC_COMPLETED',
             p_resource_type: 'system',
             p_details: {
-              webhook: WEBHOOK_URL,
               timestamp: new Date().toISOString(),
               status: 'completed'
             }
@@ -196,7 +184,7 @@ export default function Gestao() {
           console.warn('Log do sistema indisponível:', e);
         }
       } else {
-        throw new Error(`Erro na resposta do n8n: ${response.statusText}`);
+        throw new Error(error.message || 'Erro ao chamar função de sincronização');
       }
     } catch (error: any) {
       console.error('Erro ao acionar n8n:', error);

@@ -14,7 +14,7 @@ import { supabase } from "@/integrations/supabase/client";
 export default function PriceHistory() {
   const { toast } = useToast();
   const { priceHistory, searchPriceHistory, loading } = useDatabase();
-  const [filteredHistory, setFilteredHistory] = useState<any[]>([]);
+  const [filteredHistory, setFilteredHistory] = useState<Array<Record<string, unknown>>>([]);
   const [topStats, setTopStats] = useState({
     topApprover: { name: '-', count: 0 },
     topClient: { name: '-', count: 0 },
@@ -255,7 +255,7 @@ export default function PriceHistory() {
 
       // Buscar clientes para mapear IDs para nomes
       // Tentar primeiro na tabela clients
-      let clientsData: any[] = [];
+      let clientsData: Array<{ id: string | number; nome: string }> = [];
       const { data: clients } = await supabase
         .from('clients')
         .select('id, name');
@@ -353,7 +353,7 @@ export default function PriceHistory() {
 
     // Calcular variação média comparando preços consecutivos do mesmo produto/posto/cliente
     // Agrupar por produto, posto e cliente, ordenar por data e calcular diferenças
-    const groupedData = new Map<string, any[]>();
+    const groupedData = new Map<string, Array<Record<string, unknown>>>();
     data.forEach((item: any) => {
       const key = `${item.product}-${item.station_id}-${item.client_id}`;
       if (!groupedData.has(key)) {

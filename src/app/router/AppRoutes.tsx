@@ -1,0 +1,270 @@
+import { Suspense, lazy } from "react";
+import { Navigate, Route, Routes } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
+import { NotificationsProvider } from "@/hooks/useNotifications";
+import { PermissionsProvider } from "@/hooks/usePermissions";
+import Layout from "@/components/Layout";
+import { AppRoute } from "@/components/AppRoute";
+
+const Login = lazy(() => import("@/pages/Login"));
+const Dashboard = lazy(() => import("@/pages/Dashboard"));
+const PriceRequest = lazy(() => import("@/pages/PriceRequest"));
+const Approvals = lazy(() => import("@/pages/Approvals"));
+const Admin = lazy(() => import("@/pages/Admin"));
+const MapView = lazy(() => import("@/pages/MapView"));
+const PriceHistory = lazy(() => import("@/pages/PriceHistory"));
+const PortfolioManager = lazy(() => import("@/pages/PortfolioManager"));
+const ReferenceRegistration = lazy(() => import("@/pages/ReferenceRegistration"));
+const TaxManagement = lazy(() => import("@/pages/TaxManagement"));
+const StationManagement = lazy(() => import("@/pages/StationManagement"));
+const ClientManagement = lazy(() => import("@/pages/ClientManagement"));
+const PasswordChange = lazy(() => import("@/pages/PasswordChange"));
+const AuditLogs = lazy(() => import("@/pages/AuditLogs"));
+const Settings = lazy(() => import("@/pages/Settings"));
+const ProfileSettings = lazy(() => import("@/pages/ProfileSettings"));
+const Gestao = lazy(() => import("@/pages/Gestao"));
+const ApprovalMarginConfig = lazy(() => import("@/pages/ApprovalMarginConfig"));
+const ApprovalOrderConfig = lazy(() => import("@/pages/ApprovalOrderConfig"));
+const MapaContatos = lazy(() => import("@/pages/MapaContatos"));
+const DailyCost = lazy(() => import("@/pages/DailyCost"));
+const NotFound = lazy(() => import("@/pages/NotFound"));
+
+function RouteFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+    </div>
+  );
+}
+
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // Check if user needs to change password
+  const searchParams = new URLSearchParams(window.location.search);
+  const needsPasswordChange = searchParams.get("change-password") === "true";
+
+  if (needsPasswordChange) {
+    return <Navigate to="/change-password" replace />;
+  }
+
+  return (
+    <PermissionsProvider>
+      <NotificationsProvider>
+        <Layout>{children}</Layout>
+      </NotificationsProvider>
+    </PermissionsProvider>
+  );
+}
+
+export function AppRoutes() {
+  return (
+    <Suspense fallback={<RouteFallback />}>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/pricing-suggestion" element={<Navigate to="/solicitacao-preco" replace />} />
+        <Route
+          path="/solicitacao-preco"
+          element={
+            <ProtectedRoute>
+              <AppRoute permission="price_request">
+                <PriceRequest />
+              </AppRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/approvals"
+          element={
+            <ProtectedRoute>
+              <AppRoute permission="approvals">
+                <Approvals />
+              </AppRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/map"
+          element={
+            <ProtectedRoute>
+              <AppRoute permission="map">
+                <MapView />
+              </AppRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute>
+              <AppRoute permission="admin">
+                <Admin />
+              </AppRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/price-history"
+          element={
+            <ProtectedRoute>
+              <AppRoute permission="price_history">
+                <PriceHistory />
+              </AppRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/portfolio-manager"
+          element={
+            <ProtectedRoute>
+              <AppRoute permission="price_history">
+                <PortfolioManager />
+              </AppRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reference-registration"
+          element={
+            <ProtectedRoute>
+              <AppRoute permission="reference_registration">
+                <ReferenceRegistration />
+              </AppRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/tax-management"
+          element={
+            <ProtectedRoute>
+              <AppRoute permission="tax_management">
+                <TaxManagement />
+              </AppRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/station-management"
+          element={
+            <ProtectedRoute>
+              <AppRoute permission="station_management">
+                <StationManagement />
+              </AppRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/client-management"
+          element={
+            <ProtectedRoute>
+              <AppRoute permission="client_management">
+                <ClientManagement />
+              </AppRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/audit-logs"
+          element={
+            <ProtectedRoute>
+              <AppRoute permission="audit_logs">
+                <AuditLogs />
+              </AppRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute>
+              <AppRoute permission="settings">
+                <Settings />
+              </AppRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/profile-settings"
+          element={
+            <ProtectedRoute>
+              <ProfileSettings />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/gestao"
+          element={
+            <ProtectedRoute>
+              <AppRoute permission="gestao">
+                <Gestao />
+              </AppRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/approval-margin-config"
+          element={
+            <ProtectedRoute>
+              <AppRoute permission="approval_margin_config">
+                <ApprovalMarginConfig />
+              </AppRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/approval-order-config"
+          element={
+            <ProtectedRoute>
+              <AppRoute permission="admin">
+                <ApprovalOrderConfig />
+              </AppRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/mapa-contatos"
+          element={
+            <ProtectedRoute>
+              <AppRoute permission="price_request">
+                <MapaContatos />
+              </AppRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/custo-dia"
+          element={
+            <ProtectedRoute>
+              <AppRoute permission="price_request">
+                <DailyCost />
+              </AppRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/change-password" element={<PasswordChange />} />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </Suspense>
+  );
+}

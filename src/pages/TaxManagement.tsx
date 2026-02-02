@@ -1,4 +1,4 @@
-// @ts-nocheck
+// TaxManagement - Gestão de Impostos e Taxas
 import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -73,7 +73,18 @@ export default function TaxManagementWithTabs() {
         return
       }
 
-      setTiposPagamento(data || [])
+      // Map database fields to TipoPagamento interface
+      const mapped = (data || []).map((item: Record<string, unknown>) => ({
+        id: String(item.id || ''),
+        nome: String(item.CARTAO || item.nome || ''),
+        descricao: String(item.POSTO || item.descricao || ''),
+        taxa_percentual: Number(item.TAXA || item.taxa_percentual || 0),
+        dias_pagamento: Number(item.PRAZO || item.dias_pagamento || 0),
+        ativo: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })) as TipoPagamento[];
+      setTiposPagamento(mapped)
     } catch (error) {
       console.error('Erro ao carregar tipos de pagamento:', error)
       toast.error('Erro ao carregar tipos de pagamento')
@@ -161,8 +172,8 @@ export default function TaxManagementWithTabs() {
       if (editingTipo) {
         // Atualizar
         const { error } = await supabase
-          .from('tipos_pagamento')
-          .update(dataToSave)
+          .from('tipos_pagamento' as any)
+          .update(dataToSave as any)
           .eq('id', editingTipo.id)
 
         if (error) {
@@ -175,8 +186,8 @@ export default function TaxManagementWithTabs() {
       } else {
         // Criar
         const { error } = await supabase
-          .from('tipos_pagamento')
-          .insert([dataToSave])
+          .from('tipos_pagamento' as any)
+          .insert([dataToSave] as any)
 
         if (error) {
           console.error('Erro ao criar tipo de pagamento:', error)
@@ -202,9 +213,9 @@ export default function TaxManagementWithTabs() {
   const toggleStatus = async (tipo: TipoPagamento) => {
     try {
       const { error } = await supabase
-        .from('tipos_pagamento')
-        .update({ ativo: !tipo.ativo, updated_at: new Date().toISOString() })
-        .eq('id', tipo.id)
+        .from('tipos_pagamento' as any)
+        .update({ ativo: !tipo.ativo, updated_at: new Date().toISOString() } as any)
+        .eq('id', tipo.id as any)
 
       if (error) {
         console.error('Erro ao alterar status:', error)

@@ -45,11 +45,16 @@ const abas = [
   { label: 'Aprovações', key: 'approvals' },
   { label: 'Pesquisa de Preços Públicos', key: 'research' },
   { label: 'Mapa de Preços', key: 'map' },
-  { label: 'Histórico', key: 'price_history' },
+  { label: 'Histórico de Preços', key: 'price_history' },
   { label: 'Referências', key: 'reference_registration' },
+  { label: 'Gestão de Postos', key: 'station_management' },
+  { label: 'Gestão de Clientes', key: 'client_management' },
+  { label: 'Gestão de Taxas', key: 'tax_management' },
+  { label: 'Logs de Auditoria', key: 'audit_logs' },
+  { label: 'Config. Margem Aprovação', key: 'approval_margin_config' },
   { label: 'Administração', key: 'admin' },
   { label: 'Configurações', key: 'settings' },
-  { label: 'Gestão', key: 'gestao' }
+  { label: 'Gestão Geral', key: 'gestao' }
 ];
 
 const subabasGestao = [
@@ -86,7 +91,7 @@ export function PermissionsManager() {
       if (error) throw error;
 
       const permissionsMap: Record<string, ProfilePermission> = {};
-      
+
       // Inicializar todos os perfis com valores padrão
       perfis.forEach(perfil => {
         permissionsMap[perfil.key] = {
@@ -98,6 +103,11 @@ export function PermissionsManager() {
           map: false,
           price_history: false,
           reference_registration: false,
+          station_management: false,
+          client_management: false,
+          tax_management: false,
+          audit_logs: false,
+          approval_margin_config: false,
           admin: false,
           settings: false,
           gestao: false,
@@ -112,7 +122,7 @@ export function PermissionsManager() {
           can_manage_notifications: false,
         };
       });
-      
+
       // Sobrescrever com dados do banco
       (data || []).forEach((perm: any) => {
         if (permissionsMap[perm.perfil]) {
@@ -143,6 +153,11 @@ export function PermissionsManager() {
         map: false,
         price_history: false,
         reference_registration: false,
+        station_management: false,
+        client_management: false,
+        tax_management: false,
+        audit_logs: false,
+        approval_margin_config: false,
         admin: false,
         settings: false,
         gestao: false,
@@ -156,7 +171,7 @@ export function PermissionsManager() {
         can_view_history: false,
         can_manage_notifications: false,
       };
-      
+
       return {
         ...prev,
         [perfil]: {
@@ -184,10 +199,10 @@ export function PermissionsManager() {
       }
 
       toast.success('Permissões salvas com sucesso!');
-      
+
       // Recarregar permissões do hook para atualizar o contexto
       await reloadPermissions();
-      
+
       // Recarregar permissões locais para garantir sincronização
       await loadPermissions();
     } catch (error) {
@@ -207,7 +222,7 @@ export function PermissionsManager() {
       {perfis.map((perfil) => (
         <div key={perfil.key} className="border border-border rounded-lg p-6 space-y-4">
           <h3 className="text-lg font-semibold text-primary">{perfil.nome}</h3>
-          
+
           {/* Abas do Sistema */}
           <div>
             <h4 className="text-sm font-medium text-muted-foreground mb-3">Abas Visíveis</h4>
@@ -259,7 +274,7 @@ export function PermissionsManager() {
       ))}
 
       <div className="flex justify-end pt-4">
-        <Button 
+        <Button
           onClick={handleSave}
           disabled={saving}
           className="bg-primary hover:bg-primary-hover text-primary-foreground"

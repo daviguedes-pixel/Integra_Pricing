@@ -1,21 +1,15 @@
-// @ts-nocheck
 import { createContext, useContext, ReactNode, useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-
-interface Notification {
-  id: string;
-  suggestion_id?: string;
-  type: string;
-  title: string;
-  message: string;
-  read: boolean;
-  created_at: string;
-  data?: any;
-}
+import {
+  deleteNotification as deleteNotificationApi,
+  listNotifications,
+  markAllNotificationsAsRead,
+  markNotificationAsRead,
+  type NotificationRecord,
+} from '@/api/notificationsApi';
 
 interface NotificationsContextType {
-  notifications: any[];
+  notifications: NotificationRecord[];
   unreadCount: number;
   markAsRead: (id: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
@@ -34,7 +28,7 @@ const NotificationsContext = createContext<NotificationsContextType>({
 
 export const NotificationsProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useAuth();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
 
   const loadNotifications = useCallback(async () => {
     if (!user) {
@@ -45,60 +39,25 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
     console.log('🔄 Carregando notificações para user_id:', user.id);
 
     try {
-      const { data, error } = await supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+      const data = await listNotifications(user.id);
 
-      if (error) {
-        // Se a tabela não existe, apenas logar e retornar array vazio
-        if (error.code === 'PGRST205' || error.message?.includes('not find the table')) {
-          console.warn('📋 Tabela de notificações ainda não foi criada. Execute o arquivo apply_notifications.sql no Supabase Dashboard.');
-          setNotifications([]);
-          return;
-        }
-        
-        console.error('❌ Erro ao carregar notificações:', {
-          error,
-          errorCode: error.code,
-          errorMessage: error.message,
-          errorDetails: error.details,
-          userId: user.id
-        });
-        throw error;
-      }
-      
       console.log('📬 Notificações carregadas:', {
         total: data?.length || 0,
-        unread: data?.filter((n: Notification) => !n.read).length || 0,
+        unread: data?.filter((n) => !n.read).length || 0,
         userId: user.id,
-        notifications: data?.map((n: Notification) => ({ 
-          id: n.id, 
-          read: n.read, 
-          type: n.type, 
+        notifications: data?.map((n) => ({
+          id: n.id,
+          read: n.read,
+          type: n.type,
           title: n.title,
-          user_id: (n as any).user_id,
-          hasData: !!(n as any).data,
-          dataType: typeof (n as any).data,
-          data: (n as any).data
-        }))
+          user_id: n.user_id,
+          hasData: !!n.data,
+          dataType: typeof n.data,
+          data: n.data,
+        })),
       });
-      
-      // Processar notificações para garantir que data seja um objeto
-      const processedNotifications = (data || []).map((n: any) => {
-        // Se data é uma string, tentar fazer parse
-        if (n.data && typeof n.data === 'string') {
-          try {
-            n.data = JSON.parse(n.data);
-          } catch (e) {
-            console.warn('⚠️ Erro ao fazer parse do campo data:', e, n.data);
-          }
-        }
-        return n;
-      });
-      
-      setNotifications(processedNotifications);
+
+      setNotifications(data);
     } catch (error) {
       console.error('❌ Erro ao carregar notificações:', error);
       setNotifications([]);
@@ -137,15 +96,7 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
 
   const markAsRead = async (id: string) => {
     try {
-      const { error } = await supabase
-        .from('notifications')
-        .update({ read: true })
-        .eq('id', id);
-
-      if (error) {
-        if (error.code !== 'PGRST205') throw error;
-        return;
-      }
+      await markNotificationAsRead(id);
       loadNotifications();
     } catch (error) {
       console.error('Erro ao marcar notificação como lida:', error);
@@ -156,16 +107,7 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
     if (!user) return;
     
     try {
-      const { error } = await supabase
-        .from('notifications')
-        .update({ read: true })
-        .eq('user_id', user.id)
-        .eq('read', false);
-
-      if (error) {
-        if (error.code !== 'PGRST205') throw error;
-        return;
-      }
+      await markAllNotificationsAsRead(user.id);
       loadNotifications();
     } catch (error) {
       console.error('Erro ao marcar todas como lidas:', error);
@@ -174,15 +116,7 @@ export const NotificationsProvider = ({ children }: { children: ReactNode }) => 
 
   const deleteNotification = async (id: string) => {
     try {
-      const { error } = await supabase
-        .from('notifications')
-        .delete()
-        .eq('id', id);
-
-      if (error) {
-        if (error.code !== 'PGRST205') throw error;
-        return;
-      }
+      await deleteNotificationApi(id);
       loadNotifications();
     } catch (error) {
       console.error('Erro ao excluir notificação:', error);
