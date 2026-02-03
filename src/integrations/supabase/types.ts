@@ -58,75 +58,69 @@ export type Database = {
           },
         ]
       }
-      bin_informacoes: {
+      approval_margin_rules: {
         Row: {
-          bandeira: string | null
-          capital_pais: string | null
-          codigo_alpha2: string | null
-          codigo_alpha3: string | null
-          codigo_idd: string | null
-          codigo_idioma: string | null
-          comprimento: number | null
-          data_insercao: string | null
-          esquema_pagamento: string | null
-          id_bin: number
-          idioma: string | null
-          moeda: string | null
-          nivel_cartao: string | null
-          nome_emissor: string | null
-          numero_bin: number
-          pais_codigo_numerico: string | null
-          pais_nome: string | null
-          site_emissor: string | null
-          telefone_emissor: string | null
-          tipo_cartao: string | null
-          valido: boolean | null
+          created_at: string | null
+          created_by: string | null
+          id: string
+          is_active: boolean | null
+          max_margin_cents: number | null
+          min_margin_cents: number
+          priority_order: number | null
+          required_profiles: string[]
+          rule_name: string | null
+          updated_at: string | null
         }
         Insert: {
-          bandeira?: string | null
-          capital_pais?: string | null
-          codigo_alpha2?: string | null
-          codigo_alpha3?: string | null
-          codigo_idd?: string | null
-          codigo_idioma?: string | null
-          comprimento?: number | null
-          data_insercao?: string | null
-          esquema_pagamento?: string | null
-          id_bin: number
-          idioma?: string | null
-          moeda?: string | null
-          nivel_cartao?: string | null
-          nome_emissor?: string | null
-          numero_bin: number
-          pais_codigo_numerico?: string | null
-          pais_nome?: string | null
-          site_emissor?: string | null
-          telefone_emissor?: string | null
-          tipo_cartao?: string | null
-          valido?: boolean | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_active?: boolean | null
+          max_margin_cents?: number | null
+          min_margin_cents: number
+          priority_order?: number | null
+          required_profiles: string[]
+          rule_name?: string | null
+          updated_at?: string | null
         }
         Update: {
-          bandeira?: string | null
-          capital_pais?: string | null
-          codigo_alpha2?: string | null
-          codigo_alpha3?: string | null
-          codigo_idd?: string | null
-          codigo_idioma?: string | null
-          comprimento?: number | null
-          data_insercao?: string | null
-          esquema_pagamento?: string | null
-          id_bin?: number
-          idioma?: string | null
-          moeda?: string | null
-          nivel_cartao?: string | null
-          nome_emissor?: string | null
-          numero_bin?: number
-          pais_codigo_numerico?: string | null
-          pais_nome?: string | null
-          site_emissor?: string | null
-          telefone_emissor?: string | null
-          tipo_cartao?: string | null
-          valido?: boolean | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_active?: boolean | null
+          max_margin_cents?: number | null
+          min_margin_cents?: number
+          priority_order?: number | null
+          required_profiles?: string[]
+          rule_name?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      approval_profile_order: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          order_position: number
+          perfil: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          order_position: number
+          perfil: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          order_position?: number
+          perfil?: string
+          updated_at?: string | null
         }
         Relationships: []
       }
@@ -148,36 +142,48 @@ export type Database = {
         }
         Relationships: []
       }
-      clients: {
+      commercial_proposals: {
         Row: {
-          active: boolean | null
-          code: string
-          contact_email: string | null
-          contact_phone: string | null
-          created_at: string | null
+          client_id: string | null
+          created_at: string
+          created_by: string | null
           id: string
-          name: string
-          updated_at: string | null
+          metadata: Json | null
+          observations: string | null
+          proposal_number: number
+          status: string
+          total_value: number | null
+          total_volume: number | null
+          updated_at: string
+          valid_until: string | null
         }
         Insert: {
-          active?: boolean | null
-          code: string
-          contact_email?: string | null
-          contact_phone?: string | null
-          created_at?: string | null
+          client_id?: string | null
+          created_at?: string
+          created_by?: string | null
           id?: string
-          name: string
-          updated_at?: string | null
+          metadata?: Json | null
+          observations?: string | null
+          proposal_number?: number
+          status?: string
+          total_value?: number | null
+          total_volume?: number | null
+          updated_at?: string
+          valid_until?: string | null
         }
         Update: {
-          active?: boolean | null
-          code?: string
-          contact_email?: string | null
-          contact_phone?: string | null
-          created_at?: string | null
+          client_id?: string | null
+          created_at?: string
+          created_by?: string | null
           id?: string
-          name?: string
-          updated_at?: string | null
+          metadata?: Json | null
+          observations?: string | null
+          proposal_number?: number
+          status?: string
+          total_value?: number | null
+          total_volume?: number | null
+          updated_at?: string
+          valid_until?: string | null
         }
         Relationships: []
       }
@@ -328,258 +334,10 @@ export type Database = {
         }
         Relationships: []
       }
-      concorrentes_importacao: {
-        Row: {
-          autorizacao: string | null
-          bairro: string | null
-          bandeira: string | null
-          cep: string | null
-          classe: string | null
-          cnpj: string | null
-          codigo_simp: string | null
-          complemento: string | null
-          data_obtencao: string | null
-          data_publicacao: string | null
-          data_vinculacao: string | null
-          distruibuidora: string | null
-          endereco: string | null
-          estimativa_acuracia: string | null
-          id_posto: string | null
-          latitude: string | null
-          latitude_anpac: string | null
-          longitude: string | null
-          longitude_anpac: string | null
-          municipio: string | null
-          observacao: string | null
-          origem_informacao: string | null
-          razao_social: string | null
-          situacao_constatada: string | null
-          src: string | null
-          srid: string | null
-          status_sigaf: string | null
-          uf: string | null
-          validacao: string | null
-        }
-        Insert: {
-          autorizacao?: string | null
-          bairro?: string | null
-          bandeira?: string | null
-          cep?: string | null
-          classe?: string | null
-          cnpj?: string | null
-          codigo_simp?: string | null
-          complemento?: string | null
-          data_obtencao?: string | null
-          data_publicacao?: string | null
-          data_vinculacao?: string | null
-          distruibuidora?: string | null
-          endereco?: string | null
-          estimativa_acuracia?: string | null
-          id_posto?: string | null
-          latitude?: string | null
-          latitude_anpac?: string | null
-          longitude?: string | null
-          longitude_anpac?: string | null
-          municipio?: string | null
-          observacao?: string | null
-          origem_informacao?: string | null
-          razao_social?: string | null
-          situacao_constatada?: string | null
-          src?: string | null
-          srid?: string | null
-          status_sigaf?: string | null
-          uf?: string | null
-          validacao?: string | null
-        }
-        Update: {
-          autorizacao?: string | null
-          bairro?: string | null
-          bandeira?: string | null
-          cep?: string | null
-          classe?: string | null
-          cnpj?: string | null
-          codigo_simp?: string | null
-          complemento?: string | null
-          data_obtencao?: string | null
-          data_publicacao?: string | null
-          data_vinculacao?: string | null
-          distruibuidora?: string | null
-          endereco?: string | null
-          estimativa_acuracia?: string | null
-          id_posto?: string | null
-          latitude?: string | null
-          latitude_anpac?: string | null
-          longitude?: string | null
-          longitude_anpac?: string | null
-          municipio?: string | null
-          observacao?: string | null
-          origem_informacao?: string | null
-          razao_social?: string | null
-          situacao_constatada?: string | null
-          src?: string | null
-          srid?: string | null
-          status_sigaf?: string | null
-          uf?: string | null
-          validacao?: string | null
-        }
-        Relationships: []
-      }
-      Dever_Cayo: {
-        Row: {
-          BANDEIRA: string | null
-          BASE: string | null
-          POSTO: string | null
-          PRAZO: string | null
-        }
-        Insert: {
-          BANDEIRA?: string | null
-          BASE?: string | null
-          POSTO?: string | null
-          PRAZO?: string | null
-        }
-        Update: {
-          BANDEIRA?: string | null
-          BASE?: string | null
-          POSTO?: string | null
-          PRAZO?: string | null
-        }
-        Relationships: []
-      }
-      Dever_Cayo1: {
-        Row: {
-          BANDEIRA: string | null
-          BASE: string | null
-          POSTO: string | null
-          PRAZO: string | null
-        }
-        Insert: {
-          BANDEIRA?: string | null
-          BASE?: string | null
-          POSTO?: string | null
-          PRAZO?: string | null
-        }
-        Update: {
-          BANDEIRA?: string | null
-          BASE?: string | null
-          POSTO?: string | null
-          PRAZO?: string | null
-        }
-        Relationships: []
-      }
-      dispositivos: {
-        Row: {
-          data_inclusao: string | null
-          id: number
-          id_localizacao: number | null
-          sentido: string | null
-        }
-        Insert: {
-          data_inclusao?: string | null
-          id: number
-          id_localizacao?: number | null
-          sentido?: string | null
-        }
-        Update: {
-          data_inclusao?: string | null
-          id?: number
-          id_localizacao?: number | null
-          sentido?: string | null
-        }
-        Relationships: []
-      }
-      eventos_veiculos: {
-        Row: {
-          brilho_placa: number | null
-          comprimento_veiculo: number | null
-          cor_placa: string | null
-          cor_veiculo: string | null
-          data_hora: string | null
-          direcao_placa: string | null
-          estado_evento: string | null
-          id: number
-          id_dispositivo: number | null
-          id_localizacao: number | null
-          json_completo: Json
-          modelo_veiculo: string | null
-          nivel_confianca: number | null
-          placa_veiculo: string | null
-          ponto_passagem: string | null
-          tipo_evento: string | null
-          tipo_placa: string | null
-          tipo_veiculo: string | null
-          velocidade_veiculo: number | null
-        }
-        Insert: {
-          brilho_placa?: number | null
-          comprimento_veiculo?: number | null
-          cor_placa?: string | null
-          cor_veiculo?: string | null
-          data_hora?: string | null
-          direcao_placa?: string | null
-          estado_evento?: string | null
-          id: number
-          id_dispositivo?: number | null
-          id_localizacao?: number | null
-          json_completo: Json
-          modelo_veiculo?: string | null
-          nivel_confianca?: number | null
-          placa_veiculo?: string | null
-          ponto_passagem?: string | null
-          tipo_evento?: string | null
-          tipo_placa?: string | null
-          tipo_veiculo?: string | null
-          velocidade_veiculo?: number | null
-        }
-        Update: {
-          brilho_placa?: number | null
-          comprimento_veiculo?: number | null
-          cor_placa?: string | null
-          cor_veiculo?: string | null
-          data_hora?: string | null
-          direcao_placa?: string | null
-          estado_evento?: string | null
-          id?: number
-          id_dispositivo?: number | null
-          id_localizacao?: number | null
-          json_completo?: Json
-          modelo_veiculo?: string | null
-          nivel_confianca?: number | null
-          placa_veiculo?: string | null
-          ponto_passagem?: string | null
-          tipo_evento?: string | null
-          tipo_placa?: string | null
-          tipo_veiculo?: string | null
-          velocidade_veiculo?: number | null
-        }
-        Relationships: []
-      }
-      localizacao: {
-        Row: {
-          data_inclusao: string | null
-          id: number
-          latitude: number | null
-          longitude: number | null
-          nome: string
-        }
-        Insert: {
-          data_inclusao?: string | null
-          id: number
-          latitude?: number | null
-          longitude?: number | null
-          nome: string
-        }
-        Update: {
-          data_inclusao?: string | null
-          id?: number
-          latitude?: number | null
-          longitude?: number | null
-          nome?: string
-        }
-        Relationships: []
-      }
       notifications: {
         Row: {
           created_at: string | null
+          data: Json | null
           id: string
           message: string
           read: boolean | null
@@ -591,6 +349,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          data?: Json | null
           id?: string
           message: string
           read?: boolean | null
@@ -602,6 +361,7 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          data?: Json | null
           id?: string
           message?: string
           read?: boolean | null
@@ -613,199 +373,6 @@ export type Database = {
         }
         Relationships: []
       }
-      payment_methods: {
-        Row: {
-          active: boolean | null
-          created_at: string | null
-          days: number | null
-          fee_percentage: number | null
-          id: string
-          name: string
-          type: Database["public"]["Enums"]["payment_type"]
-          updated_at: string | null
-        }
-        Insert: {
-          active?: boolean | null
-          created_at?: string | null
-          days?: number | null
-          fee_percentage?: number | null
-          id?: string
-          name: string
-          type: Database["public"]["Enums"]["payment_type"]
-          updated_at?: string | null
-        }
-        Update: {
-          active?: boolean | null
-          created_at?: string | null
-          days?: number | null
-          fee_percentage?: number | null
-          id?: string
-          name?: string
-          type?: Database["public"]["Enums"]["payment_type"]
-          updated_at?: string | null
-        }
-        Relationships: []
-      }
-      postos: {
-        Row: {
-          autorizacao: string | null
-          bairro: string | null
-          bandeira: string | null
-          cep: string | null
-          classe: string | null
-          cnpj: string
-          codigo_simp: number | null
-          complemento: string | null
-          data_obtencao: string | null
-          data_publicacao: string | null
-          data_vinculacao: string | null
-          distruibuidora: string | null
-          endereco: string | null
-          estimativa_acuracia: string | null
-          id_posto: number
-          latitude: number | null
-          latitude_anpac: number | null
-          longitude: number | null
-          longitude_anpac: number | null
-          municipio: string | null
-          observacao: string | null
-          origem_informacao: string | null
-          razao_social: string
-          situacao_constatada: string | null
-          src: string | null
-          srid: number | null
-          status_sigaf: string | null
-          uf: string | null
-          validacao: string | null
-        }
-        Insert: {
-          autorizacao?: string | null
-          bairro?: string | null
-          bandeira?: string | null
-          cep?: string | null
-          classe?: string | null
-          cnpj: string
-          codigo_simp?: number | null
-          complemento?: string | null
-          data_obtencao?: string | null
-          data_publicacao?: string | null
-          data_vinculacao?: string | null
-          distruibuidora?: string | null
-          endereco?: string | null
-          estimativa_acuracia?: string | null
-          id_posto?: number
-          latitude?: number | null
-          latitude_anpac?: number | null
-          longitude?: number | null
-          longitude_anpac?: number | null
-          municipio?: string | null
-          observacao?: string | null
-          origem_informacao?: string | null
-          razao_social: string
-          situacao_constatada?: string | null
-          src?: string | null
-          srid?: number | null
-          status_sigaf?: string | null
-          uf?: string | null
-          validacao?: string | null
-        }
-        Update: {
-          autorizacao?: string | null
-          bairro?: string | null
-          bandeira?: string | null
-          cep?: string | null
-          classe?: string | null
-          cnpj?: string
-          codigo_simp?: number | null
-          complemento?: string | null
-          data_obtencao?: string | null
-          data_publicacao?: string | null
-          data_vinculacao?: string | null
-          distruibuidora?: string | null
-          endereco?: string | null
-          estimativa_acuracia?: string | null
-          id_posto?: number
-          latitude?: number | null
-          latitude_anpac?: number | null
-          longitude?: number | null
-          longitude_anpac?: number | null
-          municipio?: string | null
-          observacao?: string | null
-          origem_informacao?: string | null
-          razao_social?: string
-          situacao_constatada?: string | null
-          src?: string | null
-          srid?: number | null
-          status_sigaf?: string | null
-          uf?: string | null
-          validacao?: string | null
-        }
-        Relationships: []
-      }
-      price_history: {
-        Row: {
-          approved_by: string
-          change_type: string | null
-          client_id: string | null
-          created_at: string | null
-          id: string
-          margin_cents: number
-          new_price: number
-          old_price: number | null
-          product: Database["public"]["Enums"]["product_type"]
-          station_id: string | null
-          suggestion_id: string | null
-        }
-        Insert: {
-          approved_by: string
-          change_type?: string | null
-          client_id?: string | null
-          created_at?: string | null
-          id?: string
-          margin_cents: number
-          new_price: number
-          old_price?: number | null
-          product: Database["public"]["Enums"]["product_type"]
-          station_id?: string | null
-          suggestion_id?: string | null
-        }
-        Update: {
-          approved_by?: string
-          change_type?: string | null
-          client_id?: string | null
-          created_at?: string | null
-          id?: string
-          margin_cents?: number
-          new_price?: number
-          old_price?: number | null
-          product?: Database["public"]["Enums"]["product_type"]
-          station_id?: string | null
-          suggestion_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "price_history_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "clients"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "price_history_station_id_fkey"
-            columns: ["station_id"]
-            isOneToOne: false
-            referencedRelation: "stations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "price_history_suggestion_id_fkey"
-            columns: ["suggestion_id"]
-            isOneToOne: false
-            referencedRelation: "price_suggestions"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       price_suggestions: {
         Row: {
           approval_level: number | null
@@ -815,6 +382,8 @@ export type Database = {
           arla_cost_price: number | null
           arla_purchase_price: number | null
           attachments: string[] | null
+          batch_id: string | null
+          batch_name: string | null
           client_id: string | null
           cost_price: number
           created_at: string | null
@@ -834,13 +403,14 @@ export type Database = {
           price_origin_delivery: string | null
           price_origin_uf: string | null
           product: Database["public"]["Enums"]["product_type"]
+          proposal_id: string | null
           purchase_cost: number | null
           reference_id: string | null
           reference_type: Database["public"]["Enums"]["reference_type"] | null
           rejections_count: number | null
           requested_by: string | null
           station_id: string | null
-          status: Database["public"]["Enums"]["approval_status"] | null
+          status: string | null
           suggested_price: number | null
           total_approvers: number | null
           updated_at: string | null
@@ -855,6 +425,8 @@ export type Database = {
           arla_cost_price?: number | null
           arla_purchase_price?: number | null
           attachments?: string[] | null
+          batch_id?: string | null
+          batch_name?: string | null
           client_id?: string | null
           cost_price: number
           created_at?: string | null
@@ -874,13 +446,14 @@ export type Database = {
           price_origin_delivery?: string | null
           price_origin_uf?: string | null
           product: Database["public"]["Enums"]["product_type"]
+          proposal_id?: string | null
           purchase_cost?: number | null
           reference_id?: string | null
           reference_type?: Database["public"]["Enums"]["reference_type"] | null
           rejections_count?: number | null
           requested_by?: string | null
           station_id?: string | null
-          status?: Database["public"]["Enums"]["approval_status"] | null
+          status?: string | null
           suggested_price?: number | null
           total_approvers?: number | null
           updated_at?: string | null
@@ -895,6 +468,8 @@ export type Database = {
           arla_cost_price?: number | null
           arla_purchase_price?: number | null
           attachments?: string[] | null
+          batch_id?: string | null
+          batch_name?: string | null
           client_id?: string | null
           cost_price?: number
           created_at?: string | null
@@ -914,20 +489,29 @@ export type Database = {
           price_origin_delivery?: string | null
           price_origin_uf?: string | null
           product?: Database["public"]["Enums"]["product_type"]
+          proposal_id?: string | null
           purchase_cost?: number | null
           reference_id?: string | null
           reference_type?: Database["public"]["Enums"]["reference_type"] | null
           rejections_count?: number | null
           requested_by?: string | null
           station_id?: string | null
-          status?: Database["public"]["Enums"]["approval_status"] | null
+          status?: string | null
           suggested_price?: number | null
           total_approvers?: number | null
           updated_at?: string | null
           volume_made?: number | null
           volume_projected?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "price_suggestions_proposal_id_fkey"
+            columns: ["proposal_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_proposals"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profile_permissions: {
         Row: {
@@ -940,6 +524,7 @@ export type Database = {
           can_edit: boolean
           can_manage_notifications: boolean
           can_register: boolean
+          can_view_all_proposals: boolean | null
           can_view_history: boolean
           client_management: boolean
           created_at: string | null
@@ -970,6 +555,7 @@ export type Database = {
           can_edit?: boolean
           can_manage_notifications?: boolean
           can_register?: boolean
+          can_view_all_proposals?: boolean | null
           can_view_history?: boolean
           client_management?: boolean
           created_at?: string | null
@@ -1000,6 +586,7 @@ export type Database = {
           can_edit?: boolean
           can_manage_notifications?: boolean
           can_register?: boolean
+          can_view_all_proposals?: boolean | null
           can_view_history?: boolean
           client_management?: boolean
           created_at?: string | null
@@ -1022,24 +609,30 @@ export type Database = {
         }
         Relationships: []
       }
-      profiles: {
+      push_subscriptions: {
         Row: {
           created_at: string | null
+          device_info: Json | null
+          fcm_token: string
           id: string
-          must_change_password: boolean | null
-          nome: string | null
+          updated_at: string | null
+          user_id: string
         }
         Insert: {
           created_at?: string | null
-          id: string
-          must_change_password?: boolean | null
-          nome?: string | null
+          device_info?: Json | null
+          fcm_token: string
+          id?: string
+          updated_at?: string | null
+          user_id: string
         }
         Update: {
           created_at?: string | null
+          device_info?: Json | null
+          fcm_token?: string
           id?: string
-          must_change_password?: boolean | null
-          nome?: string | null
+          updated_at?: string | null
+          user_id?: string
         }
         Relationships: []
       }
@@ -1091,44 +684,6 @@ export type Database = {
           produto?: string
           tipo_pagamento_id?: string | null
           updated_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "referencias_tipo_pagamento_id_fkey"
-            columns: ["tipo_pagamento_id"]
-            isOneToOne: false
-            referencedRelation: "payment_methods"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      role_audit_log: {
-        Row: {
-          action: string
-          id: string
-          performed_at: string | null
-          performed_by: string
-          reason: string | null
-          role: Database["public"]["Enums"]["app_role"]
-          user_id: string
-        }
-        Insert: {
-          action: string
-          id?: string
-          performed_at?: string | null
-          performed_by: string
-          reason?: string | null
-          role: Database["public"]["Enums"]["app_role"]
-          user_id: string
-        }
-        Update: {
-          action?: string
-          id?: string
-          performed_at?: string | null
-          performed_by?: string
-          reason?: string | null
-          role?: Database["public"]["Enums"]["app_role"]
-          user_id?: string
         }
         Relationships: []
       }
@@ -1237,6 +792,33 @@ export type Database = {
         }
         Relationships: []
       }
+      system_logs: {
+        Row: {
+          action: string
+          created_at: string | null
+          details: Json | null
+          id: string
+          resource_type: string | null
+          user_email: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          details?: Json | null
+          id?: string
+          resource_type?: string | null
+          user_email?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          details?: Json | null
+          id?: string
+          resource_type?: string | null
+          user_email?: string | null
+        }
+        Relationships: []
+      }
       tipos_pagamento: {
         Row: {
           CARTAO: string | null
@@ -1264,30 +846,10 @@ export type Database = {
         }
         Relationships: []
       }
-      traducoes: {
-        Row: {
-          categoria: string
-          codigo: string
-          descricao: string
-          id: number
-        }
-        Insert: {
-          categoria: string
-          codigo: string
-          descricao: string
-          id: number
-        }
-        Update: {
-          categoria?: string
-          codigo?: string
-          descricao?: string
-          id?: number
-        }
-        Relationships: []
-      }
       user_profiles: {
         Row: {
           ativo: boolean
+          avatar_url: string | null
           cargo: string | null
           created_at: string | null
           email: string
@@ -1301,6 +863,7 @@ export type Database = {
         }
         Insert: {
           ativo?: boolean
+          avatar_url?: string | null
           cargo?: string | null
           created_at?: string | null
           email: string
@@ -1314,6 +877,7 @@ export type Database = {
         }
         Update: {
           ativo?: boolean
+          avatar_url?: string | null
           cargo?: string | null
           created_at?: string | null
           email?: string
@@ -1327,147 +891,16 @@ export type Database = {
         }
         Relationships: []
       }
-      user_roles: {
-        Row: {
-          assigned_at: string | null
-          assigned_by: string | null
-          id: string
-          role: Database["public"]["Enums"]["app_role"]
-          user_id: string
-        }
-        Insert: {
-          assigned_at?: string | null
-          assigned_by?: string | null
-          id?: string
-          role: Database["public"]["Enums"]["app_role"]
-          user_id: string
-        }
-        Update: {
-          assigned_at?: string | null
-          assigned_by?: string | null
-          id?: string
-          role?: Database["public"]["Enums"]["app_role"]
-          user_id?: string
-        }
-        Relationships: []
-      }
-      vw_eventos_veiculos: {
-        Row: {
-          brilho_placa: number | null
-          cor_veiculo: string | null
-          data_hora: string | null
-          direcao_placa: string | null
-          id: number | null
-          id_dispositivo: number | null
-          id_localizacao: number | null
-          latitude: number | null
-          localizacao: string | null
-          longitude: number | null
-          nivel_confianca: number | null
-          placa_veiculo: string | null
-          ponto_passagem: string | null
-          sentido: string | null
-          tipo_veiculo: string | null
-          velocidade_veiculo: number | null
-        }
-        Insert: {
-          brilho_placa?: number | null
-          cor_veiculo?: string | null
-          data_hora?: string | null
-          direcao_placa?: string | null
-          id?: number | null
-          id_dispositivo?: number | null
-          id_localizacao?: number | null
-          latitude?: number | null
-          localizacao?: string | null
-          longitude?: number | null
-          nivel_confianca?: number | null
-          placa_veiculo?: string | null
-          ponto_passagem?: string | null
-          sentido?: string | null
-          tipo_veiculo?: string | null
-          velocidade_veiculo?: number | null
-        }
-        Update: {
-          brilho_placa?: number | null
-          cor_veiculo?: string | null
-          data_hora?: string | null
-          direcao_placa?: string | null
-          id?: number | null
-          id_dispositivo?: number | null
-          id_localizacao?: number | null
-          latitude?: number | null
-          localizacao?: string | null
-          longitude?: number | null
-          nivel_confianca?: number | null
-          placa_veiculo?: string | null
-          ponto_passagem?: string | null
-          sentido?: string | null
-          tipo_veiculo?: string | null
-          velocidade_veiculo?: number | null
-        }
-        Relationships: []
-      }
-      vw_eventos_veiculos_consolidados: {
-        Row: {
-          classe_veiculo: string | null
-          data_hora: string | null
-          id_localizacao: number | null
-          latitude: number | null
-          longitude: number | null
-          nome: string | null
-          quantidade: number | null
-          tipo_veiculo: string | null
-        }
-        Insert: {
-          classe_veiculo?: string | null
-          data_hora?: string | null
-          id_localizacao?: number | null
-          latitude?: number | null
-          longitude?: number | null
-          nome?: string | null
-          quantidade?: number | null
-          tipo_veiculo?: string | null
-        }
-        Update: {
-          classe_veiculo?: string | null
-          data_hora?: string | null
-          id_localizacao?: number | null
-          latitude?: number | null
-          longitude?: number | null
-          nome?: string | null
-          quantidade?: number | null
-          tipo_veiculo?: string | null
-        }
-        Relationships: []
-      }
-      vwbi_empresa: {
-        Row: {
-          id_empresa: number | null
-          latitude: number | null
-          longitude: number | null
-          nome_empresa: string | null
-        }
-        Insert: {
-          id_empresa?: number | null
-          latitude?: number | null
-          longitude?: number | null
-          nome_empresa?: string | null
-        }
-        Update: {
-          id_empresa?: number | null
-          latitude?: number | null
-          longitude?: number | null
-          nome_empresa?: string | null
-        }
-        Relationships: []
-      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      get_lowest_cost_freight: {
+      admin_update_approval_costs: {
+        Args: { p_end_date: string; p_start_date: string }
+        Returns: Json
+      }
+      get_all_costs_for_station: {
         Args: { p_date?: string; p_posto_id: string; p_produto: string }
         Returns: {
           base_codigo: string
@@ -1479,6 +912,92 @@ export type Database = {
           data_referencia: string
           forma_entrega: string
           frete: number
+          origem: string
+        }[]
+      }
+      get_approval_margin_rule: {
+        Args: { margin_cents: number }
+        Returns: {
+          id: string
+          max_margin_cents: number
+          min_margin_cents: number
+          priority_order: number
+          required_profiles: string[]
+          rule_name: string
+        }[]
+      }
+      get_approval_profile_order: {
+        Args: never
+        Returns: {
+          order_position: number
+          perfil: string
+        }[]
+      }
+      get_contatos: {
+        Args: never
+        Returns: {
+          base: string
+          cidade: string
+          data_contato: string
+          distribuidora: string
+          estado: string
+          pego: boolean
+          regiao: string
+          responsavel: string
+          status: string
+          uf: string
+        }[]
+      }
+      get_descontos_indevidos: {
+        Args: { p_data_fim?: string; p_data_inicio?: string }
+        Returns: {
+          cliente_id: number
+          custo_dia: number
+          data_transacao: string
+          diferenca: number
+          id_transacao: number
+          negativado: boolean
+          nome_cliente: string
+          nome_posto: string
+          observacoes: string
+          percentual_desconto: number
+          posto_id: number
+          preco_calculado: number
+          produto: string
+        }[]
+      }
+      get_lowest_cost_freight: {
+        Args: { p_date?: string; p_posto_id: string; p_produto: string }
+        Returns: {
+          base_bandeira: string
+          base_codigo: string
+          base_id: string
+          base_nome: string
+          base_uf: string
+          custo: number
+          custo_total: number
+          data_referencia: string
+          debug_info: string
+          forma_entrega: string
+          frete: number
+        }[]
+      }
+      get_nf_transacoes: {
+        Args: { limit_count?: number }
+        Returns: {
+          row_data: Json
+        }[]
+      }
+      get_sis_empresa_by_ids: {
+        Args: { p_ids: string[] }
+        Returns: {
+          bandeira: string
+          cnpj_cpf: string
+          id_empresa: string
+          latitude: number
+          longitude: number
+          nome_empresa: string
+          rede: string
         }[]
       }
       get_sis_empresa_stations: {
@@ -1502,6 +1021,11 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
+      load_site_config: { Args: never; Returns: Json }
+      log_system_action: {
+        Args: { p_action: string; p_details?: Json; p_resource_type?: string }
+        Returns: undefined
+      }
       postgres_fdw_disconnect: { Args: { "": string }; Returns: boolean }
       postgres_fdw_disconnect_all: { Args: never; Returns: boolean }
       postgres_fdw_get_connections: {
@@ -1509,6 +1033,8 @@ export type Database = {
         Returns: Record<string, unknown>[]
       }
       postgres_fdw_handler: { Args: never; Returns: unknown }
+      safe_numeric_convert: { Args: { val: string }; Returns: number }
+      save_site_config: { Args: { config_json: Json }; Returns: boolean }
       unaccent: { Args: { "": string }; Returns: string }
     }
     Enums: {
