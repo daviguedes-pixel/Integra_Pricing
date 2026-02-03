@@ -1,5 +1,6 @@
 import { useState, useCallback, memo } from "react";
 import { Button } from "./ui/button";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   BarChart3,
   DollarSign,
@@ -191,13 +192,17 @@ function Layout({ children }: LayoutProps) {
   return (
     <div className="min-h-screen bg-background flex">
       {/* Sidebar - Navy Blue */}
-      <aside
+      <motion.aside
+        initial={false}
+        animate={{
+          width: sidebarCollapsed ? 64 : sidebarWidth,
+        }}
+        transition={{ duration: 0.3, ease: "easeInOut" }}
         className={`
-          bg-sidebar border-r border-sidebar-border transition-all duration-300 flex flex-col relative
-          ${sidebarOpen ? 'fixed' : 'hidden lg:flex'}
+          bg-sidebar border-r border-sidebar-border flex flex-col relative
+          ${sidebarOpen ? 'fixed left-0' : 'hidden lg:flex'}
           lg:sticky lg:top-0 z-50 h-screen max-h-screen overflow-hidden flex-shrink-0
         `}
-        style={{ width: sidebarCollapsed ? '64px' : `${sidebarWidth}px` }}
       >
         {/* Resize Handle */}
         {!sidebarCollapsed && (
@@ -482,7 +487,7 @@ function Layout({ children }: LayoutProps) {
             )}
           </div>
         </div>
-      </aside>
+      </motion.aside>
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-h-screen overflow-hidden">

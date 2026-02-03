@@ -13,7 +13,7 @@ export interface User {
 export interface UserProfile {
   id: string;
   user_id: string;
-  name?: string;
+  nome?: string;
   email?: string;
   phone?: string;
   perfil?: string;
@@ -32,7 +32,7 @@ export interface Permission {
   pode_aprovar: boolean;
 }
 
-export type PermissionKey = 
+export type PermissionKey =
   | 'dashboard'
   | 'price_request'
   | 'approvals'

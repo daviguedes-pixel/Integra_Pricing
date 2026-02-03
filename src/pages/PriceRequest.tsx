@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -23,7 +24,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { ProposalFullView } from "@/components/ProposalFullView";
 import { PriceRequestStats } from "@/components/PriceRequestStats";
 import { toast } from "sonner";
-import { ArrowLeft, Send, Save, TrendingUp, BarChart, CheckCircle, AlertCircle, Eye, DollarSign, Clock, Check, X, FileText, ChevronDown, Plus, Download, Maximize2, Loader2, Edit, Trash2, RefreshCcw } from "lucide-react";
+import { ArrowLeft, Send, Save, TrendingUp, BarChart, CheckCircle, AlertCircle, Eye, DollarSign, Clock, Check, X, FileText, ChevronDown, Plus, Download, Maximize2, Loader2, Edit, Trash2, RefreshCcw, Fuel } from "lucide-react";
 import { removeCache } from "@/lib/cache";
 import { IntegraLogo } from "@/components/IntegraLogo";
 import { SaoRoqueLogo } from "@/components/SaoRoqueLogo";
@@ -57,9 +58,42 @@ interface Reference {
   payment_methods?: { name: string };
 }
 
-// productLabels movido para getProductName em @/lib/pricing-utils
+// Product labels moved to getProductName in @/lib/pricing-utils
+
 
 export default function PriceRequest() {
+  // Animações visíveis mas performáticas
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.04, // Stagger visível
+        delayChildren: 0.1
+      }
+    }
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 15, scale: 0.98 },
+    visible: {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      transition: {
+        duration: 0.25
+      }
+    },
+    hover: {
+      scale: 1.01,
+      y: -2,
+      transition: { duration: 0.15 }
+    },
+    tap: {
+      scale: 0.98
+    }
+  };
+
   const navigate = useNavigate();
   const { user } = useAuth();
   const { permissions } = usePermissions();
@@ -3281,7 +3315,7 @@ export default function PriceRequest() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-background dark:to-card">
+    <div className="min-h-screen bg-slate-50 dark:bg-background">
       <div className="container mx-auto px-4 py-4 space-y-4">
         {/* Header com gradiente moderno */}
         <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 p-4 text-white shadow-xl">
@@ -4491,256 +4525,279 @@ export default function PriceRequest() {
                 />
 
                 {/* My Requests List */}
-                <div className="space-y-4">
-                  {myRequests.map((request, index) => {
-                    // Se for um lote, mostrar card compacto de proposta comercial
-                    if (request.type === 'batch' && request.requests) {
-                      const batch = request.requests;
-                      const firstRequest = batch[0];
-                      const proposalDate = new Date(firstRequest.created_at).toLocaleDateString('pt-BR');
-                      const proposalNumber = index + 1;
+                <motion.div
+                  className="space-y-4"
+                  variants={containerVariants}
+                  initial="hidden"
+                  animate="visible"
+                >
+                  <AnimatePresence mode="popLayout">
+                    {myRequests.map((request, index) => {
+                      // Se for um lote, mostrar card compacto de proposta comercial
+                      if (request.type === 'batch' && request.requests) {
+                        const batch = request.requests;
+                        const firstRequest = batch[0];
+                        const proposalDate = new Date(firstRequest.created_at).toLocaleDateString('pt-BR');
+                        const proposalNumber = index + 1;
 
-                      // Verificar se todos os clientes são iguais
-                      const uniqueClients = new Set(batch.map((r: any) => r.client_id || 'unknown'));
-                      const allSameClient = uniqueClients.size === 1;
-                      const displayClient = allSameClient ? firstRequest.clients : batch[0].clients;
+                        // Verificar se todos os clientes são iguais
+                        const uniqueClients = new Set(batch.map((r: any) => r.client_id || 'unknown'));
+                        const allSameClient = uniqueClients.size === 1;
+                        const displayClient = allSameClient ? firstRequest.clients : batch[0].clients;
 
-                      // Verificar se todos os postos são iguais
-                      const uniqueStations = new Set(batch.map((r: any) => {
-                        const station = r.stations || r.stations_list?.[0];
-                        return station?.name || station?.code || 'unknown';
-                      }));
-                      const allSameStation = uniqueStations.size === 1;
-                      const displayStation = allSameStation
-                        ? (firstRequest.stations || firstRequest.stations_list?.[0])
-                        : (batch[0].stations || batch[0].stations_list?.[0]);
+                        // Verificar se todos os postos são iguais
+                        const uniqueStations = new Set(batch.map((r: any) => {
+                          const station = r.stations || r.stations_list?.[0];
+                          return station?.name || station?.code || 'unknown';
+                        }));
+                        const allSameStation = uniqueStations.size === 1;
+                        const displayStation = allSameStation
+                          ? (firstRequest.stations || firstRequest.stations_list?.[0])
+                          : (batch[0].stations || batch[0].stations_list?.[0]);
 
-                      // Determinar status geral do lote
-                      const allApproved = batch.every((r: any) => r.status === 'approved');
-                      const hasPending = batch.some((r: any) => r.status === 'pending');
-                      const hasPriceSuggested = batch.some((r: any) => r.status === 'price_suggested');
-                      const allRejected = batch.every((r: any) => r.status === 'rejected');
+                        // Determinar status geral do lote
+                        const allApproved = batch.every((r: any) => r.status === 'approved');
+                        const hasPending = batch.some((r: any) => r.status === 'pending');
+                        const hasPriceSuggested = batch.some((r: any) => r.status === 'price_suggested');
+                        const allRejected = batch.every((r: any) => r.status === 'rejected');
 
-                      let generalStatus = 'pending';
-                      if (allApproved) {
-                        generalStatus = 'approved';
-                      } else if (hasPriceSuggested && !hasPending) {
-                        generalStatus = 'price_suggested';
-                      } else if (hasPending) {
-                        generalStatus = 'pending';
-                      } else if (allRejected) {
-                        generalStatus = 'rejected';
-                      } else {
-                        // Se houver mix de status, priorizar: approved > price_suggested > pending > rejected
-                        const hasAnyApproved = batch.some((r: any) => r.status === 'approved');
-                        if (hasAnyApproved) {
-                          generalStatus = 'pending'; // Ainda tem aprovações pendentes
-                        } else if (hasPriceSuggested) {
+                        let generalStatus = 'pending';
+                        if (allApproved) {
+                          generalStatus = 'approved';
+                        } else if (hasPriceSuggested && !hasPending) {
                           generalStatus = 'price_suggested';
-                        } else {
+                        } else if (hasPending) {
+                          generalStatus = 'pending';
+                        } else if (allRejected) {
                           generalStatus = 'rejected';
+                        } else {
+                          // Se houver mix de status, priorizar: approved > price_suggested > pending > rejected
+                          const hasAnyApproved = batch.some((r: any) => r.status === 'approved');
+                          if (hasAnyApproved) {
+                            generalStatus = 'pending'; // Ainda tem aprovações pendentes
+                          } else if (hasPriceSuggested) {
+                            generalStatus = 'price_suggested';
+                          } else {
+                            generalStatus = 'rejected';
+                          }
                         }
+
+                        return (
+                          <motion.div
+                            key={request.batchKey}
+                            variants={itemVariants}
+                            layout
+                            whileHover="hover"
+                            whileTap="tap"
+                          >
+                            <Card className="hover:shadow-lg transition-shadow">
+                              <CardContent className="p-6">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-3 mb-2">
+                                      <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                        {request.batch_name || 'Proposta Comercial'}
+                                      </span>
+                                      {generalStatus === 'approved' ? (
+                                        <Badge className="bg-green-100 text-green-800"><Check className="h-3 w-3 mr-1" />Aprovado</Badge>
+                                      ) : generalStatus === 'pending' ? (
+                                        <Badge variant="secondary" className="bg-yellow-100 text-yellow-800"><Clock className="h-3 w-3 mr-1" />Aguardando Aprovação</Badge>
+                                      ) : generalStatus === 'price_suggested' ? (
+                                        <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300"><DollarSign className="h-3 w-3 mr-1" />Preço Sugerido</Badge>
+                                      ) : (
+                                        <Badge variant="destructive"><X className="h-3 w-3 mr-1" />Rejeitado</Badge>
+                                      )}
+                                    </div>
+                                    <div className="space-y-1 text-sm text-slate-600 dark:text-slate-400">
+                                      {displayClient && (
+                                        <p>
+                                          <span className="font-medium">Cliente:</span> {displayClient.name || 'N/A'}
+                                          {!allSameClient && <span className="text-xs ml-1">(+{uniqueClients.size - 1} outros)</span>}
+                                        </p>
+                                      )}
+                                      {displayStation && (
+                                        <p>
+                                          <span className="font-medium">Posto:</span> {displayStation.name || 'N/A'}
+                                          {!allSameStation && <span className="text-xs ml-1">(+{uniqueStations.size - 1} outros)</span>}
+                                        </p>
+                                      )}
+                                      <p>Criado em: {proposalDate}</p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleDeleteProposal(request.batchKey)}
+                                      className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300"
+                                    >
+                                      <Trash2 className="h-4 w-4 mr-2" />
+                                      Excluir
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => setExpandedProposal(request.batchKey)}
+                                    >
+                                      <Maximize2 className="h-4 w-4 mr-2" />
+                                      Ver Completo
+                                    </Button>
+                                  </div>
+                                </div>
+                              </CardContent>
+                            </Card >
+
+                            {/* Modal com visualização completa */}
+                            <Dialog open={expandedProposal === request.batchKey
+                            } onOpenChange={(open) => !open && setExpandedProposal(null)}>
+                              <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto print:max-w-none print:max-h-none print:overflow-visible print:p-0">
+                                <ProposalFullView
+                                  batch={batch}
+                                  proposalNumber={proposalNumber}
+                                  proposalDate={proposalDate}
+                                  generalStatus={generalStatus}
+                                  user={user}
+                                />
+                              </DialogContent>
+                            </Dialog>
+                          </motion.div>
+                        );
                       }
 
+                      // Visualização normal para solicitações individuais
                       return (
-                        <>
-                          <Card key={request.batchKey} className="hover:shadow-lg transition-shadow">
+                        <motion.div
+                          key={request.id}
+                          variants={itemVariants}
+                          layout
+                          whileHover="hover"
+                          whileTap="tap"
+                        >
+                          <Card className="hover:shadow-lg transition-shadow">
                             <CardContent className="p-6">
                               <div className="flex items-center justify-between">
-                                <div className="flex-1">
+                                <div className="flex-1 gap-4">
                                   <div className="flex items-center gap-3 mb-2">
                                     <span className="font-semibold text-slate-800 dark:text-slate-200">
-                                      {request.batch_name || 'Proposta Comercial'}
+                                      {request.stations_list && request.stations_list.length > 0
+                                        ? request.stations_list.map((s: any) => s.name).join(', ')
+                                        : (request.stations?.name || 'Posto')
+                                      } - {request.clients?.name || 'Cliente'}
                                     </span>
-                                    {generalStatus === 'approved' ? (
+                                    {request.status === 'pending' && (
+                                      <Badge variant="secondary" className="bg-yellow-100 text-yellow-800"><Clock className="h-3 w-3 mr-1" />Pendente</Badge>
+                                    )}
+                                    {request.status === 'approved' && (
                                       <Badge className="bg-green-100 text-green-800"><Check className="h-3 w-3 mr-1" />Aprovado</Badge>
-                                    ) : generalStatus === 'pending' ? (
-                                      <Badge variant="secondary" className="bg-yellow-100 text-yellow-800"><Clock className="h-3 w-3 mr-1" />Aguardando Aprovação</Badge>
-                                    ) : generalStatus === 'price_suggested' ? (
-                                      <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300"><DollarSign className="h-3 w-3 mr-1" />Preço Sugerido</Badge>
-                                    ) : (
+                                    )}
+                                    {request.status === 'rejected' && (
                                       <Badge variant="destructive"><X className="h-3 w-3 mr-1" />Rejeitado</Badge>
                                     )}
                                   </div>
-                                  <div className="space-y-1 text-sm text-slate-600 dark:text-slate-400">
-                                    {displayClient && (
-                                      <p>
-                                        <span className="font-medium">Cliente:</span> {displayClient.name || 'N/A'}
-                                        {!allSameClient && <span className="text-xs ml-1">(+{uniqueClients.size - 1} outros)</span>}
-                                      </p>
-                                    )}
-                                    {displayStation && (
-                                      <p>
-                                        <span className="font-medium">Posto:</span> {displayStation.name || 'N/A'}
-                                        {!allSameStation && <span className="text-xs ml-1">(+{uniqueStations.size - 1} outros)</span>}
-                                      </p>
-                                    )}
-                                    <p>Criado em: {proposalDate}</p>
-                                  </div>
+                                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                                    Criado em: {new Date(request.created_at).toLocaleDateString('pt-BR')} | Enviado por: {formatNameFromEmail(request.requester_name || request.requester?.name || user?.user_metadata?.name || 'Eu')}
+                                  </p>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleDeleteProposal(request.batchKey)}
-                                    className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300"
-                                  >
-                                    <Trash2 className="h-4 w-4 mr-2" />
-                                    Excluir
-                                  </Button>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => setExpandedProposal(request.batchKey)}
-                                  >
-                                    <Maximize2 className="h-4 w-4 mr-2" />
-                                    Ver Completo
-                                  </Button>
-                                </div>
-                              </div>
-                            </CardContent>
-                          </Card >
-
-                          {/* Modal com visualização completa */}
-                          <Dialog open={expandedProposal === request.batchKey
-                          } onOpenChange={(open) => !open && setExpandedProposal(null)}>
-                            <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto print:max-w-none print:max-h-none print:overflow-visible print:p-0">
-                              <ProposalFullView
-                                batch={batch}
-                                proposalNumber={proposalNumber}
-                                proposalDate={proposalDate}
-                                generalStatus={generalStatus}
-                                user={user}
-                              />
-                            </DialogContent>
-                          </Dialog>
-                        </>
-                      );
-                    }
-
-                    // Visualização normal para solicitações individuais
-                    return (
-                      <Card key={request.id} className="hover:shadow-lg transition-shadow">
-                        <CardContent className="p-6">
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1 gap-4">
-                              <div className="flex items-center gap-3 mb-2">
-                                <span className="font-semibold text-slate-800 dark:text-slate-200">
-                                  {request.stations_list && request.stations_list.length > 0
-                                    ? request.stations_list.map((s: any) => s.name).join(', ')
-                                    : (request.stations?.name || 'Posto')
-                                  } - {request.clients?.name || 'Cliente'}
-                                </span>
-                                {request.status === 'pending' && (
-                                  <Badge variant="secondary" className="bg-yellow-100 text-yellow-800"><Clock className="h-3 w-3 mr-1" />Pendente</Badge>
-                                )}
-                                {request.status === 'approved' && (
-                                  <Badge className="bg-green-100 text-green-800"><Check className="h-3 w-3 mr-1" />Aprovado</Badge>
-                                )}
-                                {request.status === 'rejected' && (
-                                  <Badge variant="destructive"><X className="h-3 w-3 mr-1" />Rejeitado</Badge>
-                                )}
-                              </div>
-                              <p className="text-sm text-slate-600 dark:text-slate-400">
-                                Criado em: {new Date(request.created_at).toLocaleDateString('pt-BR')} | Enviado por: {formatNameFromEmail(request.requester_name || request.requester?.name || user?.user_metadata?.name || 'Eu')}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              {(request.status === 'draft' || request.status === 'pending' || String(request.status || '').toLowerCase().includes('approval')) && (
-                                <>
+                                  {(request.status === 'draft' || request.status === 'pending' || String(request.status || '').toLowerCase().includes('approval')) && (
+                                    <>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => {
+                                          setEditingRequest(request);
+                                          setShowEditModal(true);
+                                        }}
+                                      >
+                                        <Edit className="h-4 w-4 mr-2" />
+                                        Editar
+                                      </Button>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => handleDeleteRequest(request.id)}
+                                        className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300"
+                                      >
+                                        <Trash2 className="h-4 w-4 mr-2" />
+                                        Excluir
+                                      </Button>
+                                    </>
+                                  )}
                                   <Button
                                     variant="outline"
                                     size="sm"
                                     onClick={() => {
-                                      setEditingRequest(request);
-                                      setShowEditModal(true);
+                                      setSelectedRequest(request);
+                                      setShowRequestDetails(true);
                                     }}
                                   >
-                                    <Edit className="h-4 w-4 mr-2" />
-                                    Editar
+                                    <Eye className="h-4 w-4 mr-2" />
+                                    Ver Detalhes
                                   </Button>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleDeleteRequest(request.id)}
-                                    className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300"
-                                  >
-                                    <Trash2 className="h-4 w-4 mr-2" />
-                                    Excluir
-                                  </Button>
-                                </>
-                              )}
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  setSelectedRequest(request);
-                                  setShowRequestDetails(true);
-                                }}
-                              >
-                                <Eye className="h-4 w-4 mr-2" />
-                                Ver Detalhes
-                              </Button>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        </motion.div>
+                      );
+                    })}
+                  </AnimatePresence>
 
                   {myRequests.length === 0 && (
-                    <Card>
-                      <CardContent className="p-12 text-center">
-                        <p className="text-slate-600 dark:text-slate-400">Nenhuma solicitação encontrada</p>
-                      </CardContent>
-                    </Card>
+                    <motion.div variants={itemVariants}>
+                      <Card>
+                        <CardContent className="p-12 text-center">
+                          <p className="text-slate-600 dark:text-slate-400">Nenhuma solicitação encontrada</p>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
                   )}
-                </div>
+                </motion.div>
               </>
             )}
           </div>
-        )
+        )}
+
+
+        {/* Image Viewer Modal */}
+        < ImageViewerModal
+          isOpen={imageViewerOpen}
+          onClose={() => setImageViewerOpen(false)}
+          imageUrl={selectedImage}
+          imageName="Anexo da Referência"
+        />
+
+        {/* Approval Details Modal - Read Only */}
+        {
+          showRequestDetails && selectedRequest && (
+            <ApprovalDetailsModal
+              isOpen={showRequestDetails}
+              onClose={() => {
+                setShowRequestDetails(false);
+                setSelectedRequest(null);
+              }}
+              suggestion={selectedRequest}
+              onApprove={() => { }}
+              onReject={() => { }}
+              loading={false}
+              readOnly={true}
+            />
+          )
         }
-      </div >
 
-      {/* Image Viewer Modal */}
-      <ImageViewerModal
-        isOpen={imageViewerOpen}
-        onClose={() => setImageViewerOpen(false)}
-        imageUrl={selectedImage}
-        imageName="Anexo da Referência"
-      />
-
-      {/* Approval Details Modal - Read Only */}
-      {
-        showRequestDetails && selectedRequest && (
-          <ApprovalDetailsModal
-            isOpen={showRequestDetails}
-            onClose={() => {
-              setShowRequestDetails(false);
-              setSelectedRequest(null);
-            }}
-            suggestion={selectedRequest}
-            onApprove={() => { }}
-            onReject={() => { }}
-            loading={false}
-            readOnly={true}
-          />
-        )
-      }
-
-      {/* Edit Request Modal */}
-      <EditRequestModal
-        isOpen={showEditModal}
-        onClose={() => {
-          setShowEditModal(false);
-          setEditingRequest(null);
-        }}
-        request={editingRequest}
-        onSuccess={() => {
-          loadMyRequests(); // Recarregar lista após edição
-        }}
-      />
-    </div >
+        {/* Edit Request Modal */}
+        <EditRequestModal
+          isOpen={showEditModal}
+          onClose={() => {
+            setShowEditModal(false);
+            setEditingRequest(null);
+          }}
+          request={editingRequest}
+          onSuccess={() => {
+            loadMyRequests(); // Recarregar lista após edição
+          }}
+        />
+      </div>
+    </div>
   );
 }
