@@ -1,0 +1,10 @@
+pytesseract
+pillow
+opencv-python-headless
+numpy
+regex
+requests
+python-dotenv
+watchdog
+pdf2image
+pypdf

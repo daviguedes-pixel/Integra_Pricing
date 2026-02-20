@@ -15,17 +15,20 @@ CREATE TABLE IF NOT EXISTS public.pesquisa_precos_publicos (
 ALTER TABLE public.pesquisa_precos_publicos ENABLE ROW LEVEL SECURITY;
 
 -- Políticas para pesquisa_precos_publicos
-CREATE POLICY IF NOT EXISTS "Users can view pesquisa_precos_publicos" 
+DROP POLICY IF EXISTS "Users can view pesquisa_precos_publicos" ON public.pesquisa_precos_publicos;
+CREATE POLICY "Users can view pesquisa_precos_publicos" 
 ON public.pesquisa_precos_publicos 
 FOR SELECT 
 USING (true);
 
-CREATE POLICY IF NOT EXISTS "Users can insert pesquisa_precos_publicos" 
+DROP POLICY IF EXISTS "Users can insert pesquisa_precos_publicos" ON public.pesquisa_precos_publicos;
+CREATE POLICY "Users can insert pesquisa_precos_publicos" 
 ON public.pesquisa_precos_publicos 
 FOR INSERT 
 WITH CHECK (auth.role() = 'authenticated');
 
-CREATE POLICY IF NOT EXISTS "Users can update pesquisa_precos_publicos" 
+DROP POLICY IF EXISTS "Users can update pesquisa_precos_publicos" ON public.pesquisa_precos_publicos;
+CREATE POLICY "Users can update pesquisa_precos_publicos" 
 ON public.pesquisa_precos_publicos 
 FOR UPDATE 
 USING (auth.role() = 'authenticated');

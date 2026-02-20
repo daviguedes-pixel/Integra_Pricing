@@ -27,7 +27,9 @@ AS $$
     se.bandeira,
     se.rede
   FROM cotacao.sis_empresa se
-  WHERE se.id_empresa::text = ANY(p_ids)
+  WHERE se.id_empresa::text = ANY(p_ids) 
+     OR se.cnpj_cpf::text = ANY(p_ids)
+     OR se.nome_empresa::text = ANY(p_ids)
   ORDER BY se.nome_empresa;
 $$;
 

@@ -1,5 +1,5 @@
 import { Suspense, lazy } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { NotificationsProvider } from "@/hooks/useNotifications";
 import { PermissionsProvider } from "@/hooks/usePermissions";
@@ -26,7 +26,10 @@ const Gestao = lazy(() => import("@/pages/Gestao"));
 const ApprovalMarginConfig = lazy(() => import("@/pages/ApprovalMarginConfig"));
 const ApprovalOrderConfig = lazy(() => import("@/pages/ApprovalOrderConfig"));
 const MapaContatos = lazy(() => import("@/pages/MapaContatos"));
-const DailyCost = lazy(() => import("@/pages/DailyCost"));
+const Variations = lazy(() => import("@/pages/Variations"));
+const ApprovalDetails = lazy(() => import("@/pages/ApprovalDetails"));
+const Quotations = lazy(() => import("@/pages/Quotations"));
+const DocumentReview = lazy(() => import("@/pages/Financial/DocumentReview"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 
 function RouteFallback() {
@@ -69,6 +72,31 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   );
 }
 
+function DashboardRedirect() {
+  const location = useLocation();
+  const path = location.pathname;
+
+  // Logic to handle malformed dashboard sub-routes
+  if (path.includes('approvals')) {
+    return <Navigate to="/approvals" replace />;
+  }
+
+  if (path.includes('solicitacao-preco')) {
+    // Try to extract ID from the end of the path
+    // Example: /dashboard/solicitacao-preco/123 -> 123
+    const parts = path.split('/').filter(p => p && p !== 'dashboard' && p !== 'solicitacao-preco');
+    const id = parts.length > 0 ? parts[0] : null;
+
+    if (id && id !== '&') {
+      return <Navigate to={`/solicitacao-preco/${id}`} replace />;
+    }
+    return <Navigate to="/solicitacao-preco" replace />;
+  }
+
+  // Default fallback to dashboard if no specific match
+  return <Navigate to="/dashboard" replace />;
+}
+
 export function AppRoutes() {
   return (
     <Suspense fallback={<RouteFallback />}>
@@ -83,9 +111,22 @@ export function AppRoutes() {
             </ProtectedRoute>
           }
         />
+        {/* Catch-all for dashboard sub-routes to fix malformed navigation */}
+        <Route path="/dashboard/*" element={<DashboardRedirect />} />
+
         <Route path="/pricing-suggestion" element={<Navigate to="/solicitacao-preco" replace />} />
         <Route
           path="/solicitacao-preco"
+          element={
+            <ProtectedRoute>
+              <AppRoute permission="price_request">
+                <PriceRequest />
+              </AppRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/solicitacao-preco/:id"
           element={
             <ProtectedRoute>
               <AppRoute permission="price_request">
@@ -100,6 +141,26 @@ export function AppRoutes() {
             <ProtectedRoute>
               <AppRoute permission="approvals">
                 <Approvals />
+              </AppRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/quotations"
+          element={
+            <ProtectedRoute>
+              <AppRoute permission="price_request">
+                <Quotations />
+              </AppRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/approval-details/:id"
+          element={
+            <ProtectedRoute>
+              <AppRoute permission="approvals">
+                <ApprovalDetails />
               </AppRoute>
             </ProtectedRoute>
           }
@@ -253,12 +314,21 @@ export function AppRoutes() {
           }
         />
         <Route
-          path="/custo-dia"
+          path="/variations"
           element={
             <ProtectedRoute>
               <AppRoute permission="price_request">
-                <DailyCost />
+                <Variations />
               </AppRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/financial/review"
+          element={
+            <ProtectedRoute>
+              {/* Permission check: reuse an existing or add new one. Using admin for now via layout logic */}
+              <DocumentReview />
             </ProtectedRoute>
           }
         />

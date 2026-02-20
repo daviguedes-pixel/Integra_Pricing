@@ -151,6 +151,12 @@ export function ApprovalActionsSheet({
                         {/* Justify Form */}
                         {activeAction === 'justify' && (
                             <div className="space-y-4">
+                                {approval.observations && (
+                                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg">
+                                        <p className="text-[10px] uppercase font-bold text-blue-600 dark:text-blue-400 mb-1">Justificativa do Solicitante</p>
+                                        <p className="text-sm text-slate-700 dark:text-slate-300 italic">"{approval.observations}"</p>
+                                    </div>
+                                )}
                                 <div>
                                     <Label className="text-sm">Mensagem para o solicitante</Label>
                                     <Textarea
@@ -175,6 +181,12 @@ export function ApprovalActionsSheet({
                         {/* Suggest Price Form */}
                         {activeAction === 'suggest' && (
                             <div className="space-y-4">
+                                {approval.observations && (
+                                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg">
+                                        <p className="text-[10px] uppercase font-bold text-blue-600 dark:text-blue-400 mb-1">Justificativa do Solicitante</p>
+                                        <p className="text-sm text-slate-700 dark:text-slate-300 italic">"{approval.observations}"</p>
+                                    </div>
+                                )}
                                 <div>
                                     <Label className="text-sm">Preço sugerido (R$)</Label>
                                     <Input
@@ -189,7 +201,7 @@ export function ApprovalActionsSheet({
                                     </p>
                                 </div>
                                 <div>
-                                    <Label className="text-sm">Observação (opcional)</Label>
+                                    <Label className="text-sm">Observação (obrigatória)</Label>
                                     <Textarea
                                         placeholder="Motivo da sugestão..."
                                         value={message}
@@ -202,7 +214,7 @@ export function ApprovalActionsSheet({
                                     <Button variant="outline" onClick={() => setActiveAction(null)} className="flex-1">
                                         Voltar
                                     </Button>
-                                    <Button onClick={handleSubmit} className="flex-1" disabled={!suggestedPrice.trim()}>
+                                    <Button onClick={handleSubmit} className="flex-1" disabled={!suggestedPrice.trim() || !message.trim()}>
                                         Enviar Sugestão
                                     </Button>
                                 </div>
@@ -212,6 +224,12 @@ export function ApprovalActionsSheet({
                         {/* Request Evidence Form */}
                         {activeAction === 'evidence' && (
                             <div className="space-y-4">
+                                {approval.observations && (
+                                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg">
+                                        <p className="text-[10px] uppercase font-bold text-blue-600 dark:text-blue-400 mb-1">Justificativa do Solicitante</p>
+                                        <p className="text-sm text-slate-700 dark:text-slate-300 italic">"{approval.observations}"</p>
+                                    </div>
+                                )}
                                 <div>
                                     <Label className="text-sm">O que você precisa?</Label>
                                     <Textarea

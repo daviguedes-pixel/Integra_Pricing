@@ -24,7 +24,7 @@ export function ApprovalStats({ stats }: ApprovalStatsProps) {
               <p className="text-lg font-bold text-slate-800 dark:text-slate-200">{stats.total}</p>
             </div>
             <div className="w-10 h-10 rounded-lg bg-gradient-to-r from-slate-600 to-slate-700 flex items-center justify-center">
-              <MessageSquare className="h-5 w-5" style={{ color: '#94a3b8' }} />
+              <MessageSquare className="h-5 w-5 text-white" />
             </div>
           </div>
         </CardContent>
@@ -38,7 +38,7 @@ export function ApprovalStats({ stats }: ApprovalStatsProps) {
               <p className="text-lg font-bold text-yellow-600">{stats.pending}</p>
             </div>
             <div className="w-10 h-10 rounded-lg bg-gradient-to-r from-yellow-500 to-yellow-600 flex items-center justify-center">
-              <Clock className="h-5 w-5" style={{ color: '#94a3b8' }} />
+              <Clock className="h-5 w-5 text-white" />
             </div>
           </div>
         </CardContent>
@@ -52,7 +52,7 @@ export function ApprovalStats({ stats }: ApprovalStatsProps) {
               <p className="text-lg font-bold text-green-600">{stats.approved}</p>
             </div>
             <div className="w-10 h-10 rounded-lg bg-gradient-to-r from-green-500 to-green-600 flex items-center justify-center">
-              <Check className="h-5 w-5" style={{ color: '#94a3b8' }} />
+              <Check className="h-5 w-5 text-white" />
             </div>
           </div>
         </CardContent>
@@ -66,7 +66,7 @@ export function ApprovalStats({ stats }: ApprovalStatsProps) {
               <p className="text-lg font-bold text-red-600">{stats.rejected}</p>
             </div>
             <div className="w-10 h-10 rounded-lg bg-gradient-to-r from-red-500 to-red-600 flex items-center justify-center">
-              <X className="h-5 w-5" style={{ color: '#94a3b8' }} />
+              <X className="h-5 w-5 text-white" />
             </div>
           </div>
         </CardContent>

@@ -10,8 +10,16 @@ export function cn(...inputs: ClassValue[]) {
 export function parseBrazilianDecimal(value: string | number): number {
   if (typeof value === 'number') return value;
 
-  // Remove espaços e converte vírgula para ponto
-  const cleanValue = value.toString().trim().replace(',', '.');
+  // Remove espaços
+  let cleanValue = value.toString().trim();
+
+  // Se tiver pontos e vírgulas (ex: 1.000,00), remove os pontos
+  if (cleanValue.includes('.') && cleanValue.includes(',')) {
+    cleanValue = cleanValue.replace(/\./g, '');
+  }
+
+  // Converte vírgula para ponto
+  cleanValue = cleanValue.replace(',', '.');
 
   // Converte para número
   const parsed = parseFloat(cleanValue);

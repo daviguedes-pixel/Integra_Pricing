@@ -56,6 +56,9 @@ export function ApprovalsFiltersCard({ filters, requesters, onFilterChange, onRe
                 <SelectItem value="approved">Aprovado</SelectItem>
                 <SelectItem value="rejected">Rejeitado</SelectItem>
                 <SelectItem value="price_suggested">Preço Sugerido</SelectItem>
+                <SelectItem value="awaiting_justification">Aguardando Justificativa</SelectItem>
+                <SelectItem value="awaiting_evidence">Aguardando Evidência</SelectItem>
+                <SelectItem value="appealed">Recurso Solicitado</SelectItem>
               </SelectContent>
             </Select>
           </div>

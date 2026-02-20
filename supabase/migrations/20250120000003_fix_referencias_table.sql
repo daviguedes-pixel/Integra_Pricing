@@ -20,17 +20,20 @@ CREATE TABLE IF NOT EXISTS public.referencias (
 ALTER TABLE public.referencias ENABLE ROW LEVEL SECURITY;
 
 -- Políticas para referencias
-CREATE POLICY IF NOT EXISTS "Users can view references" 
+DROP POLICY IF EXISTS "Users can view references" ON public.referencias;
+CREATE POLICY "Users can view references" 
 ON public.referencias 
 FOR SELECT 
 USING (true);
 
-CREATE POLICY IF NOT EXISTS "Users can insert references" 
+DROP POLICY IF EXISTS "Users can insert references" ON public.referencias;
+CREATE POLICY "Users can insert references" 
 ON public.referencias 
 FOR INSERT 
 WITH CHECK (auth.role() = 'authenticated');
 
-CREATE POLICY IF NOT EXISTS "Users can update references" 
+DROP POLICY IF EXISTS "Users can update references" ON public.referencias;
+CREATE POLICY "Users can update references" 
 ON public.referencias 
 FOR UPDATE 
 USING (auth.role() = 'authenticated');

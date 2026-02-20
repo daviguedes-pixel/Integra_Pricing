@@ -582,10 +582,11 @@ function RegionLayer({ data }: { data: ContatoData[] }) {
               data={feature as any}
               style={() => ({
                 fillColor: getColorByRegiao(props.regiao || 'Outros'),
-                fillOpacity: 0.6,
-                color: '#fff',
-                weight: 1.5,
-                opacity: 0.9
+                fillOpacity: 0.8,
+                color: 'rgba(255,255,255,0.3)',
+                weight: 1,
+                opacity: 1,
+                className: "transition-all duration-300 ease-in-out hover:brightness-110"
               })}
               eventHandlers={{
                 mouseover: (e) => {
@@ -593,9 +594,11 @@ function RegionLayer({ data }: { data: ContatoData[] }) {
                   const regiao = props.regiao || 'Outros';
                   layer.setStyle({
                     fillColor: getColorByRegiao(regiao),
-                    fillOpacity: 0.8,
-                    weight: 2.5,
-                    color: '#fff'
+                    fillOpacity: 1,
+                    weight: 3,
+                    color: '#fff',
+                    dashArray: '',
+                    className: "drop-shadow-lg z-50"
                   });
                 },
                 mouseout: (e) => {
@@ -1432,7 +1435,7 @@ export default function MapaContatos() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="h-[600px] w-full rounded-lg overflow-hidden relative z-0">
+            <div className="h-[600px] w-full rounded-lg overflow-hidden relative z-0 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 shadow-inner border border-slate-700/50">
               <style>{`
                 .percentage-label {
                   background: transparent !important;
@@ -1451,6 +1454,9 @@ export default function MapaContatos() {
                 .leaflet-marker-pane {
                   z-index: 600 !important;
                 }
+                .leaflet-tooltip-pane {
+                  z-index: 20000 !important;
+                }
                 .leaflet-overlay-pane {
                   z-index: 400 !important;
                 }
@@ -1458,17 +1464,14 @@ export default function MapaContatos() {
               <MapContainer
                 center={[-14.2350, -51.9253]}
                 zoom={4}
-                style={{ height: '100%', width: '100%', zIndex: 1 }}
+                style={{ height: '100%', width: '100%', zIndex: 1, backgroundColor: 'transparent' }}
                 scrollWheelZoom={true}
                 minZoom={3}
                 maxZoom={10}
                 maxBounds={[[-35.0, -75.0], [5.0, -30.0]]}
                 maxBoundsViscosity={1.0}
               >
-                <TileLayer
-                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                />
+
                 <RegionLayer data={dadosContatos} />
               </MapContainer>
             </div>

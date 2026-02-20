@@ -4,12 +4,26 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import {
+  createPriceRequest,
+  approvePriceRequest,
+  rejectPriceRequest,
+  suggestPriceRequest,
+  requestJustification as requestJustificationApi,
+  requestEvidence as requestEvidenceApi,
+  provideJustification,
+  provideEvidence,
+  appealPriceRequest,
+  acceptSuggestedPrice
+} from '../api/priceRequestsApi';
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -31,12 +45,28 @@ import {
   RefreshCw,
   Fuel,
   TrendingUp,
-  AlertCircle
+  AlertCircle,
+  Plus,
+  LayoutGrid,
+  List,
+  FilterX,
+  MoreHorizontal,
+  FileSpreadsheet,
+  ClipboardList,
+  Info,
+  ArrowUpDown,
+  MessageSquarePlus,
+  FileQuestion,
+  GitBranch,
+  Paperclip
 } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
 import { ApprovalDetailsModal } from "@/components/ApprovalDetailsModal";
 import { ApprovalStats as ApprovalStatsComponent } from "@/components/ApprovalStats";
 import { ApprovalHeader } from "@/components/ApprovalHeader";
 import { MobileApprovalsView } from "@/components/MobileApprovalsView";
+import { ApprovalsTableView } from "@/components/ApprovalsTableView";
+import { ApprovalGuideModal } from "@/components/ApprovalGuideModal";
 import { parseBrazilianDecimal, formatNameFromEmail } from "@/lib/utils";
 import { getCache, setCache, removeCache } from "@/lib/cache";
 import { formatPrice, formatDate, getStatusBadge, getProductName, centsToReais, isValidUUID } from "@/lib/pricing-utils";
@@ -116,13 +146,41 @@ export default function Approvals() {
   const [showBatchApproveModal, setShowBatchApproveModal] = useState<Record<string, boolean>>({});
   const [batchApproveObservation, setBatchApproveObservation] = useState<Record<string, string>>({});
 
+
+  const [selectedRequests, setSelectedRequests] = useState<string[]>([]);
+  const [isBulkDialogOpen, setIsBulkDialogOpen] = useState(false);
+  const [bulkActionType, setBulkActionType] = useState<'approve' | 'reject' | 'request_justification' | 'request_evidence' | 'suggest_price' | null>(null);
+  const [bulkObservation, setBulkObservation] = useState("");
+  const [bulkSuggestedPrice, setBulkSuggestedPrice] = useState<string>("");
+  const [isProcessingBulk, setIsProcessingBulk] = useState(false);
+
+  // Estado para o guia de aprovação
+  const [showGuideModal, setShowGuideModal] = useState(false);
+
+  // Verificar se deve mostrar o guia ao carregar
+  useEffect(() => {
+    const hasSeenGuide = localStorage.getItem('has_seen_approval_guide_v2');
+    if (!hasSeenGuide) {
+      // Pequeno delay para não sobrepor com loading inicial
+      const timer = setTimeout(() => {
+        setShowGuideModal(true);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  const handleCloseGuide = () => {
+    localStorage.setItem('has_seen_approval_guide_v2', 'true');
+    setShowGuideModal(false);
+  };
+
   // Paginação para melhorar performance
   const [batchPage, setBatchPage] = useState(0);
   const [individualPage, setIndividualPage] = useState(0);
-  const ITEMS_PER_PAGE = 5; // Limitar a 5 itens por página para máxima performance
+  const ITEMS_PER_PAGE = 20; // Aumentar para tabela
 
   const [filters, setFilters] = useState<ApprovalUIFilters>({
-    status: "all",
+    status: "pending",
     station: "all",
     client: "all",
     product: "all",
@@ -130,7 +188,7 @@ export default function Approvals() {
     search: "",
     startDate: "",
     endDate: "",
-    myApprovalsOnly: false
+    myApprovalsOnly: true
   });
 
   const [stats, setStats] = useState<ApprovalStats>({
@@ -190,9 +248,9 @@ export default function Approvals() {
         clearTimeout(reloadTimeout);
       }
       reloadTimeout = setTimeout(() => {
-        removeCache('approvals_suggestions_cache');
+        removeCache('approvals_suggestions_cache_v2');
         // Timestamp é gerenciado internamente pelo cache.ts
-        loadSuggestions(false).then(() => {
+        loadSuggestions(false, false).then(() => {
           setIsRefreshing(false);
         }).catch(err => {
           console.error('Erro ao recarregar após mudança:', err);
@@ -327,16 +385,36 @@ export default function Approvals() {
       // A aprovação de fato só acontecerá quando alguém com perfil requerido aprovar
       // Esta verificação foi removida para permitir que usuários sem permissão possam adicionar observação
 
-      // Verificar se o usuário é o próximo aprovador na sequência baseado no PERFIL
-      const currentLevel = suggestion.approval_level || 1;
-      const requiredProfile = approvalOrder[currentLevel - 1]; // 1-based level
+      // Determine the ACTUAL next required profile (skipping non-required ones)
+      let effectiveCurrentLevel = suggestion.approval_level || 1;
+      let effectiveRequiredProfile = approvalOrder[effectiveCurrentLevel - 1];
+
+      // Se houver perfis requeridos, avançar até encontrar o próximo perfil que é REQUERIDO
+      if (requiredProfiles && requiredProfiles.length > 0) {
+        let found = false;
+        // Procurar a partir do nível atual
+        for (let i = effectiveCurrentLevel - 1; i < approvalOrder.length; i++) {
+          const profileToCheck = approvalOrder[i];
+          if (requiredProfiles.includes(profileToCheck)) {
+            effectiveCurrentLevel = i + 1;
+            effectiveRequiredProfile = profileToCheck;
+            found = true;
+            break;
+          }
+        }
+
+        // Se não encontrou nenhum perfil requerido daqui para frente, 
+        // mas o usuário atual é requerido em algum lugar (ou é admin/tem permissão especial),
+        // talvez devêssemos permitir? 
+        // Por segurança, mantemos a lógica de procurar o próximo passo lógico.
+      }
 
       const userProfile = profile?.perfil;
 
-      if (userProfile !== requiredProfile) {
+      if (userProfile !== effectiveRequiredProfile) {
         return {
           canApprove: false,
-          reason: "Você não é o próximo aprovador nesta sequência."
+          reason: `Você não é o próximo aprovador nesta sequência. Aguardando: ${effectiveRequiredProfile}`
         };
       }
 
@@ -392,6 +470,7 @@ export default function Approvals() {
 
       // Se não houver ordem configurada, usar ordem padrão
       let approvalOrder: string[] = [
+        'analista_pricing',
         'supervisor_comercial',
         'diretor_comercial',
         'diretor_pricing'
@@ -474,7 +553,7 @@ export default function Approvals() {
           // O filtro "Apenas minhas aprovações" será aplicado em applyFilters quando necessário
           for (const s of enrichedWithCurrentApprover) {
             // Contar stats de todas as sugestões (sem filtrar)
-            if (s.status === 'pending') pending++;
+            if (['pending', 'price_suggested', 'awaiting_justification', 'awaiting_evidence', 'appealed'].includes(s.status)) pending++;
             else if (s.status === 'approved') approved++;
             else if (s.status === 'rejected') rejected++;
 
@@ -495,90 +574,104 @@ export default function Approvals() {
           const individuals: EnrichedApproval[] = [];
           const individualIdsSet = new Set<string>(); // Para evitar duplicatas
 
-          for (const [batchKey, batch] of groupedBatches) {
-            if (batchKey.startsWith('individual_')) {
-              // Individual - adicionar se estiver filtrado
-              for (const req of batch) {
-                if (filteredIdsSet.has(req.id) && !individualIdsSet.has(req.id)) {
-                  individuals.push(req);
-                  individualIdsSet.add(req.id);
-                }
+          // MODO BATCH DESABILITADO - Colocar TODAS as aprovações em individuals
+          const BATCH_MODE_DISABLED = true;
+
+          if (BATCH_MODE_DISABLED) {
+            // Colocar todas as sugestões em individuais
+            for (const s of filteredForUser) {
+              if (!individualIdsSet.has(s.id)) {
+                individuals.push(s);
+                individualIdsSet.add(s.id);
               }
-            } else {
-              // Batch - verificar se tem solicitações visíveis ou pendentes
-              let visibleCount = 0;
-              let pendingCount = 0;
-              const visibleRequests: EnrichedApproval[] = [];
-              const pendingRequests: EnrichedApproval[] = [];
-
-              // Calcular clientes únicos de forma otimizada (em um único loop)
-              const clientIds = new Set<string>();
-              let firstClient: ApprovalClient | null = null;
-
-              for (const req of batch) {
-                // Coletar clientes únicos
-                const cid = req.client_id || req.clients?.id || 'unknown';
-                if (!clientIds.has(cid)) {
-                  clientIds.add(cid);
-                  if (!firstClient) firstClient = req.clients || { name: 'N/A' };
-                }
-
-                // Verificar status (sem filtrar por visibilidade aqui - isso será feito em applyFilters)
-                if (req.status === 'pending') {
-                  pendingCount++;
-                  pendingRequests.push(req);
-                  visibleCount++;
-                  visibleRequests.push(req);
-                } else if (req.status === 'price_suggested' || req.status === 'approved' || req.status === 'rejected') {
-                  visibleCount++;
-                  visibleRequests.push(req);
-                }
-              }
-
-              if (visibleCount > 0 || pendingCount > 0) {
-                // Usar visíveis ou pendentes (já coletados)
-                const requestsToShow = visibleRequests.length > 0 ? visibleRequests : pendingRequests;
-
-                batches.push({
-                  batchKey,
-                  requests: requestsToShow,
-                  allRequests: batch,
-                  client: firstClient,
-                  clients: clientIds.size > 1
-                    ? (() => {
-                      const clientsList: (ApprovalClient | null)[] = [];
-                      const added = new Set<string>();
-                      for (const req of batch) {
-                        const cid = req.client_id || req.clients?.id || 'unknown';
-                        if (!added.has(cid) && clientsList.length < 3) {
-                          clientsList.push(req.clients || { name: 'N/A' });
-                          added.add(cid);
-                        }
-                      }
-                      return clientsList;
-                    })()
-                    : [firstClient],
-                  hasMultipleClients: clientIds.size > 1,
-                  created_at: batch[0].created_at,
-                  created_by: batch[0].created_by || batch[0].requested_by
-                });
-              } else {
-                // Adicionar às individuais se filtrado
+            }
+          } else {
+            // Código original de batch (mantido para quando reativar)
+            for (const [batchKey, batch] of groupedBatches) {
+              if (batchKey.startsWith('individual_')) {
+                // Individual - adicionar se estiver filtrado
                 for (const req of batch) {
                   if (filteredIdsSet.has(req.id) && !individualIdsSet.has(req.id)) {
                     individuals.push(req);
                     individualIdsSet.add(req.id);
                   }
                 }
+              } else {
+                // Batch - verificar se tem solicitações visíveis ou pendentes
+                let visibleCount = 0;
+                let pendingCount = 0;
+                const visibleRequests: EnrichedApproval[] = [];
+                const pendingRequests: EnrichedApproval[] = [];
+
+                // Calcular clientes únicos de forma otimizada (em um único loop)
+                const clientIds = new Set<string>();
+                let firstClient: ApprovalClient | null = null;
+
+                for (const req of batch) {
+                  // Coletar clientes únicos
+                  const cid = req.client_id || req.clients?.id || 'unknown';
+                  if (!clientIds.has(cid)) {
+                    clientIds.add(cid);
+                    if (!firstClient) firstClient = req.clients || { name: 'N/A' };
+                  }
+
+                  // Verificar status (sem filtrar por visibilidade aqui - isso será feito em applyFilters)
+                  if (req.status === 'pending') {
+                    pendingCount++;
+                    pendingRequests.push(req);
+                    visibleCount++;
+                    visibleRequests.push(req);
+                  } else if (req.status === 'price_suggested' || req.status === 'approved' || req.status === 'rejected') {
+                    visibleCount++;
+                    visibleRequests.push(req);
+                  }
+                }
+
+                if (visibleCount > 0 || pendingCount > 0) {
+                  // Usar visíveis ou pendentes (já coletados)
+                  const requestsToShow = visibleRequests.length > 0 ? visibleRequests : pendingRequests;
+
+                  batches.push({
+                    batchKey,
+                    requests: requestsToShow,
+                    allRequests: batch,
+                    client: firstClient,
+                    clients: clientIds.size > 1
+                      ? (() => {
+                        const clientsList: (ApprovalClient | null)[] = [];
+                        const added = new Set<string>();
+                        for (const req of batch) {
+                          const cid = req.client_id || req.clients?.id || 'unknown';
+                          if (!added.has(cid) && clientsList.length < 3) {
+                            clientsList.push(req.clients || { name: 'N/A' });
+                            added.add(cid);
+                          }
+                        }
+                        return clientsList;
+                      })()
+                      : [firstClient],
+                    hasMultipleClients: clientIds.size > 1,
+                    created_at: batch[0].created_at,
+                    created_by: batch[0].created_by || batch[0].requested_by
+                  });
+                } else {
+                  // Adicionar às individuais se filtrado
+                  for (const req of batch) {
+                    if (filteredIdsSet.has(req.id) && !individualIdsSet.has(req.id)) {
+                      individuals.push(req);
+                      individualIdsSet.add(req.id);
+                    }
+                  }
+                }
               }
             }
-          }
 
-          // Adicionar não-pendentes às individuais (evitando duplicatas)
-          for (const s of filteredForUser) {
-            if (s.status !== 'pending' && !individualIdsSet.has(s.id)) {
-              individuals.push(s);
-              individualIdsSet.add(s.id);
+            // Adicionar não-pendentes às individuais (evitando duplicatas)
+            for (const s of filteredForUser) {
+              if (s.status !== 'pending' && !individualIdsSet.has(s.id)) {
+                individuals.push(s);
+                individualIdsSet.add(s.id);
+              }
             }
           }
 
@@ -608,11 +701,11 @@ export default function Approvals() {
     await processInChunks();
   };
 
-  const loadSuggestions = async (useCache = true) => {
+  const loadSuggestions = async (useCache = true, showLoader = true) => {
     try {
       // Verificar cache primeiro
       if (useCache) {
-        const cacheKey = 'approvals_suggestions_cache';
+        const cacheKey = 'approvals_suggestions_cache_v2';
         const cachedData = getCache<any[]>(cacheKey);
 
         if (cachedData && Array.isArray(cachedData) && cachedData.length > 0) {
@@ -625,13 +718,16 @@ export default function Approvals() {
         }
       }
 
-      setLoadingData(true);
+      if (showLoader) {
+        setLoadingData(true);
+      }
 
       // Carregar sugestões sem JOINs (os IDs agora são TEXT)
       // Limitar a 200 registros para performance máxima
       const { data, error } = await supabase
         .from('price_suggestions')
         .select('*')
+        .neq('status', 'draft')
         .order('created_at', { ascending: false })
         .limit(200);
 
@@ -708,26 +804,30 @@ export default function Approvals() {
       // Buscar informações dos usuários que enviaram as solicitações
       const uniqueRequestedBy = [...new Set((data || []).map((s: any) => s.requested_by).filter(Boolean))];
       let requestersData: any[] = [];
-      if (uniqueRequestedBy.length > 0) {
-        // Tentar buscar por user_id primeiro
-        const { data: byUserId } = await supabase
-          .from('user_profiles')
-          .select('user_id, email, nome')
-          .in('user_id', uniqueRequestedBy);
 
-        if (byUserId) {
-          requestersData = byUserId;
+      if (uniqueRequestedBy.length > 0) {
+        // Separar UUIDs de emails
+        const validUuids = uniqueRequestedBy.filter(id => isValidUUID(id));
+        const possibleEmails = uniqueRequestedBy.filter(id => !isValidUUID(id) && id.includes('@'));
+
+        // Buscar por user_id apenas com UUIDs válidos
+        if (validUuids.length > 0) {
+          const { data: byUserId } = await supabase
+            .from('user_profiles')
+            .select('user_id, email, nome')
+            .in('user_id', validUuids);
+
+          if (byUserId) {
+            requestersData = [...requestersData, ...byUserId];
+          }
         }
 
-        // Se não encontrou todos, tentar buscar por email (caso requested_by seja email)
-        const foundIds = new Set(requestersData.map((u: any) => u.user_id || u.email));
-        const missingIds = uniqueRequestedBy.filter(id => !foundIds.has(id));
-
-        if (missingIds.length > 0) {
+        // Buscar por email
+        if (possibleEmails.length > 0) {
           const { data: byEmail } = await supabase
-            .from('user_profiles' as any)
+            .from('user_profiles') // user_profiles tem coluna email
             .select('user_id, email, nome')
-            .in('email', missingIds);
+            .in('email', possibleEmails);
 
           if (byEmail) {
             requestersData = [...requestersData, ...byEmail];
@@ -775,8 +875,15 @@ export default function Approvals() {
           String(pm.ID_POSTO) === String(suggestion.payment_method_id)
         );
 
+        const calculatedPrice = suggestion.cost_price && suggestion.margin_cents
+          ? suggestion.cost_price + (suggestion.margin_cents / 100)
+          : null;
+
+        const finalSuggestedPrice = suggestion.suggested_price ?? suggestion.final_price ?? calculatedPrice;
+
         return {
           ...suggestion,
+          suggested_price: finalSuggestedPrice,
           stations: station ? { name: station.nome_empresa || station.name, code: station.cnpj_cpf || station.id || station.id_empresa } : null,
           clients: client ? { name: client.nome || client.name, code: String(client.id_cliente || client.id) } : null,
           requester: requester ? {
@@ -891,8 +998,8 @@ export default function Approvals() {
           if (s.status === 'reference' || s.is_reference === true) {
             return false;
           }
-          // Mostrar sempre: preço sugerido, aprovado, rejeitado
-          if (s.status === 'price_suggested' || s.status === 'approved' || s.status === 'rejected') {
+          // Mostrar sempre: preço sugerido, aprovado, rejeitado, recurso solicitado, aguardando...
+          if (['price_suggested', 'approved', 'rejected', 'appealed', 'awaiting_justification', 'awaiting_evidence'].includes(s.status)) {
             return true;
           }
           // Para pending: mostrar se for o turno do usuário OU se o usuário já aprovou (para acompanhar)
@@ -910,7 +1017,7 @@ export default function Approvals() {
       applyFilters(filters, enrichedWithCurrentApprover);
 
       // Salvar no cache
-      const cacheKey = 'approvals_suggestions_cache';
+      const cacheKey = 'approvals_suggestions_cache_v2';
       try {
         // Salvar no cache com TTL de 5 minutos
         setCache(cacheKey, enrichedWithCurrentApprover, 5 * 60 * 1000);
@@ -1060,7 +1167,7 @@ export default function Approvals() {
     let rejectedCount = 0;
 
     for (const s of filtered) {
-      if (s.status === 'pending') pendingCount++;
+      if (['pending', 'price_suggested', 'awaiting_justification', 'awaiting_evidence', 'appealed'].includes(s.status)) pendingCount++;
       else if (s.status === 'approved') approvedCount++;
       else if (s.status === 'rejected') rejectedCount++;
     }
@@ -1173,1656 +1280,89 @@ export default function Approvals() {
   };
 
   const handleApprove = async (suggestionId: string, observations: string) => {
-    // Observação é opcional se o usuário não tem permissão (mas será registrada no histórico)
-    const hasPermission = permissions?.permissions?.can_approve;
-
-    // Se não tem permissão, observação é opcional
-    if (hasPermission && !observations.trim()) {
-      toast.error("Por favor, adicione uma observação");
-      return;
-    }
-
     setLoading(true);
     try {
-      // Buscar a sugestão atual
-      const { data: currentSuggestion, error: fetchError } = await supabase
-        .from('price_suggestions')
-        .select('*')
-        .eq('id', suggestionId)
-        .single();
+      await approvePriceRequest(suggestionId, observations);
 
-      if (fetchError) throw fetchError;
+      toast.success("Aprovação registrada com sucesso!");
 
+      // Update UI - remove item or reload
+      removeCache('approvals_suggestions_cache_v2');
 
-      // Buscar regra de aprovação baseada na margem
-      const marginCents = currentSuggestion.margin_cents || 0;
-      const approvalRule = await getApprovalRuleForMargin(marginCents);
-
-      // Determinar perfis requeridos baseado na regra
-      // Se não há regra ou a regra não tem perfis requeridos, qualquer aprovação aprova totalmente
-      const requiredProfiles = approvalRule?.required_profiles && approvalRule.required_profiles.length > 0
-        ? approvalRule.required_profiles
-        : undefined;
-
-      // Buscar aprovadores apropriados baseado na regra
-      // Se há perfis requeridos, buscar apenas esses; caso contrário, buscar todos
-      const allApprovers = requiredProfiles && requiredProfiles.length > 0
-        ? await loadApprovers(requiredProfiles)
-        : await loadApprovers();
-
-      console.log('🟢 Aprovadores carregados:', {
-        total: allApprovers.length,
-        requiredProfiles,
-        aprovadores: allApprovers.map(a => ({ email: a.email, perfil: a.perfil, userId: a.user_id }))
-      });
-
-      // Verificar se o usuário atual é um aprovador válido
-      const currentUserProfile = allApprovers.find(a => a.user_id === user?.id);
-
-      // Se não tem permissão OU não é aprovador válido, apenas registrar observação e avançar para próximo
-      if (!hasPermission || !currentUserProfile) {
-        // Buscar nome do usuário do perfil
-        let approverName = user?.email || 'Usuário';
-        try {
-          const { data: userProfile } = await supabase
-            .from('user_profiles')
-            .select('nome, email')
-            .eq('user_id', user?.id)
-            .single();
-          if (userProfile?.nome) {
-            approverName = userProfile.nome;
-          } else if (userProfile?.email) {
-            approverName = userProfile.email;
-          }
-        } catch (err) {
-          console.warn('Erro ao buscar nome do usuário:', err);
-        }
-
-        // Registrar observação no histórico
-        const observationText = observations?.trim() || 'Observação adicionada sem permissão de aprovação';
-        console.log('🟢 Registrando observação no histórico:', { suggestionId, observationText });
-
-        const { error: historyError } = await supabase
-          .from('approval_history')
-          .insert({
-            suggestion_id: suggestionId,
-            approver_id: user?.id,
-            approver_name: approverName,
-            action: 'approved',
-            observations: observationText,
-            approval_level: currentSuggestion.approval_level || 1
-          });
-
-        if (historyError) {
-          console.error('❌ Erro ao registrar observação:', historyError);
-          toast.error("Erro ao registrar observação: " + historyError.message);
-          setLoading(false);
-          return;
-        }
-
-        // Avançar para o próximo aprovador (se houver)
-        const currentLevel = currentSuggestion.approval_level || 1;
-
-        console.log('🟢 Buscando próximo aprovador (approve):', {
-          currentLevel,
-          allApproversCount: allApprovers.length,
-          requiredProfiles,
-          userId: user?.id,
-          allApprovers: allApprovers.map((a, idx) => ({ idx, email: a.email, perfil: a.perfil }))
-        });
-
-        // Buscar ordem hierárquica para determinar a sequência correta
-        const { data: orderData } = await supabase
-          .from('approval_profile_order')
-          .select('perfil, order_position')
-          .eq('is_active', true)
-          .order('order_position', { ascending: true });
-
-        let approvalOrder: string[] = [
-          'supervisor_comercial',
-          'diretor_comercial',
-          'diretor_pricing'
-        ];
-
-        if (orderData && orderData.length > 0) {
-          approvalOrder = orderData.map((item: any) => item.perfil);
-        }
-
-        // Encontrar o perfil do aprovador atual
-        const currentApproverId = currentSuggestion.current_approver_id || user?.id;
-        let currentApproverProfile: string | null = null;
-
-        if (currentApproverId) {
-          try {
-            const { data: currentApproverData } = await supabase
-              .from('user_profiles')
-              .select('perfil')
-              .eq('user_id', currentApproverId)
-              .single();
-            currentApproverProfile = currentApproverData?.perfil || null;
-          } catch (err) {
-            console.warn('Erro ao buscar perfil do aprovador atual:', err);
-          }
-        }
-
-        console.log('🟢 Buscando próximo aprovador (approve):', {
-          currentLevel,
-          currentApproverId,
-          currentApproverProfile,
-          approvalOrder,
-          requiredProfiles,
-          allApproversCount: allApprovers.length,
-          allApprovers: allApprovers.map((a, idx) => ({ idx, email: a.email, perfil: a.perfil, userId: a.user_id }))
-        });
-
-        // Encontrar próximo aprovador baseado na ordem hierárquica COMPLETA
-        // IMPORTANTE: Passar por TODOS os perfis na ordem, não apenas os requeridos
-        let nextApprover = null;
-        let nextLevel = currentLevel;
-
-        console.log('🔴 Buscando próximo aprovador na ordem completa:', {
-          approvalOrder,
-          requiredProfiles,
-          currentApproverProfile,
-          currentLevel
-        });
-
-        // Encontrar a posição do perfil atual na ordem COMPLETA (não apenas requeridos)
-        let currentProfileIndex = -1;
-        if (currentApproverProfile) {
-          currentProfileIndex = approvalOrder.indexOf(currentApproverProfile);
-          console.log('🔴 Perfil atual encontrado na ordem completa:', {
-            currentApproverProfile,
-            currentProfileIndex,
-            approvalOrder
-          });
-        }
-
-        // Se não encontrou o perfil atual, usar currentLevel - 1 como fallback
-        if (currentProfileIndex === -1) {
-          currentProfileIndex = Math.max(0, currentLevel - 1);
-          console.log('🔴 Usando fallback para currentProfileIndex:', {
-            currentLevel,
-            currentProfileIndex,
-            approvalOrderLength: approvalOrder.length
-          });
-        }
-
-        console.log('🔴 Tentando encontrar próximo aprovador na ordem completa:', {
-          currentProfileIndex,
-          approvalOrderLength: approvalOrder.length,
-          approvalOrder,
-          allApproversPerfis: allApprovers.map(a => a.perfil)
-        });
-
-        // Buscar o próximo perfil na ordem hierárquica COMPLETA
-        if (currentProfileIndex + 1 < approvalOrder.length) {
-          const nextProfile = approvalOrder[currentProfileIndex + 1];
-          console.log('🔴 Próximo perfil na ordem completa:', nextProfile);
-
-          // Encontrar o primeiro aprovador com esse perfil na lista
-          // Se não encontrar na lista filtrada (allApprovers), buscar na lista completa
-          nextApprover = allApprovers.find(a => a.perfil === nextProfile);
-
-          // Se não encontrou na lista filtrada, buscar na lista completa de aprovadores
-          if (!nextApprover) {
-            const allApproversFull = await loadApprovers();
-            nextApprover = allApproversFull.find(a => a.perfil === nextProfile);
-            console.log('🔴 Buscando na lista completa de aprovadores:', {
-              nextProfile,
-              encontrado: !!nextApprover,
-              allApproversFullPerfis: allApproversFull.map(a => a.perfil)
-            });
-          }
-
-          if (nextApprover) {
-            // Calcular o próximo nível baseado na posição do perfil na ordem completa
-            const nextProfileIndexInFullOrder = approvalOrder.indexOf(nextProfile);
-            nextLevel = nextProfileIndexInFullOrder + 1; // approval_level é 1-indexed
-
-            console.log('✅ Próximo aprovador encontrado pela ordem hierárquica:', {
-              email: nextApprover.email,
-              perfil: nextApprover.perfil,
-              nextLevel,
-              nextProfileIndexInFullOrder,
-              userId: nextApprover.user_id
-            });
-          } else {
-            console.warn('⚠️ Não encontrou aprovador com perfil', nextProfile, 'em nenhuma lista');
-            console.warn('⚠️ Aprovadores disponíveis (filtrados):', allApprovers.map(a => ({ email: a.email, perfil: a.perfil })));
-          }
-        } else {
-          console.warn('⚠️ Não há próximo perfil na ordem hierárquica:', {
-            currentProfileIndex,
-            approvalOrderLength: approvalOrder.length,
-            approvalOrder
-          });
-        }
-
-        if (!nextApprover) {
-          console.warn('⚠️ Nenhum próximo aprovador encontrado');
-        }
-
-        if (nextApprover) {
-          // Buscar nome completo do próximo aprovador
-          let nextApproverName = nextApprover.email || 'Aprovador';
-          try {
-            const { data: nextUserProfile } = await supabase
-              .from('user_profiles')
-              .select('nome, email')
-              .eq('user_id', nextApprover.user_id)
-              .single();
-            if (nextUserProfile?.nome) {
-              nextApproverName = nextUserProfile.nome;
-            } else if (nextUserProfile?.email) {
-              nextApproverName = nextUserProfile.email;
-            }
-          } catch (err) {
-            console.warn('Erro ao buscar nome do próximo aprovador:', err);
-          }
-
-          console.log('🟢 Avançando para próximo aprovador (approve):', {
-            nextApprover: nextApproverName,
-            nextLevel,
-            userId: nextApprover.user_id,
-            suggestionId
-          });
-
-          // Atualizar approval_level para o próximo aprovador
-          const { error: updateError } = await supabase
-            .from('price_suggestions')
-            .update({
-              approval_level: nextLevel,
-              current_approver_id: nextApprover.user_id,
-              current_approver_name: nextApproverName
-            })
-            .eq('id', suggestionId);
-
-          if (updateError) {
-            console.error('❌ Erro ao atualizar approval_level:', updateError);
-            toast.error("Erro ao passar para próximo aprovador: " + updateError.message);
-            setLoading(false);
-            return;
-          }
-
-          console.log('✅ Approval level atualizado com sucesso:', { nextLevel, suggestionId });
-
-          // Criar notificação para o próximo aprovador (com push)
-          try {
-            const { createNotification } = await import('@/lib/utils');
-            await createNotification(
-              nextApprover.user_id,
-              'approval_pending',
-              'Nova Observação Adicionada',
-              `Uma observação foi adicionada à solicitação. Aguardando sua aprovação (nível ${nextLevel})`,
-              {
-                suggestion_id: suggestionId,
-                approval_level: nextLevel,
-                url: '/approvals'
-              }
-            );
-            console.log('✅ Notificação criada para:', nextApproverName);
-          } catch (notifErr) {
-            console.error('Erro ao criar notificação:', notifErr);
-          }
-
-          toast.success(`Observação registrada. Passando para próximo aprovador: ${nextApproverName} (nível ${nextLevel})`);
-        } else {
-          // Não há mais aprovadores
-          toast.success("Observação registrada. Você não possui permissão para aprovar esta solicitação.");
-        }
-
-        setLoading(false);
-
-        // Fechar modal se estiver aberto
-        setShowObservationModal(prev => {
-          const newState = { ...prev };
-          if (newState[suggestionId]) {
-            newState[suggestionId] = { open: false, action: 'approve' };
-          }
-          return newState;
-        });
-
-        // Limpar observações
-        setBatchObservations(prev => {
-          const newObs = { ...prev };
-          delete newObs[suggestionId];
-          return newObs;
-        });
-
-        // Invalidar cache e recarregar
-        removeCache('approvals_suggestions_cache');
-        await loadSuggestions(false);
-        return;
-      }
-
-      // Verificar se o usuário atual tem um dos perfis requeridos (para aprovação final)
-      const userHasRequiredProfile = requiredProfiles && requiredProfiles.length > 0
-        ? requiredProfiles.includes(currentUserProfile.perfil)
-        : true; // Se não há regra específica, qualquer aprovador pode finalizar
-
-      // Buscar ordem hierárquica de aprovação
-      const { data: orderData } = await supabase
-        .from('approval_profile_order' as any)
-        .select('perfil, order_position')
-        .eq('is_active', true)
-        .order('order_position', { ascending: true });
-
-      let approvalOrder: string[] = [
-        'analista_pricing',
-        'supervisor_comercial',
-        'diretor_comercial',
-        'diretor_pricing'
-      ];
-
-      if (orderData && orderData.length > 0) {
-        approvalOrder = orderData.map((item: any) => item.perfil);
-      }
-
-      // CORREÇÃO: O nível de aprovação representa a POSIÇÃO na ordem de perfis, não índice de usuários
-      // Exemplo: approval_level = 1 significa que o perfil na posição 0 (analista_pricing) deve aprovar
-      let currentLevel = currentSuggestion.approval_level || 1;
-      const currentRequiredProfile = approvalOrder[currentLevel - 1]; // Perfil que deve aprovar neste nível
-
-      console.log('🔵 Verificando aprovação por PERFIL:', {
-        currentLevel,
-        currentRequiredProfile,
-        userPerfil: currentUserProfile.perfil,
-        approvalOrder,
-        userId: user?.id
-      });
-
-      // CORREÇÃO: Verificar se o PERFIL do usuário atual corresponde ao perfil requerido para este nível
-      if (currentUserProfile.perfil !== currentRequiredProfile) {
-        toast.error(`Você não é o aprovador atual. Aguardando aprovação do perfil: ${currentRequiredProfile}`);
-        setLoading(false);
-        return;
-      }
-
-      const approvalsCount = (currentSuggestion.approvals_count || 0) + 1;
-      const totalApprovers = approvalOrder.length; // Total de níveis de aprovação
-
-      // Buscar nome do usuário do perfil
-      let approverName = user?.email || 'Aprovador';
-      try {
-        const { data: userProfile } = await supabase
-          .from('user_profiles')
-          .select('nome, email')
-          .eq('user_id', user?.id)
-          .single();
-        if (userProfile?.nome) {
-          approverName = userProfile.nome;
-        } else if (userProfile?.email) {
-          approverName = userProfile.email;
-        }
-      } catch (err) {
-        console.warn('Erro ao buscar nome do usuário:', err);
-      }
-
-      // Registrar no histórico
-      const { error: historyError } = await supabase
-        .from('approval_history')
-        .insert({
-          suggestion_id: suggestionId,
-          approver_id: user?.id,
-          approver_name: approverName,
-          action: 'approved',
-          observations: observations,
-          approval_level: currentLevel
-        });
-
-      if (historyError) throw historyError;
-
-      // Determinar próximo nível e status final
-      let newStatus: string;
-      let finalLevel: number;
-
-      // CORREÇÃO: Avançar para o próximo PERFIL na ordem hierárquica
-      const nextLevelIndex = currentLevel; // currentLevel é 1-indexed, então já aponta para o próximo índice
-      
-      if (nextLevelIndex < approvalOrder.length) {
-        // Há próximo perfil na ordem hierárquica
-        const nextRequiredProfile = approvalOrder[nextLevelIndex];
-        
-        console.log('🔵 Avançando para próximo perfil:', {
-          nextLevelIndex,
-          nextRequiredProfile,
-          nextLevel: nextLevelIndex + 1
-        });
-
-        // Verificar se há usuário com esse perfil
-        const { data: nextApproverData } = await supabase
-          .from('user_profiles')
-          .select('user_id, email, nome, perfil')
-          .eq('perfil', nextRequiredProfile)
-          .eq('ativo', true)
-          .limit(1)
-          .single();
-
-        if (nextApproverData) {
-          // Há próximo aprovador - continuar pendente
-          newStatus = 'pending';
-          finalLevel = nextLevelIndex + 1; // Próximo nível (1-indexed)
-          
-          console.log('✅ Próximo aprovador encontrado:', {
-            email: nextApproverData.email,
-            perfil: nextApproverData.perfil,
-            nextLevel: finalLevel
-          });
-        } else {
-          // Não há usuário com o próximo perfil - aprovar completamente
-          console.log('⚠️ Nenhum usuário encontrado com perfil:', nextRequiredProfile, '- aprovando');
-          newStatus = 'approved';
-          finalLevel = currentLevel;
-        }
-      } else {
-        // Não há mais perfis na ordem - aprovar completamente
-        console.log('✅ Último nível de aprovação - aprovando completamente');
-        newStatus = 'approved';
-        finalLevel = currentLevel;
-      }
-
-      // Atualizar a sugestão
-      const updateData: any = {
-        status: newStatus,
-        approval_level: finalLevel,
-        approvals_count: approvalsCount,
-      };
-
-      // Atualizar total_approvers com o número dinâmico
-      updateData.total_approvers = totalApprovers;
-
-      if (newStatus === 'approved') {
-        updateData.approved_at = new Date().toISOString();
-        updateData.approved_by = user?.id;
-        // Limpar current_approver quando aprovado completamente
-        updateData.current_approver_id = null;
-        updateData.current_approver_name = null;
-      } else {
-        // Se não for aprovado completamente, buscar e notificar o próximo aprovador
-        // CORREÇÃO: Buscar pelo PERFIL correspondente ao próximo nível
-        const nextRequiredProfile = approvalOrder[finalLevel - 1];
-        
-        if (nextRequiredProfile) {
-          const { data: nextApproverData } = await supabase
-            .from('user_profiles')
-            .select('user_id, email, nome, perfil')
-            .eq('perfil', nextRequiredProfile)
-            .eq('ativo', true)
-            .limit(1)
-            .single();
-
-          if (nextApproverData) {
-            // Atualizar current_approver_id e current_approver_name
-            updateData.current_approver_id = nextApproverData.user_id;
-            updateData.current_approver_name = nextApproverData.nome || nextApproverData.email;
-
-            // Criar notificação para o próximo aprovador
-            try {
-              const { createNotification } = await import('@/lib/utils');
-              await createNotification(
-                nextApproverData.user_id,
-                'approval_pending',
-                'Nova Aprovação Pendente',
-                `Uma solicitação de preço aguarda sua aprovação (nível ${finalLevel})`,
-                {
-                  suggestion_id: suggestionId,
-                  approval_level: finalLevel,
-                  url: '/approvals'
-                }
-              );
-              console.log('✅ Notificação criada para:', nextApproverData.nome || nextApproverData.email);
-            } catch (notifErr) {
-              console.error('Erro ao criar notificação:', notifErr);
-            }
-          }
-        }
-      }
-
-      // Atualizar com retry
-      let updateError: any = null;
-      let retries = 3;
-
-      while (retries > 0) {
-        try {
-          const { error } = await supabase
-            .from('price_suggestions')
-            .update(updateData)
-            .eq('id', suggestionId);
-
-          if (!error) {
-            break;
-          }
-          updateError = error;
-          retries--;
-          if (retries > 0) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-        } catch (err: any) {
-          console.warn('Erro ao atualizar, tentando novamente...', err.message);
-          updateError = err;
-          retries--;
-          if (retries > 0) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-        }
-      }
-
-      if (updateError) throw updateError;
-
-      // Criar notificação usando função helper (que também envia push)
-      // IMPORTANTE: Converter requested_by (que pode ser email) para user_id
-      try {
-        let requesterUserId: string | null = null;
-
-        // ESTRATÉGIA 1: Usar created_by diretamente (mais confiável)
-        if (currentSuggestion.created_by) {
-          const createdByUuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-          if (createdByUuidRegex.test(currentSuggestion.created_by)) {
-            requesterUserId = currentSuggestion.created_by;
-            console.log('✅ Usando created_by como user_id (estratégia 1):', requesterUserId);
-          }
-        }
-
-        // ESTRATÉGIA 2: Tentar buscar user_id do solicitante via requested_by
-        if (!requesterUserId && currentSuggestion.requested_by) {
-          console.log('🔍 Buscando user_id do solicitante via requested_by:', currentSuggestion.requested_by);
-
-          // Verificar se já é um UUID (user_id)
-          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-          if (uuidRegex.test(currentSuggestion.requested_by)) {
-            // Já é um user_id
-            requesterUserId = currentSuggestion.requested_by;
-            console.log('✅ requested_by já é um UUID (user_id):', requesterUserId);
-          } else {
-            // É um email, buscar user_id correspondente
-            console.log('📧 requested_by é um email, buscando user_id...');
-
-            // Primeiro tentar buscar em user_profiles
-            const { data: userProfile, error: profileError } = await supabase
-              .from('user_profiles')
-              .select('user_id, email')
-              .eq('email', currentSuggestion.requested_by)
-              .maybeSingle();
-
-            if (profileError) {
-              console.warn('⚠️ Erro ao buscar em user_profiles:', profileError);
-            }
-
-            if (userProfile?.user_id) {
-              requesterUserId = userProfile.user_id;
-              console.log('✅ User ID encontrado em user_profiles:', requesterUserId);
-            } else {
-              // Se ainda não encontrou, tentar buscar todos os user_profiles e fazer match manual
-              console.log('🔍 Tentando busca mais ampla em user_profiles...');
-              const { data: allProfiles } = await supabase
-                .from('user_profiles')
-                .select('user_id, email')
-                .ilike('email', `%${currentSuggestion.requested_by}%`);
-
-              if (allProfiles && allProfiles.length > 0) {
-                const exactMatch = allProfiles.find(p => p.email?.toLowerCase() === currentSuggestion.requested_by.toLowerCase());
-                if (exactMatch?.user_id) {
-                  requesterUserId = exactMatch.user_id;
-                  console.log('✅ User ID encontrado na busca ampla:', requesterUserId);
-                }
-              }
-            }
-          }
-        }
-
-        if (!requesterUserId) {
-          console.warn('');
-          console.warn('═══════════════════════════════════════════════════════');
-          console.warn('⚠️ NÃO FOI POSSÍVEL ENCONTRAR USER_ID DO SOLICITANTE');
-          console.warn('═══════════════════════════════════════════════════════');
-          console.warn('Requested By:', currentSuggestion.requested_by);
-          console.warn('Created By:', currentSuggestion.created_by);
-          console.warn('Current User ID:', user?.id);
-          console.warn('═══════════════════════════════════════════════════════');
-          console.warn('');
-          console.warn('💡 Tentando usar current user como fallback...');
-          // Último recurso: usar o usuário atual (pode não ser ideal, mas melhor que nada)
-          requesterUserId = user?.id || null;
-        }
-
-        // IMPORTANTE: Criar notificação SEMPRE, mesmo se for o próprio usuário que aprovou
-        // O usuário quer receber notificação mesmo quando aprova sua própria solicitação
-        if (requesterUserId) {
-          const isSameUser = requesterUserId === user?.id;
-
-          console.log('');
-          console.log('═══════════════════════════════════════════════════════');
-          console.log('🔔 CRIANDO NOTIFICAÇÃO DE APROVAÇÃO/REJEIÇÃO');
-          console.log('═══════════════════════════════════════════════════════');
-          console.log('⚠️ IMPORTANTE: Notificação será criada MESMO se for o mesmo usuário!');
-          console.log('Requester User ID:', requesterUserId);
-          console.log('Current User ID:', user?.id);
-          console.log('É o mesmo usuário?', isSameUser);
-          console.log('Requested By:', currentSuggestion.requested_by);
-          console.log('Status:', newStatus);
-          console.log('Aprovador:', approverName);
-          console.log('Suggestion ID:', suggestionId);
-          console.log('═══════════════════════════════════════════════════════');
-          console.log('');
-
-          const { createNotification } = await import('@/lib/utils');
-
-          // Garantir que suggestion_id está presente (pode ser obrigatório)
-          const notificationData: any = {
-            suggestion_id: suggestionId, // SEMPRE incluir suggestion_id
-            approved_by: approverName,
-            url: '/approvals',
-            is_self_approval: isSameUser // Flag para identificar auto-aprovação
-          };
-
-          // Ajustar mensagem se for auto-aprovação
-          let notificationMessage: string;
-          if (isSameUser && newStatus === 'approved') {
-            notificationMessage = `Você aprovou sua própria solicitação de preço!`;
-          } else if (isSameUser && newStatus === 'rejected') {
-            notificationMessage = `Você rejeitou sua própria solicitação de preço.`;
-          } else {
-            notificationMessage = newStatus === 'approved'
-              ? `Sua solicitação de preço foi aprovada por ${approverName}!`
-              : `Sua solicitação de preço foi rejeitada por ${approverName}.`;
-          }
-
-          console.log('📝 Dados da notificação:', {
-            userId: requesterUserId,
-            type: newStatus === 'approved' ? 'price_approved' : 'price_rejected',
-            title: newStatus === 'approved' ? 'Preço Aprovado' : 'Preço Rejeitado',
-            message: notificationMessage,
-            data: notificationData,
-            isSameUser: isSameUser
-          });
-
-          try {
-            const result = await createNotification(
-              requesterUserId,
-              newStatus === 'approved' ? 'price_approved' : 'price_rejected',
-              newStatus === 'approved' ? 'Preço Aprovado' : 'Preço Rejeitado',
-              notificationMessage,
-              notificationData
-            );
-
-            console.log('');
-            console.log('═══════════════════════════════════════════════════════');
-            console.log('✅ NOTIFICAÇÃO CRIADA COM SUCESSO!');
-            console.log('═══════════════════════════════════════════════════════');
-            console.log('Result:', result);
-            console.log('Requester User ID:', requesterUserId);
-            console.log('É o mesmo usuário?', isSameUser);
-            console.log('✅ Notificação criada mesmo sendo o mesmo usuário!');
-            console.log('═══════════════════════════════════════════════════════');
-            console.log('');
-          } catch (notifError: any) {
-            console.error('');
-            console.error('═══════════════════════════════════════════════════════');
-            console.error('❌ ERRO AO CRIAR NOTIFICAÇÃO');
-            console.error('═══════════════════════════════════════════════════════');
-            console.error('Erro:', notifError);
-            console.error('Mensagem:', notifError?.message);
-            console.error('Stack:', notifError?.stack);
-            console.error('Requester User ID:', requesterUserId);
-            console.error('É o mesmo usuário?', isSameUser);
-            console.error('═══════════════════════════════════════════════════════');
-            console.error('');
-            // Não relançar o erro para não bloquear a aprovação
-          }
-
-          // Disparar evento customizado para forçar refresh das notificações
-          window.dispatchEvent(new CustomEvent('notification-created', {
-            detail: { userId: requesterUserId, isSameUser }
-          }));
-
-          // Também disparar via localStorage como fallback
-          localStorage.setItem('notification-refresh', Date.now().toString());
-          localStorage.removeItem('notification-refresh');
-        } else {
-          console.warn('');
-          console.warn('═══════════════════════════════════════════════════════');
-          console.warn('⚠️ NÃO FOI POSSÍVEL CRIAR NOTIFICAÇÃO');
-          console.warn('═══════════════════════════════════════════════════════');
-          console.warn('Motivo: Não foi possível encontrar user_id do solicitante');
-          console.warn('Requested By:', currentSuggestion.requested_by);
-          console.warn('Current User ID:', user?.id);
-          console.warn('═══════════════════════════════════════════════════════');
-          console.warn('');
-        }
-      } catch (notifError) {
-        console.error('❌ Erro ao criar notificação:', notifError);
-        // Não bloquear a aprovação se a notificação falhar
-      }
-
-      // Se aprovado, inserir no histórico de preços
-      if (newStatus === 'approved') {
-        try {
-          // Buscar último preço aprovado para essa combinação (station, client, product)
-          let oldPrice: number | null = null;
-          if (currentSuggestion.station_id && currentSuggestion.client_id && currentSuggestion.product) {
-            const { data: lastPriceData } = await supabase
-              .from('price_history')
-              .select('new_price')
-              .eq('station_id', currentSuggestion.station_id)
-              .eq('client_id', currentSuggestion.client_id)
-              .eq('product', currentSuggestion.product)
-              .order('created_at', { ascending: false })
-              .limit(1)
-              .maybeSingle();
-
-            if (lastPriceData?.new_price) {
-              oldPrice = parseFloat(String(lastPriceData.new_price));
-            }
-          }
-
-          // Se não encontrou no histórico, buscar na tabela de sugestões
-          if (oldPrice === null && currentSuggestion.station_id && currentSuggestion.client_id && currentSuggestion.product) {
-            const { data: lastSuggestionData } = await supabase
-              .from('price_suggestions')
-              .select('final_price')
-              .eq('station_id', currentSuggestion.station_id)
-              .eq('client_id', currentSuggestion.client_id)
-              .eq('product', currentSuggestion.product)
-              .eq('status', 'approved')
-              .neq('id', suggestionId) // Excluir a sugestão atual
-              .order('created_at', { ascending: false })
-              .limit(1)
-              .maybeSingle();
-
-            if (lastSuggestionData?.final_price) {
-              // Converter de centavos para reais se necessário
-              const priceValue = parseFloat(String(lastSuggestionData.final_price));
-              oldPrice = priceValue >= 100 ? priceValue / 100 : priceValue;
-            }
-          }
-
-          // Calcular new_price (final_price da sugestão atual)
-          const newPrice = currentSuggestion.final_price
-            ? (parseFloat(String(currentSuggestion.final_price)) >= 100
-              ? parseFloat(String(currentSuggestion.final_price)) / 100
-              : parseFloat(String(currentSuggestion.final_price)))
-            : 0;
-
-          // Determinar change_type
-          let changeType: string | null = null;
-          if (oldPrice !== null && newPrice > 0) {
-            changeType = newPrice > oldPrice ? 'up' : newPrice < oldPrice ? 'down' : null;
-          }
-
-          // Inserir no histórico
-          const { error: historyInsertError } = await supabase
-            .from('price_history')
-            .insert({
-              suggestion_id: suggestionId,
-              station_id: currentSuggestion.station_id || null,
-              client_id: currentSuggestion.client_id || null,
-              product: currentSuggestion.product,
-              old_price: oldPrice,
-              new_price: newPrice,
-              margin_cents: currentSuggestion.margin_cents || 0,
-              approved_by: approverName,
-              change_type: changeType
-            });
-
-          if (historyInsertError) {
-            console.error('❌ Erro ao inserir no histórico de preços:', historyInsertError);
-            // Não bloquear a aprovação se o histórico falhar
-          } else {
-            console.log('✅ Registro inserido no histórico de preços:', {
-              suggestion_id: suggestionId,
-              old_price: oldPrice,
-              new_price: newPrice,
-              change_type: changeType
-            });
-          }
-        } catch (historyError) {
-          console.error('❌ Erro ao processar histórico de preços:', historyError);
-          // Não bloquear a aprovação se o histórico falhar
-        }
-
-        toast.success("Sugestão aprovada com sucesso!");
-      } else {
-        if (userHasRequiredProfile) {
-          toast.success("Aprovação registrada! Aguardando próximo aprovador.");
-        } else {
-          toast.success(`Aprovação registrada! Aguardando aprovação de perfil requerido (nível ${finalLevel})`);
-        }
-      }
-
-      // Fechar modal e limpar seleção
+      // Close modal
       setShowDetails(false);
       setSelectedSuggestion(null);
+      setShowObservationModal(prev => {
+        const newState = { ...prev };
+        if (newState[suggestionId]) newState[suggestionId] = { open: false, action: 'approve' };
+        return newState;
+      });
+      setBatchObservations(prev => {
+        const newObs = { ...prev };
+        delete newObs[suggestionId];
+        return newObs;
+      });
 
-      // Invalidar cache imediatamente
-      removeCache('approvals_suggestions_cache');
+      // Reload data
+      loadSuggestions(false, false).catch(console.error);
 
-      // Recarregar imediatamente sem cache
-      await loadSuggestions(false);
-
-      // Recarregar novamente após um delay para garantir que todas as mudanças foram aplicadas
-      setTimeout(() => {
-        loadSuggestions(false);
-      }, 1000);
     } catch (error: any) {
-      console.error('Erro ao aprovar sugestão:', error);
-
-      // Tratar erro de conexão
-      if (error?.message?.includes('Failed to fetch') || error?.message?.includes('ERR_CONNECTION')) {
-        toast.error("Erro de conexão. Tente novamente em alguns instantes.");
-      } else if (error?.code === 'PGRST301' || error?.message?.includes('Time out')) {
-        toast.error("O servidor demorou para responder. Tente novamente.");
-      } else {
-        toast.error(`Erro ao aprovar sugestão: ${error?.message || 'Erro desconhecido'}`);
-      }
+      console.error('Erro ao aprovar:', error);
+      toast.error(`Erro ao aprovar: ${error.message}`);
     } finally {
       setLoading(false);
     }
   };
 
   const handleReject = async (suggestionId: string, observations: string) => {
-    // Observação é opcional se o usuário não tem permissão (mas será registrada no histórico)
     const hasPermission = permissions?.permissions?.can_approve;
 
-    console.log('🔴 handleReject chamado:', { suggestionId, hasPermission, observationsLength: observations?.length });
-
-    // Se não tem permissão, observação é opcional
+    // Observação obrigatória para rejeição se tiver permissão
     if (hasPermission && !observations.trim()) {
-      toast.error("Por favor, adicione uma observação");
+      toast.error("Por favor, adicione uma observação para rejeitar.");
       return;
     }
 
     setLoading(true);
     try {
-      // Buscar a sugestão atual
-      const { data: currentSuggestion, error: fetchError } = await supabase
-        .from('price_suggestions')
-        .select('*')
-        .eq('id', suggestionId)
-        .single();
+      const result = await rejectPriceRequest(suggestionId, observations);
 
-      if (fetchError) throw fetchError;
+      const successMsg = (result as any)?.action === 'escalated'
+        ? "Solicitação rejeitada e escalada para revisão."
+        : "Solicitação rejeitada com sucesso.";
 
-      // Buscar regra de aprovação baseada na margem
-      const marginCents = currentSuggestion.margin_cents || 0;
-      const approvalRule = await getApprovalRuleForMargin(marginCents);
+      toast.success(successMsg);
 
-      // Determinar perfis requeridos baseado na regra
-      // Se não há regra ou a regra não tem perfis requeridos, qualquer aprovação aprova totalmente
-      const requiredProfiles = approvalRule?.required_profiles && approvalRule.required_profiles.length > 0
-        ? approvalRule.required_profiles
-        : undefined;
+      // Update UI
+      removeCache('approvals_suggestions_cache_v2');
 
-      // Buscar aprovadores apropriados baseado na regra
-      // Se há perfis requeridos, buscar apenas esses; caso contrário, buscar todos
-      const allApprovers = requiredProfiles && requiredProfiles.length > 0
-        ? await loadApprovers(requiredProfiles)
-        : await loadApprovers();
-
-      console.log('🔴 Aprovadores carregados:', {
-        total: allApprovers.length,
-        requiredProfiles,
-        aprovadores: allApprovers.map(a => ({ email: a.email, perfil: a.perfil, userId: a.user_id }))
-      });
-
-      // Verificar se o usuário atual é um aprovador válido
-      const currentUserProfile = allApprovers.find(a => a.user_id === user?.id);
-
-      // Declarar variáveis que serão usadas em múltiplos blocos
-      let currentLevel = currentSuggestion.approval_level || 1;
-      const currentApproverId = currentSuggestion.current_approver_id || user?.id;
-
-      console.log('🔴 Verificação de permissão:', { hasPermission, currentUserProfile: !!currentUserProfile, userId: user?.id });
-
-      // Se não tem permissão OU não é aprovador válido, apenas registrar observação e avançar para próximo
-      if (!hasPermission || !currentUserProfile) {
-        console.log('🔴 Usuário sem permissão - registrando apenas observação');
-        // Buscar nome do usuário do perfil
-        let approverName = user?.email || 'Usuário';
-        try {
-          const { data: userProfile } = await supabase
-            .from('user_profiles')
-            .select('nome, email')
-            .eq('user_id', user?.id)
-            .single();
-          if (userProfile?.nome) {
-            approverName = userProfile.nome;
-          } else if (userProfile?.email) {
-            approverName = userProfile.email;
-          }
-        } catch (err) {
-          console.warn('Erro ao buscar nome do usuário:', err);
-        }
-
-        // Registrar observação no histórico
-        const observationText = observations?.trim() || 'Observação adicionada sem permissão de rejeição';
-        console.log('🔴 Registrando observação no histórico:', { suggestionId, observationText });
-
-        const { error: historyError } = await supabase
-          .from('approval_history')
-          .insert({
-            suggestion_id: suggestionId,
-            approver_id: user?.id,
-            approver_name: approverName,
-            action: 'rejected',
-            observations: observationText,
-            approval_level: currentSuggestion.approval_level || 1
-          });
-
-        if (historyError) {
-          console.error('❌ Erro ao registrar observação:', historyError);
-          toast.error("Erro ao registrar observação: " + historyError.message);
-          setLoading(false);
-          return;
-        }
-
-        // Avançar para próximo aprovador com perfil requerido
-
-        console.log('🔴 Buscando próximo aprovador:', {
-          currentLevel,
-          currentApproverId,
-          allApproversCount: allApprovers.length,
-          requiredProfiles,
-          userId: user?.id,
-          allApprovers: allApprovers.map((a, idx) => ({ idx, email: a.email, perfil: a.perfil, userId: a.user_id }))
-        });
-
-        // Buscar ordem hierárquica para determinar a sequência correta
-        const { data: orderData } = await supabase
-          .from('approval_profile_order')
-          .select('perfil, order_position')
-          .eq('is_active', true)
-          .order('order_position', { ascending: true });
-
-        let approvalOrder: string[] = [
-          'supervisor_comercial',
-          'diretor_comercial',
-          'diretor_pricing'
-        ];
-
-        if (orderData && orderData.length > 0) {
-          approvalOrder = orderData.map((item: any) => item.perfil);
-        }
-
-        // Encontrar o perfil do aprovador atual
-        // currentApproverId já foi declarado acima na linha 1509
-        let currentApproverProfile: string | null = null;
-
-        if (currentApproverId) {
-          try {
-            const { data: currentApproverData } = await supabase
-              .from('user_profiles')
-              .select('perfil')
-              .eq('user_id', currentApproverId)
-              .single();
-            currentApproverProfile = currentApproverData?.perfil || null;
-          } catch (err) {
-            console.warn('Erro ao buscar perfil do aprovador atual:', err);
-          }
-        }
-
-        console.log('🔴 Buscando próximo aprovador:', {
-          currentLevel,
-          currentApproverId,
-          currentApproverProfile,
-          approvalOrder,
-          requiredProfiles,
-          allApproversCount: allApprovers.length,
-          allApprovers: allApprovers.map((a, idx) => ({ idx, email: a.email, perfil: a.perfil, userId: a.user_id }))
-        });
-
-        // Encontrar próximo aprovador baseado na ordem hierárquica COMPLETA
-        // IMPORTANTE: Passar por TODOS os perfis na ordem, não apenas os requeridos
-        let nextApprover = null;
-        let nextLevel = currentLevel;
-
-        console.log('🔴 Buscando próximo aprovador na ordem completa (reject):', {
-          approvalOrder,
-          requiredProfiles,
-          currentApproverProfile,
-          currentLevel
-        });
-
-        // Encontrar a posição do perfil atual na ordem COMPLETA (não apenas requeridos)
-        let currentProfileIndex = -1;
-        if (currentApproverProfile) {
-          currentProfileIndex = approvalOrder.indexOf(currentApproverProfile);
-          console.log('🔴 Perfil atual encontrado na ordem completa:', {
-            currentApproverProfile,
-            currentProfileIndex,
-            approvalOrder
-          });
-        }
-
-        // Se não encontrou o perfil atual, usar currentLevel - 1 como fallback
-        if (currentProfileIndex === -1) {
-          currentProfileIndex = Math.max(0, currentLevel - 1);
-          console.log('🔴 Usando fallback para currentProfileIndex:', {
-            currentLevel,
-            currentProfileIndex,
-            approvalOrderLength: approvalOrder.length
-          });
-        }
-
-        console.log('🔴 Tentando encontrar próximo aprovador na ordem completa:', {
-          currentProfileIndex,
-          approvalOrderLength: approvalOrder.length,
-          approvalOrder,
-          allApproversPerfis: allApprovers.map(a => a.perfil)
-        });
-
-        // Buscar o próximo perfil na ordem hierárquica COMPLETA
-        if (currentProfileIndex + 1 < approvalOrder.length) {
-          const nextProfile = approvalOrder[currentProfileIndex + 1];
-          console.log('🔴 Próximo perfil na ordem completa:', nextProfile);
-
-          // Encontrar o primeiro aprovador com esse perfil na lista
-          // Se não encontrar na lista filtrada (allApprovers), buscar na lista completa
-          nextApprover = allApprovers.find(a => a.perfil === nextProfile);
-
-          // Se não encontrou na lista filtrada, buscar na lista completa de aprovadores
-          if (!nextApprover) {
-            const allApproversFull = await loadApprovers();
-            nextApprover = allApproversFull.find(a => a.perfil === nextProfile);
-            console.log('🔴 Buscando na lista completa de aprovadores:', {
-              nextProfile,
-              encontrado: !!nextApprover,
-              allApproversFullPerfis: allApproversFull.map(a => a.perfil)
-            });
-          }
-
-          if (nextApprover) {
-            // Calcular o próximo nível baseado na posição do perfil na ordem completa
-            const nextProfileIndexInFullOrder = approvalOrder.indexOf(nextProfile);
-            nextLevel = nextProfileIndexInFullOrder + 1; // approval_level é 1-indexed
-
-            console.log('✅ Próximo aprovador encontrado pela ordem hierárquica:', {
-              email: nextApprover.email,
-              perfil: nextApprover.perfil,
-              nextLevel,
-              nextProfileIndexInFullOrder,
-              userId: nextApprover.user_id
-            });
-          } else {
-            console.warn('⚠️ Não encontrou aprovador com perfil', nextProfile, 'em nenhuma lista');
-            console.warn('⚠️ Aprovadores disponíveis (filtrados):', allApprovers.map(a => ({ email: a.email, perfil: a.perfil })));
-          }
-        } else {
-          console.warn('⚠️ Não há próximo perfil na ordem hierárquica:', {
-            currentProfileIndex,
-            approvalOrderLength: approvalOrder.length,
-            approvalOrder
-          });
-        }
-
-        if (nextApprover) {
-          // Buscar nome completo do próximo aprovador
-          let nextApproverName = nextApprover.email || 'Aprovador';
-          try {
-            const { data: nextUserProfile } = await supabase
-              .from('user_profiles')
-              .select('nome, email')
-              .eq('user_id', nextApprover.user_id)
-              .single();
-            if (nextUserProfile?.nome) {
-              nextApproverName = nextUserProfile.nome;
-            } else if (nextUserProfile?.email) {
-              nextApproverName = nextUserProfile.email;
-            }
-          } catch (err) {
-            console.warn('Erro ao buscar nome do próximo aprovador:', err);
-          }
-
-          console.log('🔴 Avançando para próximo aprovador:', {
-            nextApprover: nextApproverName,
-            nextLevel,
-            userId: nextApprover.user_id,
-            suggestionId
-          });
-
-          // Atualizar approval_level para o próximo aprovador
-          const { error: updateError } = await supabase
-            .from('price_suggestions')
-            .update({
-              approval_level: nextLevel,
-              current_approver_id: nextApprover.user_id,
-              current_approver_name: nextApproverName
-            })
-            .eq('id', suggestionId);
-
-          if (updateError) {
-            console.error('❌ Erro ao atualizar approval_level:', updateError);
-            toast.error("Erro ao passar para próximo aprovador: " + updateError.message);
-            setLoading(false);
-            return;
-          }
-
-          console.log('✅ Approval level atualizado com sucesso:', { nextLevel, suggestionId });
-
-          // Criar notificação para o próximo aprovador (com push)
-          try {
-            const { createNotification } = await import('@/lib/utils');
-            await createNotification(
-              nextApprover.user_id,
-              'approval_pending',
-              'Nova Observação Adicionada',
-              `Uma observação foi adicionada à solicitação. Aguardando sua aprovação (nível ${nextLevel})`,
-              {
-                suggestion_id: suggestionId,
-                approval_level: nextLevel,
-                url: '/approvals'
-              }
-            );
-            console.log('✅ Notificação criada para:', nextApproverName);
-          } catch (notifErr) {
-            console.error('Erro ao criar notificação:', notifErr);
-          }
-
-          toast.success(`Observação registrada. Passando para próximo aprovador: ${nextApproverName} (nível ${nextLevel})`);
-        } else {
-          // Não há mais aprovadores com perfil requerido
-          const profilesList = requiredProfiles.map(p => p.replace('_', ' ')).join(', ');
-          toast.success(`Observação registrada. Esta solicitação requer aprovação de perfis específicos: ${profilesList}`);
-        }
-
-        setLoading(false);
-
-        // Fechar modal se estiver aberto
-        setShowObservationModal(prev => {
-          const newState = { ...prev };
-          if (newState[suggestionId]) {
-            newState[suggestionId] = { open: false, action: 'reject' };
-          }
-          return newState;
-        });
-
-        // Limpar observações
-        setBatchObservations(prev => {
-          const newObs = { ...prev };
-          delete newObs[suggestionId];
-          return newObs;
-        });
-
-        // Invalidar cache e recarregar
-        localStorage.removeItem('approvals_suggestions_cache');
-        localStorage.removeItem('approvals_suggestions_cache_timestamp');
-        await loadSuggestions(false);
-        return;
-      }
-
-      console.log('🔴 Usuário tem permissão - processando rejeição completa');
-
-      let approvers: any[] = [];
-      let totalApprovers = 1;
-
-      if (requiredProfiles && requiredProfiles.length > 0) {
-        approvers = await loadApprovers(requiredProfiles);
-
-        // Verificar se o usuário atual tem um dos perfis requeridos
-        // Se não tiver, apenas registrar observação e avançar (não bloquear)
-        if (!requiredProfiles.includes(currentUserProfile.perfil)) {
-          // Buscar nome do usuário do perfil
-          let approverName = user?.email || 'Usuário';
-          try {
-            const { data: userProfile } = await supabase
-              .from('user_profiles')
-              .select('nome, email')
-              .eq('user_id', user?.id)
-              .single();
-            if (userProfile?.nome) {
-              approverName = userProfile.nome;
-            } else if (userProfile?.email) {
-              approverName = userProfile.email;
-            }
-          } catch (err) {
-            console.warn('Erro ao buscar nome do usuário:', err);
-          }
-
-          // Registrar observação no histórico
-          const observationText = observations?.trim() || 'Observação adicionada - perfil específico requerido';
-          const { error: historyError } = await supabase
-            .from('approval_history')
-            .insert({
-              suggestion_id: suggestionId,
-              approver_id: user?.id,
-              approver_name: approverName,
-              action: 'rejected',
-              observations: observationText,
-              approval_level: currentSuggestion.approval_level || 1
-            });
-
-          if (historyError) {
-            toast.error("Erro ao registrar observação: " + historyError.message);
-            setLoading(false);
-            return;
-          }
-
-          // Avançar para próximo aprovador com perfil requerido
-          // currentLevel e currentApproverId já foram declarados acima
-
-          console.log('🔴 Buscando próximo aprovador:', {
-            currentLevel,
-            currentApproverId,
-            allApproversCount: allApprovers.length,
-            approversCount: approvers.length,
-            requiredProfiles,
-            userId: user?.id,
-            allApprovers: allApprovers.map((a, idx) => ({ idx, email: a.email, perfil: a.perfil, userId: a.user_id }))
-          });
-
-          // Encontrar o índice do aprovador atual na lista
-          let currentApproverIndex = -1;
-          if (currentApproverId) {
-            currentApproverIndex = allApprovers.findIndex(a => a.user_id === currentApproverId);
-          }
-
-          // Se não encontrou pelo current_approver_id, tentar pelo user?.id
-          if (currentApproverIndex === -1 && user?.id) {
-            currentApproverIndex = allApprovers.findIndex(a => a.user_id === user?.id);
-          }
-
-          // Se ainda não encontrou, usar currentLevel - 1 como fallback
-          if (currentApproverIndex === -1) {
-            currentApproverIndex = currentLevel - 1;
-          }
-
-          console.log('🔴 Índice do aprovador atual:', {
-            currentApproverIndex,
-            currentApproverEmail: currentApproverIndex >= 0 ? allApprovers[currentApproverIndex]?.email : 'não encontrado',
-            totalAprovadores: allApprovers.length,
-            requiredProfiles,
-            aprovadoresComPerfilRequerido: allApprovers.filter(a => requiredProfiles.includes(a.perfil)).map((a, idx) => ({ idx, email: a.email, perfil: a.perfil }))
-          });
-
-          // Encontrar próximo aprovador com perfil requerido APÓS o aprovador atual
-          let nextApprover = null;
-          let nextLevel = currentLevel;
-
-          // Começar a busca a partir do próximo índice após o aprovador atual
-          for (let i = currentApproverIndex + 1; i < allApprovers.length; i++) {
-            const approver = allApprovers[i];
-            const hasRequiredProfile = requiredProfiles.includes(approver.perfil);
-            console.log(`🔴 Verificando aprovador ${i} (nível ${i + 1}):`, {
-              email: approver.email,
-              perfil: approver.perfil,
-              matches: hasRequiredProfile,
-              requiredProfiles
-            });
-
-            if (hasRequiredProfile) {
-              nextApprover = approver;
-              nextLevel = i + 1; // approval_level é 1-indexed
-              console.log('✅ Próximo aprovador encontrado:', {
-                email: approver.email,
-                perfil: approver.perfil,
-                nextLevel,
-                userId: approver.user_id
-              });
-              break;
-            }
-          }
-
-          if (!nextApprover) {
-            console.warn('⚠️ Nenhum próximo aprovador encontrado com perfil requerido após o índice', currentApproverIndex);
-          }
-
-          if (nextApprover) {
-            // Buscar nome completo do próximo aprovador
-            let nextApproverName = nextApprover.email || 'Aprovador';
-            try {
-              const { data: nextUserProfile } = await supabase
-                .from('user_profiles')
-                .select('nome, email')
-                .eq('user_id', nextApprover.user_id)
-                .single();
-              if (nextUserProfile?.nome) {
-                nextApproverName = nextUserProfile.nome;
-              } else if (nextUserProfile?.email) {
-                nextApproverName = nextUserProfile.email;
-              }
-            } catch (err) {
-              console.warn('Erro ao buscar nome do próximo aprovador:', err);
-            }
-
-            console.log('🔴 Avançando para próximo aprovador:', {
-              nextApprover: nextApproverName,
-              nextLevel,
-              userId: nextApprover.user_id,
-              suggestionId
-            });
-
-            // Atualizar approval_level para o próximo aprovador
-            const { error: updateError } = await supabase
-              .from('price_suggestions')
-              .update({
-                approval_level: nextLevel,
-                current_approver_id: nextApprover.user_id,
-                current_approver_name: nextApproverName
-              })
-              .eq('id', suggestionId);
-
-            if (updateError) {
-              console.error('❌ Erro ao atualizar approval_level:', updateError);
-              toast.error("Erro ao passar para próximo aprovador: " + updateError.message);
-              setLoading(false);
-              return;
-            }
-
-            console.log('✅ Approval level atualizado com sucesso:', { nextLevel, suggestionId });
-
-            // Criar notificação para o próximo aprovador
-            try {
-              const { error: notifError } = await supabase.from('notifications').insert({
-                user_id: nextApprover.user_id,
-                suggestion_id: suggestionId,
-                type: 'pending',
-                title: 'Nova Observação Adicionada',
-                message: `Uma observação foi adicionada à solicitação. Aguardando sua aprovação (nível ${nextLevel})`
-              });
-              if (notifError) {
-                console.error('Erro ao criar notificação:', notifError);
-              } else {
-                console.log('✅ Notificação criada para:', nextApproverName);
-              }
-            } catch (notifErr) {
-              console.error('Erro ao criar notificação:', notifErr);
-            }
-
-            toast.success(`Observação registrada. Passando para próximo aprovador: ${nextApproverName} (nível ${nextLevel})`);
-          } else {
-            // Não há mais aprovadores com perfil requerido
-            const profilesList = requiredProfiles.map(p => p.replace('_', ' ')).join(', ');
-            toast.success(`Observação registrada. Esta solicitação requer aprovação de perfis específicos: ${profilesList}`);
-          }
-
-          setLoading(false);
-          setShowObservationModal(prev => {
-            const newState = { ...prev };
-            if (newState[suggestionId]) {
-              newState[suggestionId] = { open: false, action: 'reject' };
-            }
-            return newState;
-          });
-          setBatchObservations(prev => {
-            const newObs = { ...prev };
-            delete newObs[suggestionId];
-            return newObs;
-          });
-          removeCache('approvals_suggestions_cache');
-          await loadSuggestions(false);
-          return;
-        }
-
-        totalApprovers = approvers.length > 0 ? approvers.length : 1;
-      } else {
-        approvers = allApprovers;
-        totalApprovers = approvers.length > 0 ? approvers.length : 1;
-      }
-
-      // Buscar ordem hierárquica de aprovação
-      const { data: orderData } = await supabase
-        .from('approval_profile_order' as any)
-        .select('perfil, order_position')
-        .eq('is_active', true)
-        .order('order_position', { ascending: true });
-
-      let approvalOrder: string[] = [
-        'analista_pricing',
-        'supervisor_comercial',
-        'diretor_comercial',
-        'diretor_pricing'
-      ];
-
-      if (orderData && orderData.length > 0) {
-        approvalOrder = orderData.map((item: any) => item.perfil);
-      }
-
-      // CORREÇÃO: O nível de aprovação representa a POSIÇÃO na ordem de perfis
-      const currentRequiredProfile = approvalOrder[currentLevel - 1];
-
-      console.log('🔴 Verificando rejeição por PERFIL:', {
-        currentLevel,
-        currentRequiredProfile,
-        userPerfil: currentUserProfile.perfil,
-        approvalOrder,
-        userId: user?.id
-      });
-
-      // CORREÇÃO: Verificar se o PERFIL do usuário atual corresponde ao perfil requerido para este nível
-      if (currentUserProfile.perfil !== currentRequiredProfile) {
-        toast.error(`Você não é o aprovador atual. Aguardando ação do perfil: ${currentRequiredProfile}`);
-        setLoading(false);
-        return;
-      }
-
-      const rejectionsCount = (currentSuggestion.rejections_count || 0) + 1;
-
-      // Buscar nome do usuário do perfil
-      let approverName = user?.email || 'Aprovador';
-      try {
-        const { data: userProfile } = await supabase
-          .from('user_profiles')
-          .select('nome, email')
-          .eq('user_id', user?.id)
-          .single();
-        if (userProfile?.nome) {
-          approverName = userProfile.nome;
-        } else if (userProfile?.email) {
-          approverName = userProfile.email;
-        }
-      } catch (err) {
-        console.warn('Erro ao buscar nome do usuário:', err);
-      }
-
-      // Registrar no histórico
-      const { error: historyError } = await supabase
-        .from('approval_history')
-        .insert({
-          suggestion_id: suggestionId,
-          approver_id: user?.id,
-          approver_name: approverName,
-          action: 'rejected',
-          observations: observations,
-          approval_level: currentLevel
-        });
-
-      if (historyError) throw historyError;
-
-      // CORREÇÃO: Avançar para o próximo PERFIL na ordem hierárquica
-      const nextLevelIndex = currentLevel; // currentLevel é 1-indexed, então já aponta para o próximo índice
-      let nextLevel = currentLevel;
-      
-      if (nextLevelIndex < approvalOrder.length) {
-        nextLevel = nextLevelIndex + 1; // Próximo nível (1-indexed)
-      }
-
-      // Permanece pendente quando rejeitar (não rejeita definitivamente)
-      const newStatus = 'pending';
-
-      // Buscar dados do próximo aprovador se houver próximo nível
-      let nextApproverData: any = null;
-      if (nextLevel > currentLevel && nextLevel <= approvalOrder.length) {
-        const nextRequiredProfile = approvalOrder[nextLevel - 1];
-        const { data } = await supabase
-          .from('user_profiles')
-          .select('user_id, email, nome, perfil')
-          .eq('perfil', nextRequiredProfile)
-          .eq('ativo', true)
-          .limit(1)
-          .single();
-        nextApproverData = data;
-      }
-
-      // Atualizar a sugestão com nextLevel e current_approver para passar para o próximo aprovador
-      // Com retry
-      let updateError: any = null;
-      let retries = 3;
-
-      const updatePayload: any = {
-        status: newStatus,
-        approval_level: nextLevel,
-        rejections_count: rejectionsCount,
-      };
-
-      // Atualizar current_approver se houver próximo aprovador
-      if (nextApproverData) {
-        updatePayload.current_approver_id = nextApproverData.user_id;
-        updatePayload.current_approver_name = nextApproverData.nome || nextApproverData.email;
-        
-        // Criar notificação para o próximo aprovador
-        try {
-          const { createNotification } = await import('@/lib/utils');
-          await createNotification(
-            nextApproverData.user_id,
-            'approval_pending',
-            'Solicitação Rejeitada - Aguardando Revisão',
-            `Uma solicitação foi rejeitada e aguarda sua revisão (nível ${nextLevel})`,
-            {
-              suggestion_id: suggestionId,
-              approval_level: nextLevel,
-              url: '/approvals'
-            }
-          );
-          console.log('✅ Notificação de rejeição criada para:', nextApproverData.nome || nextApproverData.email);
-        } catch (notifErr) {
-          console.error('Erro ao criar notificação:', notifErr);
-        }
-      }
-
-      while (retries > 0) {
-        try {
-          const { error } = await supabase
-            .from('price_suggestions')
-            .update(updatePayload)
-            .eq('id', suggestionId);
-
-          if (!error) {
-            break;
-          }
-          updateError = error;
-          retries--;
-          if (retries > 0) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-        } catch (err: any) {
-          console.warn('Erro ao atualizar, tentando novamente...', err.message);
-          updateError = err;
-          retries--;
-          if (retries > 0) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-        }
-      }
-
-      if (updateError) throw updateError;
-
-      // Criar notificação manualmente
-      // IMPORTANTE: Converter requested_by (que pode ser email) para user_id
-      try {
-        let requesterUserId: string | null = null;
-
-        // Tentar buscar user_id do solicitante
-        if (currentSuggestion.requested_by) {
-          // Verificar se já é um UUID (user_id)
-          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-          if (uuidRegex.test(currentSuggestion.requested_by)) {
-            // Já é um user_id
-            requesterUserId = currentSuggestion.requested_by;
-          } else {
-            // É um email, buscar user_id correspondente
-            const { data: userProfile } = await supabase
-              .from('user_profiles')
-              .select('user_id')
-              .eq('email', currentSuggestion.requested_by)
-              .maybeSingle();
-
-            if (userProfile?.user_id) {
-              requesterUserId = userProfile.user_id;
-            }
-          }
-        }
-
-        if (requesterUserId) {
-          const notificationData = {
-            user_id: requesterUserId,
-            suggestion_id: suggestionId,
-            type: newStatus === 'pending' ? 'rejected' : newStatus,
-            title: 'Preço Rejeitado',
-            message: 'Sua solicitação de preço foi rejeitada.'
-          };
-
-          const { error: notifError } = await supabase
-            .from('notifications')
-            .insert([notificationData])
-            .select();
-
-          if (notifError) {
-            console.error('❌ Erro ao criar notificação:', notifError);
-          } else {
-            console.log('✅ Notificação de rejeição criada para:', requesterUserId);
-
-            // Enviar push notification também
-            try {
-              const { sendPushNotification } = await import('@/lib/pushNotification');
-              await sendPushNotification(requesterUserId, {
-                title: 'Preço Rejeitado',
-                body: 'Sua solicitação de preço foi rejeitada.',
-                data: { suggestion_id: suggestionId },
-                url: '/approvals',
-                tag: 'price_rejected'
-              });
-            } catch (pushError) {
-              console.warn('Aviso: Não foi possível enviar push notification:', pushError);
-            }
-          }
-        } else {
-          console.warn('⚠️ Não foi possível encontrar user_id do solicitante para notificação de rejeição:', currentSuggestion.requested_by);
-        }
-      } catch (notifError) {
-        console.error('❌ Erro ao criar notificação:', notifError);
-        // Não bloquear a rejeição se a notificação falhar
-      }
-
-      toast.success("Rejeição registrada, passando para próximo aprovador");
-
-      // Fechar modal e limpar seleção
+      // Close modal
       setShowDetails(false);
       setSelectedSuggestion(null);
+      setShowObservationModal(prev => {
+        const newState = { ...prev };
+        if (newState[suggestionId]) newState[suggestionId] = { open: false, action: 'reject' };
+        return newState;
+      });
+      setBatchObservations(prev => {
+        const newObs = { ...prev };
+        delete newObs[suggestionId];
+        return newObs;
+      });
 
-      // Invalidar cache imediatamente
-      localStorage.removeItem('approvals_suggestions_cache');
-      localStorage.removeItem('approvals_suggestions_cache_timestamp');
+      // Reload data
+      loadSuggestions(false, false).catch(console.error);
 
-      // Recarregar imediatamente sem cache
-      await loadSuggestions(false);
-
-      // Recarregar novamente após um delay para garantir que todas as mudanças foram aplicadas
-      setTimeout(() => {
-        loadSuggestions(false);
-      }, 1000);
     } catch (error: any) {
       console.error('Erro ao rejeitar sugestão:', error);
-
-      // Tratar erro de conexão
-      if (error?.message?.includes('Failed to fetch') || error?.message?.includes('ERR_CONNECTION')) {
-        toast.error("Erro de conexão. Tente novamente em alguns instantes.");
-      } else if (error?.code === 'PGRST301' || error?.message?.includes('Time out')) {
-        toast.error("O servidor demorou para responder. Tente novamente.");
-      } else {
-        toast.error(`Erro ao rejeitar sugestão: ${error?.message || 'Erro desconhecido'}`);
-      }
+      toast.error(`Erro ao rejeitar sugestão: ${error?.message || 'Erro desconhecido'}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSuggestPrice = async (suggestionId: string, observations: string, suggestedPrice: number) => {
-    // Observação é opcional ao sugerir preço
-    // if (!observations.trim()) {
-    //   toast.error("Por favor, adicione uma observação");
-    //   return;
-    // }
 
+  const handleSuggestPrice = async (suggestionId: string, observations: string, suggestedPrice: number) => {
     if (!suggestedPrice || suggestedPrice <= 0) {
       toast.error("Por favor, informe um preço válido");
       return;
@@ -2830,123 +1370,158 @@ export default function Approvals() {
 
     setLoading(true);
     try {
-      const priceInCents = Math.round(suggestedPrice * 100);
-
-      // Atualizar preço e status
-      const { error: updateError } = await supabase
-        .from('price_suggestions')
-        .update({
-          final_price: priceInCents,
-          suggested_price: priceInCents,
-          status: 'price_suggested'
-        })
-        .eq('id', suggestionId);
-
-      if (updateError) throw updateError;
-
-      // Buscar a sugestão para obter o approval_level
-      const { data: currentSuggestion } = await supabase
-        .from('price_suggestions')
-        .select('approval_level, requested_by, product')
-        .eq('id', suggestionId)
-        .single();
-
-      // Buscar nome do usuário do perfil
-      let approverName = user?.email || 'Aprovador';
-      try {
-        const { data: userProfile } = await supabase
-          .from('user_profiles')
-          .select('nome, email')
-          .eq('user_id', user?.id)
-          .single();
-        if (userProfile?.nome) {
-          approverName = userProfile.nome;
-        } else if (userProfile?.email) {
-          approverName = userProfile.email;
-        }
-      } catch (err) {
-        console.warn('Erro ao buscar nome do usuário:', err);
-      }
-
-      // Registrar no histórico
-      await supabase
-        .from('approval_history')
-        .insert({
-          suggestion_id: suggestionId,
-          approver_id: user?.id,
-          approver_name: approverName,
-          action: 'price_suggested',
-          observations: observations,
-          approval_level: currentSuggestion?.approval_level || 1
-        });
-
-      // Criar notificação para o solicitante (com push)
-      // IMPORTANTE: Converter requested_by (que pode ser email) para user_id
-      try {
-        let requesterUserId: string | null = null;
-
-        // Tentar buscar user_id do solicitante
-        if (currentSuggestion?.requested_by) {
-          // Verificar se já é um UUID (user_id)
-          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-          if (uuidRegex.test(currentSuggestion.requested_by)) {
-            // Já é um user_id
-            requesterUserId = currentSuggestion.requested_by;
-          } else {
-            // É um email, buscar user_id correspondente
-            const { data: userProfile } = await supabase
-              .from('user_profiles')
-              .select('user_id')
-              .eq('email', currentSuggestion.requested_by)
-              .maybeSingle();
-
-            if (userProfile?.user_id) {
-              requesterUserId = userProfile.user_id;
-            }
-          }
-        }
-
-        if (requesterUserId) {
-          const { createNotification } = await import('@/lib/utils');
-          const productName = currentSuggestion?.product || 'produto';
-          await createNotification(
-            requesterUserId,
-            'approval_pending',
-            'Preço Sugerido',
-            `Um preço foi sugerido para sua solicitação de ${productName}`,
-            {
-              suggestion_id: suggestionId,
-              url: '/approvals'
-            }
-          );
-          console.log('✅ Notificação de preço sugerido criada para:', requesterUserId);
-        } else {
-          console.warn('⚠️ Não foi possível encontrar user_id do solicitante para notificação de preço sugerido:', currentSuggestion?.requested_by);
-        }
-      } catch (notifError) {
-        console.error('Erro ao criar notificação:', notifError);
-      }
+      await suggestPriceRequest(suggestionId, suggestedPrice, observations);
 
       toast.success("Preço sugerido com sucesso!");
 
-      // Fechar modal e limpar seleção
+      // Close modal and clear selection
       setShowDetails(false);
       setSelectedSuggestion(null);
 
-      // Invalidar cache imediatamente
-      localStorage.removeItem('approvals_suggestions_cache');
-      localStorage.removeItem('approvals_suggestions_cache_timestamp');
-
-      // Recarregar imediatamente sem cache
+      // Invalidate cache and reload
+      removeCache('approvals_suggestions_cache_v2');
       await loadSuggestions(false);
-
-      // Recarregar novamente após um delay para garantir que todas as mudanças foram aplicadas
-      setTimeout(() => {
-        loadSuggestions(false);
-      }, 1000);
     } catch (error: any) {
       console.error('Erro ao sugerir preço:', error);
       toast.error(`Erro ao sugerir preço: ${error?.message || 'Erro desconhecido'}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRequestJustification = async (suggestionId: string, observations: string) => {
+    if (!observations.trim()) {
+      toast.error("Por favor, adicione uma observação explicando o que precisa ser justificado");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await requestJustificationApi(suggestionId, observations);
+      toast.success("Justificativa solicitada ao solicitante!");
+
+      setShowDetails(false);
+      setSelectedSuggestion(null);
+      removeCache('approvals_suggestions_cache_v2');
+      await loadSuggestions(false);
+    } catch (error: any) {
+      console.error('Erro ao solicitar justificativa:', error);
+      toast.error(`Erro ao solicitar justificativa: ${error?.message || 'Erro desconhecido'}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRequestEvidence = async (suggestionId: string, observations: string, product: 'principal' | 'arla' = 'principal') => {
+    if (!observations.trim()) {
+      toast.error("Por favor, adicione uma observação explicando a referência necessária");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await requestEvidenceApi(suggestionId, product, observations);
+      toast.success("Referência de preço solicitada ao solicitante!");
+
+      setShowDetails(false);
+      setSelectedSuggestion(null);
+      removeCache('approvals_suggestions_cache_v2');
+      await loadSuggestions(false);
+    } catch (error: any) {
+      console.error('Erro ao solicitar referência:', error);
+      toast.error(`Erro ao solicitar referência: ${error?.message || 'Erro desconhecido'}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleProvideJustification = async (suggestionId: string, justification: string) => {
+    if (!justification.trim()) {
+      toast.error("Por favor, adicione sua justificativa");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await provideJustification(suggestionId, justification);
+      toast.success("Justificativa enviada com sucesso!");
+
+      setShowDetails(false);
+      setSelectedSuggestion(null);
+      removeCache('approvals_suggestions_cache_v2');
+      await loadSuggestions(false);
+    } catch (error: any) {
+      console.error('Erro ao enviar justificativa:', error);
+      toast.error(`Erro ao enviar justificativa: ${error?.message || 'Erro desconhecido'}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleProvideEvidence = async (suggestionId: string, observations: string, attachmentUrl?: string) => {
+    if (!observations && !attachmentUrl) {
+      toast.error("Por favor, anexe o arquivo de referência ou descreva a evidência");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await provideEvidence(suggestionId, attachmentUrl || "", observations);
+      toast.success("Referência enviada com sucesso!");
+
+      setShowDetails(false);
+      setSelectedSuggestion(null);
+      removeCache('approvals_suggestions_cache_v2');
+      await loadSuggestions(false);
+    } catch (error: any) {
+      console.error('Erro ao enviar referência:', error);
+      toast.error(`Erro ao enviar referência: ${error?.message || 'Erro desconhecido'}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAcceptSuggestion = async (suggestionId: string, observations?: string) => {
+    setLoading(true);
+    try {
+      await acceptSuggestedPrice(suggestionId, observations);
+      toast.success("Sugestão aceita com sucesso!");
+
+      setShowDetails(false);
+      setSelectedSuggestion(null);
+      removeCache('approvals_suggestions_cache_v2');
+      await loadSuggestions(false);
+    } catch (error: any) {
+      console.error('Erro ao aceitar sugestão:', error);
+      toast.error(`Erro ao aceitar sugestão: ${error?.message || 'Erro desconhecido'}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAppeal = async (suggestionId: string, observations: string, newPrice: number) => {
+    if (!observations.trim()) {
+      toast.error("Por favor, adicione uma observação para seu recurso");
+      return;
+    }
+
+    if (!newPrice || newPrice <= 0) {
+      toast.error("Por favor, informe um preço válido para o recurso");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await appealPriceRequest(suggestionId, newPrice, observations);
+      toast.success("Recurso enviado com sucesso! A solicitação voltará para o início do fluxo.");
+
+      setShowDetails(false);
+      setSelectedSuggestion(null);
+      removeCache('approvals_suggestions_cache_v2');
+      await loadSuggestions(false);
+    } catch (error: any) {
+      console.error('Erro ao enviar recurso:', error);
+      toast.error(`Erro ao enviar recurso: ${error?.message || 'Erro desconhecido'}`);
     } finally {
       setLoading(false);
     }
@@ -3176,8 +1751,8 @@ export default function Approvals() {
       if (error) throw error;
 
       // Invalidar cache para forçar atualização
-      localStorage.removeItem('approvals_suggestions_cache');
-      localStorage.removeItem('approvals_suggestions_cache_timestamp');
+      localStorage.removeItem('approvals_suggestions_cache_v2');
+      localStorage.removeItem('approvals_suggestions_cache_v2_timestamp');
 
       // Invalidar cache de outras páginas também
       if (user?.id) {
@@ -3202,6 +1777,7 @@ export default function Approvals() {
       setLoading(false);
     }
   };
+
 
   // Funções formatPrice, formatDate, getStatusBadge, getProductName foram movidas para @/lib/approvals-utils
   if (loadingData) {
@@ -3236,7 +1812,7 @@ export default function Approvals() {
         }}
         onRefresh={() => {
           setIsRefreshing(true);
-          removeCache('approvals_suggestions_cache');
+          removeCache('approvals_suggestions_cache_v2');
           loadSuggestions(false).then(() => setIsRefreshing(false)).catch(() => setIsRefreshing(false));
         }}
         isRefreshing={isRefreshing}
@@ -3245,16 +1821,59 @@ export default function Approvals() {
     );
   }
 
+  const handleBulkAction = async () => {
+    if (!bulkActionType || !bulkObservation.trim()) {
+      toast.error("Por favor, adicione uma observação.");
+      return;
+    }
+
+    setIsProcessingBulk(true);
+    let success = 0;
+    let errors = 0;
+
+    try {
+      for (const requestId of selectedRequests) {
+        try {
+          if (bulkActionType === 'approve') {
+            await approvePriceRequest(requestId, bulkObservation);
+          } else if (bulkActionType === 'reject') {
+            await rejectPriceRequest(requestId, bulkObservation);
+          } else if (bulkActionType === 'request_justification') {
+            await requestJustificationApi(requestId, bulkObservation);
+          } else if (bulkActionType === 'request_evidence') {
+            await requestEvidenceApi(requestId, 'principal', bulkObservation);
+          } else if (bulkActionType === 'suggest_price') {
+            const price = parseBrazilianDecimal(bulkSuggestedPrice);
+            if (!price || price <= 0) throw new Error("Preço sugerido inválido");
+            await suggestPriceRequest(requestId, price, bulkObservation);
+          }
+          success++;
+        } catch (err) {
+          console.error(`Erro ao processar ${requestId}:`, err);
+          errors++;
+        }
+      }
+
+      toast.success(`Ação concluída: ${success} sucesso(s)${errors > 0 ? `, ${errors} erro(s)` : ''}`);
+      setSelectedRequests([]);
+      setIsBulkDialogOpen(false);
+      setBulkObservation("");
+      await loadSuggestions(false);
+    } finally {
+      setIsProcessingBulk(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-background">
-      <div className="container mx-auto px-4 py-4 space-y-4">
+    <div className="min-h-screen bg-slate-50 dark:bg-background pb-20 relative">
+      <div className="w-full px-2 py-4 space-y-4">
         {/* Header */}
         <ApprovalHeader
           realtimeStatus={realtimeStatus}
           isRefreshing={isRefreshing}
           onRefresh={() => {
             setIsRefreshing(true);
-            removeCache('approvals_suggestions_cache');
+            removeCache('approvals_suggestions_cache_v2');
             loadSuggestions(false).then(() => setIsRefreshing(false)).catch(() => setIsRefreshing(false));
           }}
         />
@@ -3318,160 +1937,426 @@ export default function Approvals() {
           </Card>
         </div>
 
-        {/* Filters */}
-        <Card className="shadow-lg">
-          <CardHeader className="p-3 sm:p-6">
-            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-              <Filter className="h-4 w-4 sm:h-5 sm:w-5 text-slate-600 dark:text-slate-400" />
-              Filtros
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-3 sm:p-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-3">
-              <div className="space-y-2">
-                <label className="text-sm font-medium flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                  Status
-                </label>
-                <Select value={filters.status} onValueChange={(value) => handleFilterChange("status", value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Todos os status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    <SelectItem value="pending">Pendente</SelectItem>
-                    <SelectItem value="approved">Aprovado</SelectItem>
-                    <SelectItem value="rejected">Rejeitado</SelectItem>
-                    <SelectItem value="price_suggested">Preço Sugerido</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-orange-500"></div>
-                  Produto
-                </label>
-                <Select value={filters.product} onValueChange={(value) => handleFilterChange("product", value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Todos os produtos" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    <SelectItem value="s10">Diesel S-10</SelectItem>
-                    <SelectItem value="s10_aditivado">Diesel S-10 Aditivado</SelectItem>
-                    <SelectItem value="diesel_s500">Diesel S-500</SelectItem>
-                    <SelectItem value="diesel_s500_aditivado">Diesel S-500 Aditivado</SelectItem>
-                    <SelectItem value="arla32_granel">Arla 32 Granel</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-pink-500"></div>
-                  Solicitante
-                </label>
-                <Select value={filters.requester} onValueChange={(value) => handleFilterChange("requester", value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Todos os solicitantes" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    {getUniqueRequesters().map((req) => (
-                      <SelectItem key={req.id} value={req.id}>
-                        {req.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                  Buscar
-                </label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
-                  <Input
-                    placeholder="Buscar por posto, cliente..."
-                    value={filters.search}
-                    onChange={(e) => handleFilterChange("search", e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-purple-500"></div>
-                  Data Início
-                </label>
-                <Input
-                  type="date"
-                  value={filters.startDate}
-                  onChange={(e) => handleFilterChange("startDate", e.target.value)}
-                  className="w-full"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-purple-500"></div>
-                  Data Fim
-                </label>
-                <Input
-                  type="date"
-                  value={filters.endDate}
-                  onChange={(e) => handleFilterChange("endDate", e.target.value)}
-                  className="w-full"
-                  min={filters.startDate || undefined}
-                />
-              </div>
-
-              <div className="space-y-2 flex flex-col justify-end">
-                <label className="text-sm font-medium flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={filters.myApprovalsOnly}
-                    onChange={(e) => handleFilterChange("myApprovalsOnly", e.target.checked)}
-                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm">Apenas minhas aprovações</span>
-                </label>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Mostrar apenas aprovações que dependem de mim
-                </p>
-              </div>
-
-              {(filters.startDate || filters.endDate || filters.myApprovalsOnly) && (
-                <div className="space-y-2 flex flex-col justify-end">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const resetFilters = {
-                        ...filters,
-                        startDate: "",
-                        endDate: "",
-                        myApprovalsOnly: false
-                      };
-                      setFilters(resetFilters);
-                      applyFilters(resetFilters);
-                    }}
-                    className="w-full"
-                  >
-                    Limpar Filtros
+        {/* Filters & Tabela View (PC) */}
+        <div className="flex flex-col space-y-4">
+          <div className="flex justify-between items-center bg-white dark:bg-slate-900 p-4 rounded-lg shadow-sm border">
+            <div className="flex items-center gap-4">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="flex items-center gap-2 border-slate-200 shadow-sm">
+                    <Filter className="h-4 w-4 text-slate-600" />
+                    <span className="font-medium">Filtros</span>
+                    {(filters.status !== 'all' || filters.product !== 'all' || filters.requester !== 'all' || filters.search || filters.startDate || filters.endDate || filters.myApprovalsOnly) && (
+                      <Badge variant="secondary" className="ml-1 bg-primary/10 text-primary border-none h-5 px-1.5 min-w-[20px] flex justify-center">
+                        !
+                      </Badge>
+                    )}
                   </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[400px] p-6 shadow-xl border-slate-200" align="start">
+                  <div className="space-y-6">
+                    <h3 className="font-bold text-lg flex items-center gap-2 border-b pb-2">
+                      <Filter className="h-5 w-5 text-primary" />
+                      Filtros de Aprovação
+                    </h3>
+
+                    <div className="grid grid-cols-1 gap-6">
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                          <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                          Status
+                        </label>
+                        <Select value={filters.status} onValueChange={(value) => handleFilterChange("status", value)}>
+                          <SelectTrigger className="w-full bg-slate-50 border-slate-200">
+                            <SelectValue placeholder="Todos os status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Todos</SelectItem>
+                            <SelectItem value="pending">Pendente</SelectItem>
+                            <SelectItem value="approved">Aprovado</SelectItem>
+                            <SelectItem value="rejected">Rejeitado</SelectItem>
+                            <SelectItem value="price_suggested">Preço Sugerido</SelectItem>
+                            <SelectItem value="appealed">Recurso Solicitado</SelectItem>
+                            <SelectItem value="awaiting_justification">Aguardando Justificativa</SelectItem>
+                            <SelectItem value="awaiting_evidence">Aguardando Evidência</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                          <div className="w-2 h-2 rounded-full bg-orange-500"></div>
+                          Produto
+                        </label>
+                        <Select value={filters.product} onValueChange={(value) => handleFilterChange("product", value)}>
+                          <SelectTrigger className="w-full bg-slate-50 border-slate-200">
+                            <SelectValue placeholder="Todos os produtos" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Todos</SelectItem>
+                            <SelectItem value="s10">Diesel S-10</SelectItem>
+                            <SelectItem value="s10_aditivado">Diesel S-10 Aditivado</SelectItem>
+                            <SelectItem value="diesel_s500">Diesel S-500</SelectItem>
+                            <SelectItem value="diesel_s500_aditivado">Diesel S-500 Aditivado</SelectItem>
+                            <SelectItem value="arla32_granel">Arla 32 Granel</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                          <div className="w-2 h-2 rounded-full bg-pink-500"></div>
+                          Solicitante
+                        </label>
+                        <Select value={filters.requester} onValueChange={(value) => handleFilterChange("requester", value)}>
+                          <SelectTrigger className="w-full bg-slate-50 border-slate-200">
+                            <SelectValue placeholder="Todos os solicitantes" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Todos</SelectItem>
+                            {getUniqueRequesters().map((req) => (
+                              <SelectItem key={req.id} value={req.id}>
+                                {req.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                          <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                          Buscar
+                        </label>
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+                          <Input
+                            placeholder="Buscar por posto, cliente..."
+                            value={filters.search}
+                            onChange={(e) => handleFilterChange("search", e.target.value)}
+                            className="pl-10 bg-slate-50 border-slate-200"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <label className="text-sm font-semibold flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                            <div className="w-2 h-2 rounded-full bg-purple-500"></div>
+                            Data Início
+                          </label>
+                          <Input
+                            type="date"
+                            value={filters.startDate}
+                            onChange={(e) => handleFilterChange("startDate", e.target.value)}
+                            className="w-full bg-slate-50 border-slate-200"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-semibold flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                            <div className="w-2 h-2 rounded-full bg-purple-600"></div>
+                            Data Fim
+                          </label>
+                          <Input
+                            type="date"
+                            value={filters.endDate}
+                            onChange={(e) => handleFilterChange("endDate", e.target.value)}
+                            className="w-full bg-slate-50 border-slate-200"
+                            min={filters.startDate || undefined}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-3 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100">
+                        <label className="flex items-center gap-3 cursor-pointer group">
+                          <input
+                            type="checkbox"
+                            checked={filters.myApprovalsOnly}
+                            onChange={(e) => handleFilterChange("myApprovalsOnly", e.target.checked)}
+                            className="w-5 h-5 rounded border-slate-300 text-primary focus:ring-primary transition-all"
+                          />
+                          <div className="flex flex-col">
+                            <span className="text-sm font-bold text-slate-700 dark:text-slate-200 group-hover:text-primary transition-colors">Apenas minhas aprovações</span>
+                            <span className="text-[10px] text-slate-500 leading-tight">Mostrar solicitações que dependem da sua ação</span>
+                          </div>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3 pt-4 border-t">
+                      <Button
+                        variant="ghost"
+                        className="flex-1 text-slate-500 text-sm hover:bg-slate-100"
+                        onClick={() => {
+                          const resetFilters: ApprovalUIFilters = {
+                            status: "pending",
+                            station: "all",
+                            client: "all",
+                            product: "all",
+                            requester: "all",
+                            search: "",
+                            startDate: "",
+                            endDate: "",
+                            myApprovalsOnly: true
+                          };
+                          setFilters(resetFilters);
+                          applyFilters(resetFilters);
+                        }}
+                      >
+                        Limpar Tudo
+                      </Button>
+                      <Button className="flex-1 shadow-md hover:shadow-lg transition-all" onClick={() => (document.activeElement as HTMLElement)?.blur()}>
+                        Aplicar Filtros
+                      </Button>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+
+              <div className="h-6 w-px bg-slate-200"></div>
+
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="h-7 px-3 bg-slate-50 text-slate-600 border-slate-200 font-medium">
+                  {filteredSuggestions.length} Registros
+                </Badge>
+              </div>
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setIsRefreshing(true);
+                removeCache('approvals_suggestions_cache_v2');
+                loadSuggestions(false).then(() => setIsRefreshing(false)).catch(() => setIsRefreshing(false));
+              }}
+              disabled={isRefreshing || loadingData}
+              className="flex items-center gap-2 h-9 px-4 hover:bg-slate-50"
+            >
+              <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              Atualizar
+            </Button>
+          </div>
+
+          {/* Inline Bulk Action Bar - below filters */}
+          {selectedRequests.length > 0 && !isMobile && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="bg-white dark:bg-slate-800 rounded-lg px-4 py-3 flex items-center gap-4 shadow-xl border border-slate-200 dark:border-slate-700 mb-4"
+            >
+              <div className="flex items-center gap-2 border-r border-slate-200 dark:border-slate-700 pr-4">
+                <div className="bg-blue-600 text-white h-6 w-6 rounded-full flex items-center justify-center font-bold text-xs">
+                  {selectedRequests.length}
+                </div>
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wide">Selecionados</span>
+              </div>
+
+              <div className="flex items-center gap-2 flex-1 overflow-x-auto pb-1 sm:pb-0">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 h-8 w-8 rounded-md p-0"
+                        onClick={() => {
+                          setBulkActionType('approve');
+                          setIsBulkDialogOpen(true);
+                        }}
+                      >
+                        <Check className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Aprovar</TooltipContent>
+                  </Tooltip>
+
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 h-8 w-8 rounded-md p-0"
+                        onClick={() => {
+                          setBulkActionType('suggest_price');
+                          setBulkSuggestedPrice(""); // Reset price
+                          setIsBulkDialogOpen(true);
+                        }}
+                      >
+                        <DollarSign className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Sugerir Preço</TooltipContent>
+                  </Tooltip>
+
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/20 h-8 w-8 rounded-md p-0"
+                        onClick={() => {
+                          setBulkActionType('request_justification');
+                          setIsBulkDialogOpen(true);
+                        }}
+                      >
+                        <MessageSquarePlus className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Pedir Justificativa</TooltipContent>
+                  </Tooltip>
+
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="text-purple-600 hover:text-purple-700 hover:bg-purple-50 dark:hover:bg-purple-900/20 h-8 w-8 rounded-md p-0"
+                        onClick={() => {
+                          setBulkActionType('request_evidence');
+                          setIsBulkDialogOpen(true);
+                        }}
+                      >
+                        <FileQuestion className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Pedir Evidência</TooltipContent>
+                  </Tooltip>
+
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 font-semibold h-8 w-8 rounded-md border-none ml-2 p-0"
+                        onClick={() => {
+                          setBulkActionType('reject');
+                          setIsBulkDialogOpen(true);
+                        }}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Rejeitar</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 h-8 px-3 text-xs rounded-md border-none ml-auto"
+                onClick={() => setSelectedRequests([])}
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1" /> Limpar
+              </Button>
+            </motion.div>
+          )}
+
+          <div className="bg-white dark:bg-slate-900 rounded-lg shadow-lg border border-slate-200">
+            <ApprovalsTableView
+              approvals={filteredSuggestions}
+              onApprove={async (approval, obs) => await handleApprove(approval.id, obs || "")}
+              onReject={async (approval, obs) => await handleReject(approval.id, obs)}
+              onSuggestPrice={handleSuggestPrice}
+              onRequestJustification={handleRequestJustification}
+              onRequestEvidence={handleRequestEvidence}
+              onProvideJustification={handleProvideJustification}
+              onProvideEvidence={(id, obs) => handleProvideEvidence(id, "", obs)}
+              onAcceptSuggestion={(id) => handleAcceptSuggestion(id)}
+              onAppeal={handleAppeal}
+              currentUserId={user?.id}
+              selectedIds={selectedRequests}
+              onSelectionChange={setSelectedRequests}
+            />
+          </div>
+        </div>
+
+        {/* Bulk Actions Dialog */}
+        <Dialog open={isBulkDialogOpen} onOpenChange={setIsBulkDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {bulkActionType === 'approve' && 'Aprovar Selecionados'}
+                {bulkActionType === 'reject' && 'Rejeitar Selecionados'}
+                {bulkActionType === 'request_justification' && 'Solicitar Justificativa em Massa'}
+                {bulkActionType === 'request_evidence' && 'Solicitar Evidência em Massa'}
+                {bulkActionType === 'suggest_price' && 'Sugerir Preço em Massa'}
+              </DialogTitle>
+              <DialogDescription>
+                Você está prestes a {
+                  bulkActionType === 'approve' ? 'aprovar' :
+                    bulkActionType === 'reject' ? 'rejeitar' :
+                      bulkActionType === 'request_justification' ? 'solicitar justificativa para' :
+                        bulkActionType === 'request_evidence' ? 'solicitar evidência para' :
+                          'sugerir preço para'
+                } {selectedRequests.length} solicitações de uma vez.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4 space-y-4">
+              {bulkActionType === 'suggest_price' && (
+                <div className="space-y-2">
+                  <Label htmlFor="bulk-price">Preço Sugerido (R$)</Label>
+                  <Input
+                    id="bulk-price"
+                    placeholder="0,00"
+                    value={bulkSuggestedPrice}
+                    onChange={(e) => {
+                      // Permitir apenas números e vírgula
+                      let val = e.target.value.replace(/[^0-9,]/g, '');
+                      // Formatar mascara de moeda simples
+                      if (val.length > 2 && !val.includes(',')) {
+                        val = val.slice(0, -2) + ',' + val.slice(-2);
+                      }
+                      setBulkSuggestedPrice(val);
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Este preço será aplicado a TODAS as solicitações selecionadas. Cuidado.
+                  </p>
                 </div>
               )}
+              <div className="space-y-2">
+                <Label htmlFor="bulk-obs">Observação (Opcional)</Label>
+                <Textarea
+                  placeholder="Descreva o motivo desta ação em massa..."
+                  value={bulkObservation}
+                  onChange={(e) => setBulkObservation(e.target.value)}
+                />
+              </div>
             </div>
-          </CardContent>
-        </Card>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsBulkDialogOpen(false)}>Cancelar</Button>
+              <Button
+                variant={bulkActionType === 'reject' ? 'destructive' : 'default'}
+                onClick={handleBulkAction}
+                disabled={isProcessingBulk || !bulkObservation.trim()}
+                className={
+                  bulkActionType === 'approve' ? 'bg-emerald-600 hover:bg-emerald-700' :
+                    bulkActionType === 'request_justification' ? 'bg-amber-600 hover:bg-amber-700' :
+                      bulkActionType === 'request_evidence' ? 'bg-purple-600 hover:bg-purple-700' :
+                        bulkActionType === 'suggest_price' ? 'bg-blue-600 hover:bg-blue-700' :
+                          ''
+                }
+              >
+                {isProcessingBulk ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+                Confirmar Ação
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-        {/* Batch Approvals Section - Only for batch requests */}
-        {batchApprovals.length > 0 && (
+        {/* Modal de Guia de Aprovação */}
+        <ApprovalGuideModal
+          isOpen={showGuideModal}
+          onClose={handleCloseGuide}
+        />
+
+
+        {/* Batch Approvals Section - DESABILITADO PARA TESTES */}
+        {false && batchApprovals.length > 0 && (
           <Card className="shadow-lg">
             <CardHeader className="p-3 sm:p-6">
               <CardTitle className="text-base sm:text-lg">Aprovações em Lote ({batchApprovals.length})</CardTitle>
@@ -3620,8 +2505,9 @@ export default function Approvals() {
                               {batch.requests.slice(0, 20).map((req: any, index: number) => {
                                 const currentPrice = req.current_price || req.cost_price || 0;
                                 const currentPriceReais = currentPrice >= 100 ? currentPrice / 100 : currentPrice;
-                                const finalPrice = req.final_price || req.suggested_price || 0;
+                                const finalPrice = req.suggested_price ?? req.final_price ?? (req.cost_price && req.margin_cents ? req.cost_price + (req.margin_cents / 100) : 0);
                                 const finalPriceReais = finalPrice >= 100 ? finalPrice / 100 : finalPrice;
+                                const displayPrice = finalPriceReais > 0 ? formatPrice(finalPriceReais) : '-';
                                 const costPrice = req.cost_price || req.cost || 0;
                                 const costPriceReais = costPrice >= 100 ? costPrice / 100 : costPrice;
                                 const margin = finalPriceReais - costPriceReais;
@@ -3735,7 +2621,7 @@ export default function Approvals() {
                                 {batch.requests.slice(0, 20).map((req: any, index: number) => {
                                   const currentPrice = req.current_price || req.cost_price || 0;
                                   const currentPriceReais = currentPrice >= 100 ? currentPrice / 100 : currentPrice;
-                                  const finalPrice = req.final_price || req.suggested_price || 0;
+                                  const finalPrice = req.suggested_price ?? req.final_price ?? (req.cost_price && req.margin_cents ? req.cost_price + (req.margin_cents / 100) : 0);
                                   const finalPriceReais = finalPrice >= 100 ? finalPrice / 100 : finalPrice;
                                   const costPrice = req.cost_price || req.cost || 0;
                                   const costPriceReais = costPrice >= 100 ? costPrice / 100 : costPrice;
@@ -3776,6 +2662,80 @@ export default function Approvals() {
                                       </td>
                                       <td className="p-2 sm:p-3">
                                         <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
+                                          {/* Requester Actions */}
+                                          {user?.id && (req.created_by === user.id || req.requested_by === user.id) && (
+                                            <>
+                                              {req.status === 'price_suggested' && (
+                                                <>
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-8 w-8 p-0 text-slate-500 hover:text-green-600"
+                                                    title="Aceitar Sugestão"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      if (confirm('Aceitar o preço sugerido?')) {
+                                                        handleAcceptSuggestion(req.id);
+                                                      }
+                                                    }}
+                                                  >
+                                                    <Check className="h-4 w-4" />
+                                                  </Button>
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-8 w-8 p-0 text-slate-500 hover:text-orange-600"
+                                                    title="Recorrer"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      // Simple prompt for now
+                                                      const priceStr = prompt("Preço para recurso (R$):");
+                                                      if (!priceStr) return;
+                                                      const price = parseFloat(priceStr.replace(',', '.'));
+                                                      if (isNaN(price)) return alert("Preço inválido");
+                                                      const obs = prompt("Motivo do recurso:");
+                                                      if (!obs) return;
+                                                      handleAppeal(req.id, obs, price);
+                                                    }}
+                                                  >
+                                                    <GitBranch className="h-4 w-4" />
+                                                  </Button>
+                                                </>
+                                              )}
+                                              {req.status === 'awaiting_justification' && (
+                                                <Button
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  className="h-8 w-8 p-0 text-slate-500 hover:text-blue-600"
+                                                  title="Enviar Justificativa"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    const obs = prompt("Justificativa:");
+                                                    if (!obs) return;
+                                                    handleProvideJustification(req.id, obs);
+                                                  }}
+                                                >
+                                                  <MessageSquare className="h-4 w-4" />
+                                                </Button>
+                                              )}
+                                              {req.status === 'awaiting_evidence' && (
+                                                <Button
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  className="h-8 w-8 p-0 text-slate-500 hover:text-purple-600"
+                                                  title="Enviar Evidência"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    const obs = prompt("Cole o link da evidência ou observação:");
+                                                    if (!obs) return;
+                                                    handleProvideEvidence(req.id, obs || "Enviado via link");
+                                                  }}
+                                                >
+                                                  <Paperclip className="h-4 w-4" />
+                                                </Button>
+                                              )}
+                                            </>
+                                          )}
                                           <Button
                                             variant="ghost"
                                             size="sm"
@@ -4105,7 +3065,7 @@ export default function Approvals() {
                                                           });
 
                                                           // Invalidar cache e recarregar
-                                                          removeCache('approvals_suggestions_cache');
+                                                          removeCache('approvals_suggestions_cache_v2');
                                                           setTimeout(() => {
                                                             loadSuggestions(false);
                                                           }, 500);
@@ -4197,8 +3157,8 @@ export default function Approvals() {
                                                         }));
 
                                                         // Invalidar cache e recarregar
-                                                        localStorage.removeItem('approvals_suggestions_cache');
-                                                        localStorage.removeItem('approvals_suggestions_cache_timestamp');
+                                                        localStorage.removeItem('approvals_suggestions_cache_v2');
+                                                        localStorage.removeItem('approvals_suggestions_cache_v2_timestamp');
                                                         setTimeout(() => {
                                                           loadSuggestions(false);
                                                         }, 500);
@@ -4244,205 +3204,8 @@ export default function Approvals() {
           </Card>
         )}
 
-        {/* Suggestions List - Apenas Cards */}
-        <Card className="shadow-xl">
-          <CardHeader>
-            <CardTitle>Sugestões de Preço ({individualApprovals.length})</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {/* Paginação de aprovações individuais - Melhorada */}
-            {individualApprovals.length > ITEMS_PER_PAGE && (
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-6 p-3 bg-slate-50 dark:bg-secondary/50 rounded-lg">
-                <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                  Página {individualPage + 1} de {Math.ceil(individualApprovals.length / ITEMS_PER_PAGE)}
-                  <span className="text-xs text-slate-500 dark:text-slate-400 ml-2">
-                    ({individualPage * ITEMS_PER_PAGE + 1} - {Math.min((individualPage + 1) * ITEMS_PER_PAGE, individualApprovals.length)} de {individualApprovals.length})
-                  </span>
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIndividualPage(p => Math.max(0, p - 1))}
-                    disabled={individualPage === 0}
-                    className="min-w-[100px]"
-                  >
-                    ← Anterior
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIndividualPage(p => Math.min(Math.ceil(individualApprovals.length / ITEMS_PER_PAGE) - 1, p + 1))}
-                    disabled={individualPage >= Math.ceil(individualApprovals.length / ITEMS_PER_PAGE) - 1}
-                    className="min-w-[100px]"
-                  >
-                    Próximo →
-                  </Button>
-                </div>
-              </div>
-            )}
-            <motion.div
-              className="space-y-4"
-              variants={containerVariants}
-              initial="hidden"
-              animate="visible"
-            >
-              <AnimatePresence mode="popLayout">
-                {individualApprovals.slice(individualPage * ITEMS_PER_PAGE, (individualPage + 1) * ITEMS_PER_PAGE).map((suggestion) => (
-                  <motion.div
-                    key={suggestion.id}
-                    variants={itemVariants}
-                    layout
-                    exit={{ opacity: 0, scale: 0.9 }}
-                    className="p-3 sm:p-4 bg-card rounded-xl border border-border hover:shadow-lg transition-all duration-300"
-                  >
-                    <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 sm:gap-4">
-                      <div className="flex-1 min-w-0 w-full">
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-2">
-                          <span className="font-semibold text-sm sm:text-base text-slate-800 dark:text-slate-200 break-words">
-                            {suggestion.stations?.name
-                              || suggestion.station_id
-                              || '⚠️ Sem posto'
-                            } - {suggestion.clients?.name
-                              || suggestion.client_id
-                              || '⚠️ Sem cliente'
-                            }
-                          </span>
-                          <div className="flex-shrink-0">{getStatusBadge(suggestion.status)}</div>
-                        </div>
-                        {suggestion.status === 'pending' && suggestion.current_approver_name && (
-                          <div className="mb-2">
-                            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Em aprovação com: </span>
-                            <span className="text-xs font-bold text-orange-600">{formatNameFromEmail(suggestion.current_approver_name)}</span>
-                          </div>
-                        )}
-                        <div className="space-y-3">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-slate-700 dark:text-slate-300">Produto:</span>
-                            <span className="text-slate-600 dark:text-slate-400">{getProductName(suggestion.product)}</span>
-                          </div>
+        {/* Individual List Replaced by DesktopApprovalsView */}
 
-                          {/* Análise de Preço */}
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 p-3 sm:p-4 bg-white dark:bg-card rounded-lg border border-slate-200 dark:border-border">
-                            <div>
-                              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Preço Atual</p>
-                              <p className="text-lg font-bold text-slate-800 dark:text-slate-200">
-                                {(() => {
-                                  // Converter de centavos para reais se necessário
-                                  const price = suggestion.current_price || suggestion.cost_price || 0;
-                                  const priceInReais = price >= 100 ? price / 100 : price;
-                                  return priceInReais > 0 ? formatPrice(priceInReais) : 'N/A';
-                                })()}
-                              </p>
-                            </div>
-
-                            <div>
-                              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Preço Sugerido</p>
-                              <p className="text-lg font-bold text-green-600 dark:text-green-400">
-                                {(() => {
-                                  // Converter de centavos para reais se necessário
-                                  const price = suggestion.final_price || suggestion.suggested_price || 0;
-                                  const priceInReais = price >= 100 ? price / 100 : price;
-                                  return priceInReais > 0 ? formatPrice(priceInReais) : 'N/A';
-                                })()}
-                              </p>
-                            </div>
-
-                            <div>
-                              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Ajuste</p>
-                              <p className={`text-lg font-bold ${suggestion.margin_cents > 0
-                                ? 'text-green-600 dark:text-green-400'
-                                : 'text-red-600 dark:text-red-400'
-                                }`}>
-                                {(() => {
-                                  // Converter valores de centavos para reais
-                                  const currentPrice = (suggestion.current_price || suggestion.cost_price || 0);
-                                  const currentPriceReais = currentPrice >= 100 ? currentPrice / 100 : currentPrice;
-
-                                  const finalPrice = (suggestion.final_price || suggestion.suggested_price || 0);
-                                  const finalPriceReais = finalPrice >= 100 ? finalPrice / 100 : finalPrice;
-
-                                  const margin = finalPriceReais - currentPriceReais;
-                                  const marginPercent = currentPriceReais > 0 ? ((margin / currentPriceReais) * 100).toFixed(2) : '0';
-
-                                  return (
-                                    <>
-                                      {margin > 0 ? '+' : ''}
-                                      {formatPrice(Math.abs(margin))}
-                                      {' '}
-                                      ({marginPercent}%)
-                                    </>
-                                  );
-                                })()}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 text-xs sm:text-sm text-slate-600 dark:text-slate-400">
-                            <div>
-                              <span className="font-medium">Criado:</span> {formatDate(suggestion.created_at)}
-                            </div>
-                            <div>
-                              <span className="font-medium">Enviado por:</span> {formatNameFromEmail(suggestion.requester?.name || suggestion.requester?.email || suggestion.requested_by || 'N/A')}
-                            </div>
-                            <div>
-                              <span className="font-medium">Código:</span> {suggestion.stations?.code || suggestion.station_id || '-'}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedSuggestion(suggestion);
-                            setShowDetails(true);
-                          }}
-                          className="w-full sm:w-auto text-xs sm:text-sm"
-                        >
-                          <Eye className="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-2 text-slate-600 dark:text-slate-400" />
-                          <span className="hidden sm:inline">Ver Detalhes</span>
-                          <span className="sm:hidden">Detalhes</span>
-                        </Button>
-
-                        {(permissions?.permissions?.can_approve || permissions?.permissions?.admin) && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleDelete(suggestion.id)}
-                            disabled={loading}
-                            className="w-full sm:w-auto text-xs sm:text-sm text-red-600 border-red-600 hover:bg-red-50"
-                          >
-                            <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-2 text-red-600" />
-                            <span className="hidden sm:inline">Excluir</span>
-                            <span className="sm:hidden">Excluir</span>
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-
-              {individualApprovals.length === 0 && (
-                <motion.div
-                  variants={itemVariants}
-                  className="text-center py-12 flex flex-col items-center justify-center bg-slate-50/50 dark:bg-secondary/10 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-800"
-                >
-                  <div className="bg-slate-100 dark:bg-slate-800 p-4 rounded-full mb-4">
-                    <Search className="h-8 w-8 text-slate-400" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-2">Nenhuma sugestão encontrada</h3>
-                  <p className="text-slate-500 dark:text-slate-400 max-w-xs mx-auto">
-                    Aguardando novas solicitações de preço ou ajuste seus filtros.
-                  </p>
-                </motion.div>
-              )}
-            </motion.div>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Modal de Detalhes da Aprovação */}
@@ -4456,6 +3219,12 @@ export default function Approvals() {
         onApprove={(observations) => handleApprove(selectedSuggestion?.id, observations)}
         onReject={(observations) => handleReject(selectedSuggestion?.id, observations)}
         onSuggestPrice={(observations, suggestedPrice) => handleSuggestPrice(selectedSuggestion?.id, observations, suggestedPrice)}
+        onRequestJustification={(observations) => handleRequestJustification(selectedSuggestion?.id, observations)}
+        onRequestEvidence={(observations) => handleRequestEvidence(selectedSuggestion?.id, observations)}
+        onProvideJustification={(observations) => handleProvideJustification(selectedSuggestion?.id, observations)}
+        onProvideEvidence={(observations, fileUrl) => handleProvideEvidence(selectedSuggestion?.id, fileUrl || "", observations)}
+        onAcceptSuggestion={() => handleAcceptSuggestion(selectedSuggestion?.id)}
+        onAppeal={(observations, newPrice) => handleAppeal(selectedSuggestion?.id, observations, newPrice || 0)}
         loading={loading}
       />
 
@@ -4636,258 +3405,260 @@ export default function Approvals() {
     */}
 
       {/* Modal para Aprovar Lote - Só renderizar lotes da página atual e que estão abertos */}
-      {batchApprovals.slice(batchPage * ITEMS_PER_PAGE, (batchPage + 1) * ITEMS_PER_PAGE)
-        .filter(batch => showBatchApproveModal[batch.batchKey])
-        .map((batch) => (
-          <Dialog
-            key={`batch-approve-${batch.batchKey}`}
-            open={showBatchApproveModal[batch.batchKey] || false}
-            onOpenChange={(open) => {
-              setShowBatchApproveModal(prev => ({
-                ...prev,
-                [batch.batchKey]: open
-              }));
-            }}
-          >
-            <DialogContent className="max-w-md w-[95vw] sm:w-full mx-4 sm:mx-auto">
-              <DialogHeader>
-                <DialogTitle className="text-base sm:text-lg">Aprovar Lote Completo</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label className="text-sm font-semibold mb-2 block">
-                    {batch.hasMultipleClients ? (
-                      <>Clientes: {batch.clients?.map((c: any) => c?.name || 'N/A').join(', ') || 'Múltiplos'}</>
-                    ) : (
-                      <>Cliente: {batch.client?.name || 'N/A'}</>
-                    )}
-                  </Label>
-                  <p className="text-xs text-slate-500 mb-4">
-                    {(batch.allRequests || batch.requests).filter((r: any) => r.status === 'pending').length} solicitação(ões) pendente(s) serão aprovadas com a mesma observação
-                  </p>
-                </div>
-                <div>
-                  <Label htmlFor={`batch-obs-${batch.batchKey}`} className="text-xs">Observação para todo o lote:</Label>
-                  <Textarea
-                    id={`batch-obs-${batch.batchKey}`}
-                    placeholder="Digite uma observação que será aplicada a todas as solicitações do lote..."
-                    value={batchApproveObservation[batch.batchKey] || ''}
-                    onChange={(e) => {
-                      setBatchApproveObservation(prev => ({
-                        ...prev,
-                        [batch.batchKey]: e.target.value
-                      }));
-                    }}
-                    className="min-h-[120px] mt-2"
-                    rows={5}
-                  />
-                </div>
-                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-2">
-                  <Button
-                    onClick={async () => {
-                      const observation = batchApproveObservation[batch.batchKey] || '';
-                      if (!observation.trim()) {
-                        toast.error("Observação é obrigatória para aprovar o lote");
-                        return;
-                      }
-
-                      setLoading(true);
-                      try {
-                        // Usar allRequests se disponível, senão usar requests
-                        const requestsToApprove = batch.allRequests || batch.requests;
-
-                        // Filtrar apenas solicitações pendentes
-                        const pendingRequests = requestsToApprove.filter((req: any) => req.status === 'pending');
-
-                        if (pendingRequests.length === 0) {
-                          toast.error("Nenhuma solicitação pendente para aprovar neste lote.");
-                          setLoading(false);
+      {
+        batchApprovals.slice(batchPage * ITEMS_PER_PAGE, (batchPage + 1) * ITEMS_PER_PAGE)
+          .filter(batch => showBatchApproveModal[batch.batchKey])
+          .map((batch) => (
+            <Dialog
+              key={`batch-approve-${batch.batchKey}`}
+              open={showBatchApproveModal[batch.batchKey] || false}
+              onOpenChange={(open) => {
+                setShowBatchApproveModal(prev => ({
+                  ...prev,
+                  [batch.batchKey]: open
+                }));
+              }}
+            >
+              <DialogContent className="max-w-md w-[95vw] sm:w-full mx-4 sm:mx-auto">
+                <DialogHeader>
+                  <DialogTitle className="text-base sm:text-lg">Aprovar Lote Completo</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div>
+                    <Label className="text-sm font-semibold mb-2 block">
+                      {batch.hasMultipleClients ? (
+                        <>Clientes: {batch.clients?.map((c: any) => c?.name || 'N/A').join(', ') || 'Múltiplos'}</>
+                      ) : (
+                        <>Cliente: {batch.client?.name || 'N/A'}</>
+                      )}
+                    </Label>
+                    <p className="text-xs text-slate-500 mb-4">
+                      {(batch.allRequests || batch.requests).filter((r: any) => r.status === 'pending').length} solicitação(ões) pendente(s) serão aprovadas com a mesma observação
+                    </p>
+                  </div>
+                  <div>
+                    <Label htmlFor={`batch-obs-${batch.batchKey}`} className="text-xs">Observação para todo o lote:</Label>
+                    <Textarea
+                      id={`batch-obs-${batch.batchKey}`}
+                      placeholder="Digite uma observação que será aplicada a todas as solicitações do lote..."
+                      value={batchApproveObservation[batch.batchKey] || ''}
+                      onChange={(e) => {
+                        setBatchApproveObservation(prev => ({
+                          ...prev,
+                          [batch.batchKey]: e.target.value
+                        }));
+                      }}
+                      className="min-h-[120px] mt-2"
+                      rows={5}
+                    />
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-2">
+                    <Button
+                      onClick={async () => {
+                        const observation = batchApproveObservation[batch.batchKey] || '';
+                        if (!observation.trim()) {
+                          toast.error("Observação é obrigatória para aprovar o lote");
                           return;
                         }
 
-                        // Validar todas as solicitações em PARALELO (muito mais rápido)
-                        const validationPromises = pendingRequests.map(req =>
-                          canUserApproveSuggestion(req)
-                            .then(validation => ({ req, validation, success: true }))
-                            .catch(error => ({ req, validation: { canApprove: false, reason: error.message }, success: false, error }))
-                        );
-                        const validationResults = await Promise.allSettled(validationPromises);
+                        setLoading(true);
+                        try {
+                          // Usar allRequests se disponível, senão usar requests
+                          const requestsToApprove = batch.allRequests || batch.requests;
 
-                        // Separar válidas e inválidas
-                        const validRequests: any[] = [];
-                        const invalidRequests: Array<{ id: string; reason: string }> = [];
+                          // Filtrar apenas solicitações pendentes
+                          const pendingRequests = requestsToApprove.filter((req: any) => req.status === 'pending');
 
-                        validationResults.forEach((result) => {
-                          if (result.status === 'rejected') {
-                            console.error('❌ Erro na validação:', result.reason);
-                            // Em caso de erro, não adicionar nem como válida nem inválida
+                          if (pendingRequests.length === 0) {
+                            toast.error("Nenhuma solicitação pendente para aprovar neste lote.");
+                            setLoading(false);
                             return;
                           }
 
-                          const { req, validation } = result.value;
-                          if (validation && validation.canApprove) {
-                            validRequests.push(req);
-                          } else {
-                            invalidRequests.push({ id: req.id, reason: validation?.reason || 'Não autorizado' });
-                          }
-                        });
+                          // Validar todas as solicitações em PARALELO (muito mais rápido)
+                          const validationPromises = pendingRequests.map(req =>
+                            canUserApproveSuggestion(req)
+                              .then(validation => ({ req, validation, success: true }))
+                              .catch(error => ({ req, validation: { canApprove: false, reason: error.message }, success: false, error }))
+                          );
+                          const validationResults = await Promise.allSettled(validationPromises);
 
-                        // Se não há solicitações válidas pendentes, avisar e retornar
-                        if (validRequests.length === 0) {
-                          if (invalidRequests.length > 0) {
-                            const reasons = invalidRequests.map(r => r.reason).filter((r, i, arr) => arr.indexOf(r) === i).join('; ');
-                            toast.error(`Nenhuma solicitação pode ser aprovada. Motivos: ${reasons}`);
-                          } else {
-                            toast.error("Nenhuma solicitação pendente válida para aprovar neste lote.");
-                          }
-                          setLoading(false);
-                          return;
-                        }
+                          // Separar válidas e inválidas
+                          const validRequests: any[] = [];
+                          const invalidRequests: Array<{ id: string; reason: string }> = [];
 
-                        // Se houver solicitações inválidas, avisar mas continuar com as válidas
-                        if (invalidRequests.length > 0) {
-                          const reasons = invalidRequests.map(r => r.reason).filter((r, i, arr) => arr.indexOf(r) === i).join('; ');
-                          toast.warning(`${invalidRequests.length} solicitação(ões) do lote não podem ser aprovadas: ${reasons}. Aprovando apenas as ${validRequests.length} válidas...`);
-                        }
-
-                        // Aprovar todas as solicitações em PARALELO (muito mais rápido)
-                        const approvePromises = validRequests.map(req =>
-                          handleApprove(req.id, observation).then(() => ({ success: true, id: req.id }))
-                            .catch((error) => {
-                              console.error(`Erro ao aprovar ${req.id}:`, error);
-                              return { success: false, id: req.id, error };
-                            })
-                        );
-                        // Usar Promise.allSettled para não falhar completamente se uma aprovação falhar
-                        const approveResults = await Promise.allSettled(approvePromises);
-
-                        const successCount = approveResults.filter(r =>
-                          r.status === 'fulfilled' && r.value.success
-                        ).length;
-                        const errorCount = approveResults.filter(r =>
-                          r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.success)
-                        ).length;
-
-                        // Logar erros rejeitados
-                        approveResults.forEach((result, index) => {
-                          if (result.status === 'rejected') {
-                            console.error(`❌ Erro ao aprovar solicitação ${index}:`, result.reason);
-                          }
-                        });
-
-                        if (successCount > 0) {
-                          let successMessage = `${successCount} solicitação(ões) do lote aprovada(s) com sucesso!`;
-                          if (invalidRequests.length > 0) {
-                            successMessage += ` (${invalidRequests.length} não puderam ser aprovadas)`;
-                          }
-                          toast.success(successMessage);
-
-                          // Criar notificações para aprovação em lote
-                          try {
-                            const { createNotification } = await import('@/lib/utils');
-
-                            // Buscar nome do aprovador
-                            let approverName = user?.email || 'Usuário';
-                            try {
-                              const { data: userProfile } = await supabase
-                                .from('user_profiles')
-                                .select('nome, email')
-                                .eq('user_id', user?.id)
-                                .single();
-                              if (userProfile?.nome) {
-                                approverName = userProfile.nome;
-                              } else if (userProfile?.email) {
-                                approverName = userProfile.email;
-                              }
-                            } catch (err) {
-                              console.warn('Erro ao buscar nome do aprovador:', err);
+                          validationResults.forEach((result) => {
+                            if (result.status === 'rejected') {
+                              console.error('❌ Erro na validação:', result.reason);
+                              // Em caso de erro, não adicionar nem como válida nem inválida
+                              return;
                             }
 
-                            // Agrupar solicitações por usuário para evitar notificações duplicadas
-                            const requestsByUser = new Map<string, any[]>();
-                            validRequests.forEach(req => {
-                              const userId = req.requested_by || req.created_by;
-                              if (userId) {
-                                if (!requestsByUser.has(userId)) {
-                                  requestsByUser.set(userId, []);
-                                }
-                                requestsByUser.get(userId)!.push(req);
-                              }
-                            });
+                            const { req, validation } = result.value;
+                            if (validation && validation.canApprove) {
+                              validRequests.push(req);
+                            } else {
+                              invalidRequests.push({ id: req.id, reason: validation?.reason || 'Não autorizado' });
+                            }
+                          });
 
-                            // Criar notificação para cada usuário único
-                            const batchName = batch.requests[0]?.batch_name || 'Lote';
-                            const notificationPromises = Array.from(requestsByUser.entries()).map(async ([userId, userRequests]) => {
-                              const count = userRequests.length;
-                              const message = count === 1
-                                ? `Sua solicitação do lote "${batchName}" foi aprovada por ${approverName}!`
-                                : `${count} solicitações do lote "${batchName}" foram aprovadas por ${approverName}!`;
-
-                              await createNotification(
-                                userId,
-                                'price_approved',
-                                'Lote Aprovado',
-                                message,
-                                {
-                                  batch_id: batch.batchKey,
-                                  batch_name: batchName,
-                                  approved_by: approverName,
-                                  approved_count: count,
-                                  url: '/approvals'
-                                }
-                              );
-                            });
-
-                            await Promise.allSettled(notificationPromises);
-                            console.log(`✅ Notificações de lote criadas para ${requestsByUser.size} usuário(s)`);
-                          } catch (notifError) {
-                            console.error('Erro ao criar notificações de lote:', notifError);
+                          // Se não há solicitações válidas pendentes, avisar e retornar
+                          if (validRequests.length === 0) {
+                            if (invalidRequests.length > 0) {
+                              const reasons = invalidRequests.map(r => r.reason).filter((r, i, arr) => arr.indexOf(r) === i).join('; ');
+                              toast.error(`Nenhuma solicitação pode ser aprovada. Motivos: ${reasons}`);
+                            } else {
+                              toast.error("Nenhuma solicitação pendente válida para aprovar neste lote.");
+                            }
+                            setLoading(false);
+                            return;
                           }
-                        }
-                        if (errorCount > 0) {
-                          toast.error(`${errorCount} solicitação(ões) falharam ao aprovar`);
-                        }
 
+                          // Se houver solicitações inválidas, avisar mas continuar com as válidas
+                          if (invalidRequests.length > 0) {
+                            const reasons = invalidRequests.map(r => r.reason).filter((r, i, arr) => arr.indexOf(r) === i).join('; ');
+                            toast.warning(`${invalidRequests.length} solicitação(ões) do lote não podem ser aprovadas: ${reasons}. Aprovando apenas as ${validRequests.length} válidas...`);
+                          }
+
+                          // Aprovar todas as solicitações em PARALELO (muito mais rápido)
+                          const approvePromises = validRequests.map(req =>
+                            handleApprove(req.id, observation).then(() => ({ success: true, id: req.id }))
+                              .catch((error) => {
+                                console.error(`Erro ao aprovar ${req.id}:`, error);
+                                return { success: false, id: req.id, error };
+                              })
+                          );
+                          // Usar Promise.allSettled para não falhar completamente se uma aprovação falhar
+                          const approveResults = await Promise.allSettled(approvePromises);
+
+                          const successCount = approveResults.filter(r =>
+                            r.status === 'fulfilled' && r.value.success
+                          ).length;
+                          const errorCount = approveResults.filter(r =>
+                            r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.success)
+                          ).length;
+
+                          // Logar erros rejeitados
+                          approveResults.forEach((result, index) => {
+                            if (result.status === 'rejected') {
+                              console.error(`❌ Erro ao aprovar solicitação ${index}:`, result.reason);
+                            }
+                          });
+
+                          if (successCount > 0) {
+                            let successMessage = `${successCount} solicitação(ões) do lote aprovada(s) com sucesso!`;
+                            if (invalidRequests.length > 0) {
+                              successMessage += ` (${invalidRequests.length} não puderam ser aprovadas)`;
+                            }
+                            toast.success(successMessage);
+
+                            // Criar notificações para aprovação em lote
+                            try {
+                              const { createNotification } = await import('@/lib/utils');
+
+                              // Buscar nome do aprovador
+                              let approverName = user?.email || 'Usuário';
+                              try {
+                                const { data: userProfile } = await supabase
+                                  .from('user_profiles')
+                                  .select('nome, email')
+                                  .eq('user_id', user?.id)
+                                  .single();
+                                if (userProfile?.nome) {
+                                  approverName = userProfile.nome;
+                                } else if (userProfile?.email) {
+                                  approverName = userProfile.email;
+                                }
+                              } catch (err) {
+                                console.warn('Erro ao buscar nome do aprovador:', err);
+                              }
+
+                              // Agrupar solicitações por usuário para evitar notificações duplicadas
+                              const requestsByUser = new Map<string, any[]>();
+                              validRequests.forEach(req => {
+                                const userId = req.requested_by || req.created_by;
+                                if (userId) {
+                                  if (!requestsByUser.has(userId)) {
+                                    requestsByUser.set(userId, []);
+                                  }
+                                  requestsByUser.get(userId)!.push(req);
+                                }
+                              });
+
+                              // Criar notificação para cada usuário único
+                              const batchName = batch.requests[0]?.batch_name || 'Lote';
+                              const notificationPromises = Array.from(requestsByUser.entries()).map(async ([userId, userRequests]) => {
+                                const count = userRequests.length;
+                                const message = count === 1
+                                  ? `Sua solicitação do lote "${batchName}" foi aprovada por ${approverName}!`
+                                  : `${count} solicitações do lote "${batchName}" foram aprovadas por ${approverName}!`;
+
+                                await createNotification(
+                                  userId,
+                                  'price_approved',
+                                  'Lote Aprovado',
+                                  message,
+                                  {
+                                    batch_id: batch.batchKey,
+                                    batch_name: batchName,
+                                    approved_by: approverName,
+                                    approved_count: count,
+                                    url: '/approvals'
+                                  }
+                                );
+                              });
+
+                              await Promise.allSettled(notificationPromises);
+                              console.log(`✅ Notificações de lote criadas para ${requestsByUser.size} usuário(s)`);
+                            } catch (notifError) {
+                              console.error('Erro ao criar notificações de lote:', notifError);
+                            }
+                          }
+                          if (errorCount > 0) {
+                            toast.error(`${errorCount} solicitação(ões) falharam ao aprovar`);
+                          }
+
+                          setShowBatchApproveModal(prev => ({
+                            ...prev,
+                            [batch.batchKey]: false
+                          }));
+                          setBatchApproveObservation(prev => ({
+                            ...prev,
+                            [batch.batchKey]: ''
+                          }));
+
+                          // Recarregar sem cache para ver atualizações imediatas
+                          loadSuggestions(false);
+                        } catch (error: any) {
+                          console.error('Erro ao aprovar lote:', error);
+                          toast.error("Erro ao aprovar lote: " + (error?.message || 'Erro desconhecido'));
+                        } finally {
+                          setLoading(false);
+                        }
+                      }}
+                      className="flex-1 w-full sm:w-auto text-xs sm:text-sm"
+                      disabled={loading || !batchApproveObservation[batch.batchKey]?.trim()}
+                    >
+                      Aprovar Lote
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
                         setShowBatchApproveModal(prev => ({
                           ...prev,
                           [batch.batchKey]: false
                         }));
-                        setBatchApproveObservation(prev => ({
-                          ...prev,
-                          [batch.batchKey]: ''
-                        }));
-
-                        // Recarregar sem cache para ver atualizações imediatas
-                        loadSuggestions(false);
-                      } catch (error: any) {
-                        console.error('Erro ao aprovar lote:', error);
-                        toast.error("Erro ao aprovar lote: " + (error?.message || 'Erro desconhecido'));
-                      } finally {
-                        setLoading(false);
-                      }
-                    }}
-                    className="flex-1 w-full sm:w-auto text-xs sm:text-sm"
-                    disabled={loading || !batchApproveObservation[batch.batchKey]?.trim()}
-                  >
-                    Aprovar Lote
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setShowBatchApproveModal(prev => ({
-                        ...prev,
-                        [batch.batchKey]: false
-                      }));
-                    }}
-                    className="flex-1 sm:flex-none w-full sm:w-auto text-xs sm:text-sm"
-                  >
-                    Cancelar
-                  </Button>
+                      }}
+                      className="flex-1 sm:flex-none w-full sm:w-auto text-xs sm:text-sm"
+                    >
+                      Cancelar
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-        ))}
-    </div>
+              </DialogContent>
+            </Dialog>
+          ))
+      }
+    </div >
   );
 }

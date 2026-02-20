@@ -1,5 +1,13 @@
 import express from 'express';
-import { getStations, getClients, getPaymentMethods, getPriceRequests, createPriceRequest } from '../controllers/dataController.js';
+import {
+    getStations,
+    getClients,
+    getPaymentMethods,
+    getPriceRequests,
+    createPriceRequest,
+    approvePriceRequest,
+    rejectPriceRequest
+} from '../controllers/dataController.js';
 
 const router = express.Router();
 
@@ -17,5 +25,11 @@ router.get('/price-requests', getPriceRequests);
 
 // Create price request
 router.post('/price-requests', createPriceRequest);
+
+// Approve price request
+router.post('/price-requests/:id/approve', approvePriceRequest);
+
+// Reject price request
+router.post('/price-requests/:id/reject', rejectPriceRequest);
 
 export default router;

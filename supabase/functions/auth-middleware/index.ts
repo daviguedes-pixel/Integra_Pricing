@@ -33,9 +33,9 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions = {}) {
         if (options.requireAuth) {
           return new Response(
             JSON.stringify({ error: 'Token de autorização necessário' }),
-            { 
+            {
               headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-              status: 401 
+              status: 401
             }
           )
         }
@@ -46,14 +46,14 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions = {}) {
 
       // Verify token and get user
       const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token)
-      
+
       if (authError || !user) {
         if (options.requireAuth) {
           return new Response(
             JSON.stringify({ error: 'Token inválido ou expirado' }),
-            { 
+            {
               headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-              status: 401 
+              status: 401
             }
           )
         }
@@ -71,9 +71,9 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions = {}) {
         if (options.requireAuth) {
           return new Response(
             JSON.stringify({ error: 'Perfil de usuário não encontrado' }),
-            { 
+            {
               headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-              status: 403 
+              status: 403
             }
           )
         }
@@ -84,25 +84,25 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions = {}) {
       if (options.requireRole && !options.requireRole.includes(profile.role)) {
         return new Response(
           JSON.stringify({ error: 'Permissão insuficiente - papel requerido' }),
-          { 
+          {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 403 
+            status: 403
           }
         )
       }
 
       // Check permission requirements
       if (options.requirePermission) {
-        const hasPermission = options.requirePermission.every(permission => 
+        const hasPermission = options.requirePermission.every(permission =>
           profile[permission] === true
         )
-        
+
         if (!hasPermission) {
           return new Response(
             JSON.stringify({ error: 'Permissão insuficiente - permissão específica requerida' }),
-            { 
+            {
               headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-              status: 403 
+              status: 403
             }
           )
         }
@@ -126,9 +126,9 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions = {}) {
       console.error('Auth middleware error:', error)
       return new Response(
         JSON.stringify({ error: 'Erro interno do servidor' }),
-        { 
+        {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 500 
+          status: 500
         }
       )
     }
@@ -142,20 +142,20 @@ export function createRateLimitMiddleware(maxRequests: number = 100, windowMs: n
   return async (req: Request, handler: (req: Request) => Promise<Response>) => {
     const clientId = req.headers.get('x-forwarded-for') || 'unknown'
     const now = Date.now()
-    
+
     const clientData = requests.get(clientId)
-    
+
     if (!clientData || now > clientData.resetTime) {
       requests.set(clientId, { count: 1, resetTime: now + windowMs })
     } else {
       clientData.count++
-      
+
       if (clientData.count > maxRequests) {
         return new Response(
           JSON.stringify({ error: 'Muitas requisições. Tente novamente mais tarde.' }),
-          { 
+          {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 429 
+            status: 429
           }
         )
       }
@@ -174,13 +174,13 @@ export function createValidationMiddleware(schema: any) {
       return handler(req, validatedData)
     } catch (error) {
       return new Response(
-        JSON.stringify({ 
-          error: 'Dados de entrada inválidos', 
-          details: error instanceof Error ? error.message : 'Unknown error' 
+        JSON.stringify({
+          error: 'Dados de entrada inválidos',
+          details: error instanceof Error ? error.message : 'Unknown error'
         }),
-        { 
+        {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400 
+          status: 400
         }
       )
     }

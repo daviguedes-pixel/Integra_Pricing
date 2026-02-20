@@ -1,0 +1,4 @@
+-- Copy and calculate this in your Supabase SQL Editor to apply the latest changes
+-- This includes the fix for p_current_price and p_evidence_url in create_price_request
+
+-- [Paste content of supabase/migrations/20260216_fix_rpc_statuses.sql here]

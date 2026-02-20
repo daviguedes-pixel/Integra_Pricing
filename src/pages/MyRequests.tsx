@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,25 +13,26 @@ import {
   Eye,
   MessageSquare,
   Edit,
-  Trash2
+  Trash2,
+  RefreshCcw,
+  Zap
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { ApprovalDetailsModal } from "@/components/ApprovalDetailsModal";
-import { EditRequestModal } from "@/components/EditRequestModal";
 import { formatBrazilianCurrency } from "@/lib/utils";
 import { removeCache } from "@/lib/cache";
 
 export default function MyRequests() {
   const { user } = useAuth();
+  const navigate = useNavigate(); // Hook de navegação
   const [loading, setLoading] = useState(false);
   const [myRequests, setMyRequests] = useState<any[]>([]);
   const [filteredRequests, setFilteredRequests] = useState<any[]>([]);
   const [selectedSuggestion, setSelectedSuggestion] = useState<any>(null);
   const [showDetails, setShowDetails] = useState(false);
-  const [editingRequest, setEditingRequest] = useState<any>(null);
-  const [showEditModal, setShowEditModal] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
   const [requestsWithHistory, setRequestsWithHistory] = useState<Set<string>>(new Set());
 
   const [filters, setFilters] = useState({
@@ -44,6 +46,51 @@ export default function MyRequests() {
     approved: 0,
     rejected: 0
   });
+
+  const [syncingN8N, setSyncingN8N] = useState(false);
+
+  // Função para acionar fluxo n8n
+  const handleN8NSync = async () => {
+    try {
+      setSyncingN8N(true);
+      const loadingToast = toast.loading("Executando sincronização de custos... Aguarde.");
+
+      // Buscar usuário atual
+      let currentUserName = 'Usuario';
+      const currentUserEmail = user?.email;
+
+      if (user) {
+        const { data: profile } = await supabase.from('user_profiles').select('nome').eq('user_id', user.id).maybeSingle();
+        if (profile) currentUserName = profile.nome;
+      }
+
+      // Chamar a Edge Function
+      const { data, error } = await supabase.functions.invoke('sync-n8n', {
+        body: {
+          action: 'sync_costs',
+          requested_by: currentUserName,
+          user_email: currentUserEmail,
+          timestamp: new Date().toISOString(),
+          source: 'my_requests'
+        }
+      });
+
+      toast.dismiss(loadingToast);
+
+      if (!error) {
+        toast.success(`Sincronização iniciada com sucesso!`, {
+          duration: 4000,
+        });
+      } else {
+        throw new Error(error.message || 'Erro ao chamar função');
+      }
+    } catch (error: any) {
+      console.error('Erro ao acionar n8n:', error);
+      toast.error(`Falha na sincronização: ${error.message}`);
+    } finally {
+      setSyncingN8N(false);
+    }
+  };
 
   // Load my requests when component mounts
   useEffect(() => {
@@ -237,6 +284,8 @@ export default function MyRequests() {
         return {
           ...suggestion,
           status: finalStatus, // Garantir que sempre tenha status
+          suggested_price: suggestion.suggested_price ?? suggestion.final_price ?? (suggestion.cost_price && suggestion.margin_cents ? suggestion.cost_price + (suggestion.margin_cents / 100) : null),
+          cost: suggestion.cost ?? suggestion.cost_price ?? suggestion.purchase_cost,
           stations: station ? { name: station.nome_empresa || station.name || 'Posto sem nome', code: station.cnpj_cpf || station.id || station.id_empresa } : null,
           clients: client ? { name: client.nome || client.name || 'Cliente sem nome', code: String(client.id_cliente || client.id) } : null
         };
@@ -410,7 +459,7 @@ export default function MyRequests() {
 
       // Invalidar cache de outras páginas também
       // Invalidar cache de outras páginas também
-      removeCache('approvals_suggestions_cache');
+      removeCache('approvals_suggestions_cache_v2');
 
       if (user?.id) {
         localStorage.removeItem(`price_request_my_requests_cache_${user.id}`);
@@ -454,6 +503,16 @@ export default function MyRequests() {
             <div>
               <h1 className="text-4xl font-bold mb-3">Minhas Solicitações</h1>
               <p className="text-blue-100 text-lg">Acompanhe suas solicitações de preço</p>
+            </div>
+            <div>
+              <Button
+                onClick={handleN8NSync}
+                disabled={syncingN8N}
+                className="bg-white/10 hover:bg-white/20 text-white border-white/20 backdrop-blur-sm"
+              >
+                <Zap className={`mr-2 h-4 w-4 ${syncingN8N ? 'text-yellow-300' : 'text-yellow-400'}`} />
+                {syncingN8N ? 'Sincronizando...' : 'Atualizar Custos (n8n)'}
+              </Button>
             </div>
           </div>
         </div>
@@ -609,12 +668,18 @@ export default function MyRequests() {
                             <span className="text-slate-600 dark:text-slate-400">{getProductName(request.product)}</span>
                           </div>
 
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-slate-600 dark:text-slate-400">
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm text-slate-600 dark:text-slate-400">
                             <div>
                               <span className="font-medium">Preço Atual:</span> {request.current_price ? formatBrazilianCurrency(request.current_price) : 'N/A'}
                             </div>
                             <div>
-                              <span className="font-medium">Preço Sugerido:</span> <span className="text-green-600 font-bold">{request.final_price ? formatBrazilianCurrency(request.final_price) : 'N/A'}</span>
+                              <span className="font-medium">Preço Sugerido:</span> <span className="text-green-600 font-bold">{request.suggested_price ? formatBrazilianCurrency(request.suggested_price) : (request.final_price ? formatBrazilianCurrency(request.final_price) : 'N/A')}</span>
+                            </div>
+                            <div>
+                              <span className="font-medium">Referência/Custo:</span> {request.reference_cost ? formatBrazilianCurrency(request.reference_cost) : (request.cost ? formatBrazilianCurrency(request.cost) : 'N/A')}
+                            </div>
+                            <div>
+                              <span className="font-medium">Margem:</span> <span className={`font-bold ${(request.margin_cents || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>{request.margin_cents ? `${request.margin_cents} ¢` : 'N/A'}</span>
                             </div>
                             <div>
                               <span className="font-medium">Criado:</span> {formatDate(request.created_at)}
@@ -623,23 +688,47 @@ export default function MyRequests() {
                               <span className="font-medium">Código:</span> {request.stations?.code || '-'}
                             </div>
                           </div>
+
+                          {/* Justificativa */}
+                          {request.justificativa && (
+                            <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                              <span className="font-medium text-blue-700 dark:text-blue-300">Justificativa:</span>
+                              <p className="text-sm text-blue-600 dark:text-blue-400 mt-1">{request.justificativa}</p>
+                            </div>
+                          )}
+
+                          {/* Observações do solicitante */}
+                          {request.observations && (
+                            <div className="mt-2 p-2 bg-slate-50 dark:bg-slate-700/50 rounded-lg border border-slate-200 dark:border-slate-600">
+                              <span className="font-medium text-slate-700 dark:text-slate-300">Observações:</span>
+                              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">{request.observations}</p>
+                            </div>
+                          )}
+
+                          {/* Motivo da Rejeição (se rejeitado) */}
+                          {request.status === 'rejected' && (
+                            <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+                              <span className="font-medium text-red-700 dark:text-red-300">Motivo da Rejeição:</span>
+                              <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                                {request.rejection_reason || request.reject_reason || 'Não informado'}
+                              </p>
+                              {request.rejected_by && (
+                                <p className="text-xs text-red-500 dark:text-red-400 mt-1">
+                                  Rejeitado por: {request.rejected_by}
+                                </p>
+                              )}
+                              {request.rejected_at && (
+                                <p className="text-xs text-red-500 dark:text-red-400">
+                                  Em: {formatDate(request.rejected_at)}
+                                </p>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
 
                       <div className="flex items-center gap-2">
                         {/* FORÇAR BOTÕES A APARECEREM - REMOVER CONDIÇÕES TEMPORARIAMENTE */}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            console.log('✏️ Clicou em Editar:', request.id);
-                            setEditingRequest(request);
-                            setShowEditModal(true);
-                          }}
-                        >
-                          <Edit className="h-4 w-4 mr-2" />
-                          Editar
-                        </Button>
                         <Button
                           variant="outline"
                           size="sm"
@@ -656,8 +745,9 @@ export default function MyRequests() {
                           variant="outline"
                           size="sm"
                           onClick={() => {
-                            setSelectedSuggestion(request);
-                            setShowDetails(true);
+                            // setSelectedSuggestion(request); // No longer needed
+                            // setShowDetails(true); // No longer needed
+                            navigate(`/approval-details/${request.id}`);
                           }}
                         >
                           <Eye className="h-4 w-4 mr-2" />
@@ -698,18 +788,7 @@ export default function MyRequests() {
           readOnly={true}
         />
 
-        {/* Modal de Edição */}
-        <EditRequestModal
-          isOpen={showEditModal}
-          onClose={() => {
-            setShowEditModal(false);
-            setEditingRequest(null);
-          }}
-          request={editingRequest}
-          onSuccess={() => {
-            loadMyRequests(); // Recarregar lista após edição
-          }}
-        />
+
       </div>
     </div>
   );

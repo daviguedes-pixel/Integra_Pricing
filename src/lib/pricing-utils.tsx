@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import { Clock, Check, X, DollarSign } from "lucide-react";
+import { Clock, Check, X, DollarSign, MessageSquarePlus, FileQuestion } from "lucide-react";
 import { formatBrazilianCurrency } from "@/lib/utils";
 
 /**
@@ -32,6 +32,12 @@ export const getStatusBadge = (status: string) => {
             return <Badge variant="destructive"><X className="h-3 w-3 mr-1" />Rejeitado</Badge>;
         case 'price_suggested':
             return <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300"><DollarSign className="h-3 w-3 mr-1" />Preço Sugerido</Badge>;
+        case 'awaiting_justification':
+            return <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300"><MessageSquarePlus className="h-3 w-3 mr-1" />Aguardando Justificativa</Badge>;
+        case 'awaiting_evidence':
+            return <Badge variant="outline" className="bg-purple-100 text-purple-800 border-purple-300"><FileQuestion className="h-3 w-3 mr-1" />Aguardando Referência</Badge>;
+        case 'appealed':
+            return <Badge variant="outline" className="bg-orange-100 text-orange-800 border-orange-300"><MessageSquarePlus className="h-3 w-3 mr-1" />Recurso</Badge>;
         default:
             return <Badge variant="outline">{status}</Badge>;
     }

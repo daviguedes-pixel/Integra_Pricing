@@ -5,18 +5,20 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Eye, Download, Check, X, User, Calendar, MessageSquare, DollarSign } from "lucide-react";
+import { Eye, Download, Check, X, User, Calendar, MessageSquare, DollarSign, MessageSquarePlus, FileQuestion, Paperclip, Info } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { parseBrazilianDecimal, formatNameFromEmail } from "@/lib/utils";
 import { ImageViewerModal } from "@/components/ImageViewerModal";
+import { FileUploader } from "@/components/FileUploader";
 
 interface ApprovalHistory {
   id: string;
   approver_name: string;
   action: string;
   observations: string | null;
+  attachment_url?: string;
   approval_level: number;
   created_at: string;
 }
@@ -28,7 +30,13 @@ interface ApprovalDetailsModalProps {
   onApprove: (observations: string) => void;
   onReject: (observations: string) => void;
   onSuggestPrice?: (observations: string, suggestedPrice: number) => void;
-  loading: boolean;
+  onRequestJustification?: (observations: string) => void;
+  onRequestEvidence?: (observations: string) => void;
+  onProvideJustification?: (observations: string) => void;
+  onProvideEvidence?: (observations: string, fileUrl?: string) => void;
+  onAcceptSuggestion?: () => void;
+  onAppeal?: (observations: string, newPrice?: number) => void;
+  loading?: boolean;
   readOnly?: boolean;
 }
 
@@ -39,6 +47,8 @@ export const ApprovalDetailsModal = ({
   onApprove,
   onReject,
   onSuggestPrice,
+  onRequestJustification,
+  onRequestEvidence,
   loading,
   readOnly = false
 }: ApprovalDetailsModalProps) => {
@@ -47,7 +57,9 @@ export const ApprovalDetailsModal = ({
   const [approvalHistory, setApprovalHistory] = useState<ApprovalHistory[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [imageViewerOpen, setImageViewerOpen] = useState(false);
-  const [selectedImage, setSelectedImage] = useState<string>("");
+  const [selectedImage, setSelectedImage] = useState<string>('');
+  const [evidenceFiles, setEvidenceFiles] = useState<string[]>([]);
+  const [suggestedAppealPrice, setSuggestedAppealPrice] = useState<string>("");
 
   const [enrichedSuggestion, setEnrichedSuggestion] = useState(suggestion);
 
@@ -61,6 +73,15 @@ export const ApprovalDetailsModal = ({
       }
     }
   }, [suggestion?.id, isOpen, suggestion]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setObservations("");
+      setEvidenceFiles([]);
+      setSuggestedAppealPrice("");
+      setSuggestedPrice("");
+    }
+  }, [isOpen]);
 
   // Listener de real-time para atualizar histórico quando houver mudanças
   useEffect(() => {
@@ -117,14 +138,16 @@ export const ApprovalDetailsModal = ({
 
           const { data: stationData } = await supabase
             .from('sis_empresa' as any)
-            .select('nome_empresa, cnpj_cpf, id_empresa')
+            .select('nome_empresa, cnpj_cpf, id_empresa, municipio, uf')
             .or(`cnpj_cpf.eq.${stationId},id.eq.${stationId},id_empresa.eq.${stationId}`)
             .maybeSingle();
 
           if (stationData) {
             stationsList.push({
               name: (stationData as any).nome_empresa,
-              code: (stationData as any).cnpj_cpf || (stationData as any).id_empresa
+              code: (stationData as any).cnpj_cpf || (stationData as any).id_empresa,
+              municipio: (stationData as any).municipio,
+              uf: (stationData as any).uf
             });
           }
         }
@@ -261,18 +284,18 @@ export const ApprovalDetailsModal = ({
   console.log('🎯 price_origin_delivery:', dataToShow.price_origin_delivery);
 
   const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "pending":
-        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">Em Aprovação</Badge>;
-      case "approved":
-        return <Badge variant="secondary" className="bg-green-100 text-green-800">Aprovado</Badge>;
-      case "rejected":
-        return <Badge variant="secondary" className="bg-red-100 text-red-800">Rejeitado</Badge>;
-      case "draft":
-        return <Badge variant="secondary" className="bg-gray-100 text-gray-800">Rascunho</Badge>;
-      default:
-        return null;
-    }
+    const styles: Record<string, { className: string; label: string }> = {
+      'pending': { className: 'bg-yellow-100 text-yellow-800', label: 'Em Aprovação' },
+      'approved': { className: 'bg-green-100 text-green-800', label: 'Aprovado' },
+      'rejected': { className: 'bg-red-100 text-red-800', label: 'Rejeitado' },
+      'draft': { className: 'bg-gray-100 text-gray-800', label: 'Rascunho' },
+      'price_suggested': { className: 'bg-indigo-100 text-indigo-800 border border-indigo-300', label: 'Preço Sugerido' },
+      'awaiting_justification': { className: 'bg-amber-100 text-amber-800 border border-amber-300', label: 'Aguardando Justificativa' },
+      'awaiting_evidence': { className: 'bg-purple-100 text-purple-800 border border-purple-300', label: 'Aguardando Referência' },
+    };
+    const s = styles[status];
+    if (!s) return <Badge variant="outline">{status}</Badge>;
+    return <Badge variant="secondary" className={s.className}>{s.label}</Badge>;
   };
 
   const viewAttachment = (url: string) => {
@@ -479,7 +502,7 @@ export const ApprovalDetailsModal = ({
                 const hasOrigin = dataToShow.price_origin_base || dataToShow.price_origin_bandeira || dataToShow.price_origin_delivery;
                 const taxValue = taxa > 0 ? baseCost * (taxa / 100) : 0;
                 const currentPrice = fromMaybeCents(dataToShow.current_price) || (fromMaybeCents(dataToShow.cost_price)) || 0;
-                const finalPrice = fromMaybeCents(dataToShow.final_price);
+                const finalPrice = fromMaybeCents(dataToShow.final_price) || fromMaybeCents(dataToShow.suggested_price) || (fromMaybeCents(dataToShow.cost_price) && dataToShow.margin_cents ? fromMaybeCents(dataToShow.cost_price) + (dataToShow.margin_cents / 100) : 0);
                 const adjustment = finalPrice - currentPrice;
                 const margin = finalPrice - finalCost;
 
@@ -578,7 +601,7 @@ export const ApprovalDetailsModal = ({
                               {hasOrigin && (
                                 <>
                                   📍 {dataToShow.price_origin_bandeira && `🚩 ${dataToShow.price_origin_bandeira} `}
-                                  {dataToShow.price_origin_base && `${dataToShow.price_origin_base} `}
+                                  {dataToShow.stations?.municipio ? `${dataToShow.stations.municipio} / ${dataToShow.stations.uf || ''} ` : dataToShow.price_origin_base && `${dataToShow.price_origin_base} `}
                                   {dataToShow.price_origin_code && `(${dataToShow.price_origin_code}) `}
                                   {dataToShow.price_origin_delivery && `| ${dataToShow.price_origin_delivery}`}
                                 </>
@@ -645,14 +668,14 @@ export const ApprovalDetailsModal = ({
                     <div className="space-y-4">
                       <div>
                         <div className="flex items-center justify-between mb-1">
-                          <h4 className="font-medium text-sm text-muted-foreground">Preço de Venda ARLA</h4>
+                          <h4 className="font-medium text-sm text-slate-700 dark:text-slate-300">Preço de Venda ARLA</h4>
                           <span className="text-xs text-muted-foreground font-medium">Consumo: 5% do volume</span>
                         </div>
-                        <p className="text-lg font-bold">{formatPriceDynamic(fromMaybeCents(dataToShow.arla_purchase_price) || 0)}</p>
+                        <p className="text-lg font-bold text-blue-700 dark:text-blue-400">{formatPriceDynamic(fromMaybeCents(dataToShow.arla_purchase_price) || 0)}</p>
                       </div>
-                      <div>
-                        <h4 className="font-medium text-sm text-muted-foreground">Custo de Compra ARLA</h4>
-                        <p className="text-lg font-bold">{formatPriceDynamic(fromMaybeCents(dataToShow.arla_cost_price) || 0)}</p>
+                      <div className="bg-blue-50/50 p-2 rounded-md">
+                        <h4 className="font-medium text-sm text-slate-700 dark:text-slate-300">Custo de Compra ARLA</h4>
+                        <p className="text-lg font-bold text-slate-700 dark:text-slate-300">{formatPriceDynamic(fromMaybeCents(dataToShow.arla_cost_price) || 0)}</p>
                       </div>
                       <div>
                         {(() => {
@@ -775,7 +798,7 @@ export const ApprovalDetailsModal = ({
                         const taxa = dataToShow.payment_methods?.TAXA || 0;
                         const taxValue = baseCost * (taxa / 100);
                         const totalCost = baseCost + taxValue;
-                        const finalPrice = fromMaybeCents(dataToShow.final_price);
+                        const finalPrice = fromMaybeCents(dataToShow.final_price) || fromMaybeCents(dataToShow.suggested_price) || (fromMaybeCents(dataToShow.cost_price) && dataToShow.margin_cents ? fromMaybeCents(dataToShow.cost_price) + (dataToShow.margin_cents / 100) : 0);
                         const marginWithTax = finalPrice - totalCost;
                         // Converter volume de m³ para litros (1 m³ = 1000 litros)
                         const volumeProjetadoLitros = (dataToShow.volume_projected || 0) * 1000;
@@ -877,10 +900,34 @@ export const ApprovalDetailsModal = ({
             </Card>
           )}
 
-          {/* Observações do Solicitante */}
+          {/* Observações da Sugestão / Rejeição (Mais recentes) */}
+          {(dataToShow.status === 'price_suggested' || dataToShow.status === 'rejected') && (
+            <Card className="border-l-4 border-l-blue-500 bg-blue-50/50 dark:bg-blue-900/20">
+              <CardContent className="pt-4 sm:pt-6">
+                <h4 className="font-medium text-sm text-blue-800 dark:text-blue-300 mb-2">
+                  {dataToShow.status === 'price_suggested' ? 'Motivo da Sugestão de Preço' : 'Motivo da Rejeição'}
+                </h4>
+                <div className="text-sm text-slate-700 dark:text-slate-300">
+                  {(() => {
+                    // Tentar pegar do histórico a última ação relevante
+                    const relevantAction = approvalHistory.find(h =>
+                      (dataToShow.status === 'price_suggested' && h.action === 'price_suggested') ||
+                      (dataToShow.status === 'rejected' && h.action === 'rejected')
+                    );
+
+                    // Se não achar no histórico, tenta mostrar a observação geral se não for a do próprio solicitante
+                    // Mas geralmente estará no histórico se foi uma ação de workflow
+                    return relevantAction?.observations || dataToShow.observations || "Sem observações registradas.";
+                  })()}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Observações do Solicitante (Criador) */}
           <Card>
             <CardContent className="pt-4 sm:pt-6">
-              <h4 className="font-medium text-sm text-muted-foreground mb-2">Observações do Solicitante</h4>
+              <h4 className="font-medium text-sm text-muted-foreground mb-2">Observações Originais do Solicitante</h4>
               <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-4 max-h-32 overflow-y-auto">
                 {dataToShow.observations ? (
                   <p className="text-sm whitespace-pre-wrap break-words">{dataToShow.observations}</p>
@@ -900,29 +947,59 @@ export const ApprovalDetailsModal = ({
                   Histórico de Aprovações
                 </h3>
                 <div className="space-y-4">
-                  {approvalHistory.map((history, index) => (
-                    <div key={history.id} className={`border-l-4 pl-3 sm:pl-4 py-2 ${history.action === 'approved' ? 'border-green-500' : 'border-red-500'}`}>
-                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
-                        <div className="flex-1">
-                          <div className="flex flex-wrap items-center gap-2 mb-1">
-                            <User className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
-                            <span className="font-semibold text-sm sm:text-base">{history.approver_name}</span>
-                            <Badge variant={history.action === 'approved' ? 'default' : 'destructive'} className="text-xs">
-                              {history.action === 'approved' ? 'Aprovado' : 'Rejeitado'}
-                            </Badge>
-                            <span className="text-xs text-muted-foreground">Nível {history.approval_level}</span>
+                  {approvalHistory.map((history, index) => {
+                    const actionStyles: Record<string, { border: string; badgeVariant: 'default' | 'destructive' | 'outline' | 'secondary'; badgeClass: string; label: string }> = {
+                      'approved': { border: 'border-green-500', badgeVariant: 'default', badgeClass: 'bg-green-600', label: 'Aprovado' },
+                      'approve': { border: 'border-green-500', badgeVariant: 'default', badgeClass: 'bg-green-600', label: 'Aprovado' },
+                      'rejected': { border: 'border-red-500', badgeVariant: 'destructive', badgeClass: '', label: 'Rejeitado' },
+                      'reject': { border: 'border-red-500', badgeVariant: 'destructive', badgeClass: '', label: 'Rejeitado' },
+                      'price_suggested': { border: 'border-indigo-500', badgeVariant: 'secondary', badgeClass: 'bg-indigo-100 text-indigo-700', label: 'Preço Sugerido' },
+                      'request_justification': { border: 'border-amber-500', badgeVariant: 'secondary', badgeClass: 'bg-amber-100 text-amber-700', label: 'Justificativa Solicitada' },
+                      'request_evidence': { border: 'border-purple-500', badgeVariant: 'secondary', badgeClass: 'bg-purple-100 text-purple-700', label: 'Referência Solicitada' },
+                      'justification_provided': { border: 'border-teal-500', badgeVariant: 'secondary', badgeClass: 'bg-teal-100 text-teal-700', label: 'Justificativa Enviada' },
+                      'evidence_provided': { border: 'border-cyan-500', badgeVariant: 'secondary', badgeClass: 'bg-cyan-100 text-cyan-700', label: 'Referência Anexada' },
+                      'appeal': { border: 'border-orange-500', badgeVariant: 'secondary', badgeClass: 'bg-orange-100 text-orange-700', label: 'Recurso' },
+                      'price_accepted': { border: 'border-emerald-500', badgeVariant: 'secondary', badgeClass: 'bg-emerald-100 text-emerald-700', label: 'Preço Aceito' },
+                    };
+                    const style = actionStyles[history.action] || { border: 'border-blue-500', badgeVariant: 'outline' as const, badgeClass: '', label: history.action };
+
+                    return (
+                      <div key={history.id} className={`border-l-4 pl-3 sm:pl-4 py-2 ${style.border}`}>
+                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                          <div className="flex-1">
+                            <div className="flex flex-wrap items-center gap-2 mb-1">
+                              <User className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
+                              <span className="font-semibold text-sm sm:text-base">{history.approver_name}</span>
+                              <Badge variant={style.badgeVariant} className={`text-xs ${style.badgeClass}`}>
+                                {style.label}
+                              </Badge>
+                              <span className="text-xs text-muted-foreground">Nível {history.approval_level}</span>
+                            </div>
+                            {history.observations && (
+                              <p className="text-xs sm:text-sm text-muted-foreground mt-2 italic break-words">"{history.observations}"</p>
+                            )}
+                            {history.attachment_url && (
+                              <div className="mt-2">
+                                <a
+                                  href={history.attachment_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-purple-600 hover:text-purple-700 hover:underline bg-purple-50 px-2 py-1 rounded-md transition-colors"
+                                >
+                                  <Paperclip className="h-3 w-3" />
+                                  Ver evidência
+                                </a>
+                              </div>
+                            )}
                           </div>
-                          {history.observations && (
-                            <p className="text-xs sm:text-sm text-muted-foreground mt-2 italic break-words">"{history.observations}"</p>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <Calendar className="h-3 w-3" />
-                          <span className="text-[10px] sm:text-xs">{formatDate(history.created_at)}</span>
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Calendar className="h-3 w-3" />
+                            <span className="text-[10px] sm:text-xs">{formatDate(history.created_at)}</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>
@@ -934,7 +1011,18 @@ export const ApprovalDetailsModal = ({
               <div className="grid grid-cols-3 gap-2 sm:gap-4">
                 <div>
                   <h4 className="font-medium text-sm text-muted-foreground">Nível de Aprovação</h4>
-                  <p className="text-lg font-bold">{dataToShow.approval_level || 1} de {dataToShow.total_approvers || 3}</p>
+                  <div className="flex flex-col">
+                    <p className="text-lg font-bold">{dataToShow.approval_level || 1} de {dataToShow.total_approvers || 3}</p>
+                    {dataToShow.status === 'pending' && (
+                      <span className="text-xs text-orange-600 dark:text-orange-400 font-medium">
+                        Aguardando: {
+                          dataToShow.approval_level === 1 ? 'Supervisor' :
+                            dataToShow.approval_level === 2 ? 'Gerente' :
+                              dataToShow.approval_level === 3 ? 'Diretor' : 'Aprovador'
+                        }
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <h4 className="font-medium text-sm text-muted-foreground">Aprovações</h4>
@@ -1019,29 +1107,81 @@ export const ApprovalDetailsModal = ({
             </CardContent>
           </Card>
 
-          {/* Ações de Aprovação - Apenas se status for pending E não for readOnly */}
-          {dataToShow.status === 'pending' && !readOnly && (
+          {/* Ações de Aprovação / Resposta do Solicitante */}
+          {((dataToShow.status === 'pending') || ['price_suggested', 'awaiting_justification', 'awaiting_evidence'].includes(dataToShow.status)) && !readOnly && (
             <Card className="bg-slate-50 dark:bg-slate-900">
               <CardContent className="pt-4 sm:pt-6">
                 <div className="space-y-3 sm:space-y-4">
-                  <div>
-                    <Label htmlFor="observations" className="text-sm sm:text-base font-semibold">
-                      Observações (obrigatório)
-                    </Label>
-                    <p className="text-xs sm:text-sm text-muted-foreground mb-2">
-                      Deixe sua observação para o próximo aprovador ou para o solicitante
-                    </p>
-                    <Textarea
-                      id="observations"
-                      placeholder="Digite suas observações sobre esta solicitação..."
-                      value={observations}
-                      onChange={(e) => setObservations(e.target.value)}
-                      rows={4}
-                      className="resize-none text-sm sm:text-base"
-                    />
-                  </div>
+                  {/* Context Sections */}
+                  {['awaiting_justification', 'awaiting_evidence', 'price_suggested', 'appealed'].includes(dataToShow.status) && (
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-slate-500 font-bold flex items-center gap-1">
+                        <MessageSquare size={12} />
+                        Nota do Aprovador
+                      </Label>
+                      <p className="text-sm text-slate-600 italic leading-relaxed">
+                        {(() => {
+                          const action = dataToShow.status === 'awaiting_justification' ? 'request_justification' :
+                            dataToShow.status === 'awaiting_evidence' ? 'request_evidence' :
+                              'price_suggested';
+                          const entry = [...(dataToShow.approval_history || [])].reverse().find(h => h.action === action || (action === 'price_suggested' && h.action === 'rejected'));
+                          return entry ? `"${entry.observations}"` : "Sem observações do aprovador.";
+                        })()}
+                      </p>
+                    </div>
+                  )}
 
-                  {onSuggestPrice && (
+                  {['pending', 'price_suggested', 'awaiting_justification', 'awaiting_evidence'].includes(dataToShow.status) && dataToShow.observations && (
+                    <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-lg space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-blue-600 font-bold flex items-center gap-1">
+                        <Info size={12} />
+                        Justificativa do Solicitante
+                      </Label>
+                      <p className="text-sm text-slate-700 leading-relaxed">
+                        "{dataToShow.observations}"
+                      </p>
+                    </div>
+                  )}
+
+                  {dataToShow.status !== 'awaiting_evidence' && (
+                    <div>
+                      <Label htmlFor="observations" className="text-sm sm:text-base font-semibold">
+                        Observações {['awaiting_justification'].includes(dataToShow.status) ? '(obrigatório)' : '(opcional)'}
+                      </Label>
+                      <p className="text-xs sm:text-sm text-muted-foreground mb-2">
+                        {dataToShow.status === 'awaiting_justification'
+                          ? 'Envie a justificativa solicitada'
+                          : 'Deixe sua observação para o próximo aprovador ou para o solicitante'}
+                      </p>
+                      <Textarea
+                        id="observations"
+                        placeholder="Digite suas observações..."
+                        value={observations}
+                        onChange={(e) => setObservations(e.target.value)}
+                        rows={4}
+                        className="resize-none text-sm sm:text-base"
+                      />
+                    </div>
+                  )}
+
+                  {/* Upload de Evidência para o Solicitante */}
+                  {dataToShow.status === 'awaiting_evidence' && onProvideEvidence && (
+                    <div>
+                      <Label className="text-sm sm:text-base font-semibold">
+                        Anexar Evidência (Obrigatório)
+                      </Label>
+                      <div className="mt-2">
+                        <FileUploader
+                          onFilesUploaded={setEvidenceFiles}
+                          maxFiles={1}
+                          acceptedTypes="image/*,.pdf"
+                          currentFiles={evidenceFiles}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {onSuggestPrice && dataToShow.status === 'pending' && (
                     <div>
                       <Label htmlFor="suggested-price" className="text-sm sm:text-base font-semibold">
                         Preço Sugerido (R$/L) - Opcional
@@ -1104,22 +1244,24 @@ export const ApprovalDetailsModal = ({
                   <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                     <Button
                       onClick={handleApprove}
-                      disabled={loading || !observations.trim()}
+                      disabled={loading || (['awaiting_justification', 'awaiting_evidence'].includes(dataToShow.status) && !observations.trim())}
                       className="w-full sm:flex-1 bg-green-600 hover:bg-green-700"
                       size="lg"
                     >
                       <Check className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
-                      Aprovar
+                      {dataToShow.status === 'price_suggested' ? 'Aceitar Sugestão' :
+                        ['awaiting_justification', 'awaiting_evidence'].includes(dataToShow.status) ? 'Enviar Resposta' :
+                          'Aprovar'}
                     </Button>
                     <Button
                       onClick={handleReject}
-                      disabled={loading || !observations.trim()}
+                      disabled={loading}
                       variant="destructive"
                       className="w-full sm:flex-1"
                       size="lg"
                     >
                       <X className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
-                      Rejeitar
+                      {dataToShow.status === 'price_suggested' ? 'Recusar Sugestão' : 'Rejeitar'}
                     </Button>
                     {onSuggestPrice && (
                       <Button
@@ -1132,6 +1274,123 @@ export const ApprovalDetailsModal = ({
                         <DollarSign className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
                         Sugerir Preço
                       </Button>
+                    )}
+                    {onRequestJustification && (
+                      <Button
+                        onClick={() => {
+                          if (observations.trim()) {
+                            onRequestJustification(observations);
+                            setObservations("");
+                          }
+                        }}
+                        disabled={loading || !observations.trim()}
+                        variant="outline"
+                        className="w-full sm:flex-1 border-amber-600 text-amber-600 hover:bg-amber-50"
+                        size="lg"
+                      >
+                        <MessageSquarePlus className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
+                        Pedir Justificativa
+                      </Button>
+                    )}
+
+
+                    {/* Ações do Solicitante */}
+                    {dataToShow.status === 'awaiting_justification' && onProvideJustification && (
+                      <Button
+                        onClick={() => {
+                          if (observations.trim()) {
+                            onProvideJustification(observations);
+                            setObservations("");
+                          }
+                        }}
+                        disabled={loading || !observations.trim()}
+                        className="w-full sm:flex-1 bg-blue-600 hover:bg-blue-700"
+                        size="lg"
+                      >
+                        <MessageSquarePlus className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
+                        Enviar Justificativa
+                      </Button>
+                    )}
+
+                    {dataToShow.status === 'awaiting_evidence' && onProvideEvidence && (
+                      <Button
+                        onClick={() => {
+                          if (evidenceFiles.length > 0) {
+                            onProvideEvidence(observations || "Evidência enviada via arquivo.", evidenceFiles[0]);
+                            setObservations("");
+                            setEvidenceFiles([]);
+                          }
+                        }}
+                        disabled={loading || evidenceFiles.length === 0}
+                        className="w-full sm:flex-1 bg-purple-600 hover:bg-purple-700"
+                        size="lg"
+                      >
+                        <FileQuestion className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
+                        Enviar Evidência
+                      </Button>
+                    )}
+
+                    {dataToShow.status === 'price_suggested' && (
+                      <div className="space-y-3 w-full">
+                        {onAppeal && (
+                          <div>
+                            <Label htmlFor="appeal-price" className="text-sm sm:text-base font-semibold">
+                              Preço para Recurso (R$/L) - Obrigatório para recorrer
+                            </Label>
+                            <Input
+                              id="appeal-price"
+                              type="text"
+                              placeholder={formatPriceDynamic((dataToShow.price_origin_base || 0) / 100)} // Suggest base price as placeholder
+                              value={suggestedAppealPrice}
+                              onChange={(e) => {
+                                let value = e.target.value.replace(/[^\d,]/g, '');
+                                if (!value.includes(',') && value.length > 2) value = value.slice(0, -2) + ',' + value.slice(-2);
+                                const parts = value.split(',');
+                                if (parts.length > 2) value = parts[0] + ',' + parts.slice(1).join('');
+                                if (parts.length === 2 && parts[1].length > 2) value = parts[0] + ',' + parts[1].slice(0, 2);
+                                setSuggestedAppealPrice(value);
+                              }}
+                              className="h-9 mt-1"
+                            />
+                          </div>
+                        )}
+                        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                          {onAcceptSuggestion && (
+                            <Button
+                              onClick={onAcceptSuggestion}
+                              disabled={loading}
+                              className="w-full sm:flex-1 bg-green-600 hover:bg-green-700"
+                              size="lg"
+                            >
+                              <Check className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
+                              Aceitar Sugestão
+                            </Button>
+                          )}
+                          {onAppeal && (
+                            <Button
+                              onClick={() => {
+                                if (observations.trim()) {
+                                  const price = parseBrazilianDecimal(suggestedAppealPrice);
+                                  if (price > 0) {
+                                    onAppeal(observations, price);
+                                    setObservations("");
+                                    setSuggestedAppealPrice("");
+                                  } else {
+                                    toast.error("Informe um preço válido para recorrer");
+                                  }
+                                }
+                              }}
+                              disabled={loading || !observations.trim() || !suggestedAppealPrice}
+                              variant="destructive"
+                              className="w-full sm:flex-1 bg-orange-600 hover:bg-orange-700"
+                              size="lg"
+                            >
+                              <X className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
+                              Recorrer
+                            </Button>
+                          )}
+                        </div>
+                      </div>
                     )}
                   </div>
 

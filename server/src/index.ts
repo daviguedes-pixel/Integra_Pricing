@@ -9,6 +9,7 @@ import { createClient } from '@supabase/supabase-js';
 // Import routes
 import authRoutes from './routes/auth.js';
 import dataRoutes from './routes/data.js';
+import quotationsRoutes from './routes/quotations.js';
 import { authenticateToken } from './middleware/auth.js';
 
 // Load environment variables
@@ -34,11 +35,17 @@ app.use(helmet({
   }
 }));
 
+// Request logging middleware
+app.use((req, res, next) => {
+  console.log(`📨 ${req.method} ${req.path}`);
+  next();
+});
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: true, // Allow all origins for dev
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin']
 }));
 
 // Rate limiting
@@ -67,6 +74,7 @@ app.use('/api/auth', authRoutes);
 
 // Protected routes
 app.use('/api/data', authenticateToken, dataRoutes);
+app.use('/api/quotations', quotationsRoutes);
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

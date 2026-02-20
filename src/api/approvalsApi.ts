@@ -1,8 +1,8 @@
 import { supabase } from "@/integrations/supabase/client";
-import type { 
-  ApprovalStatus, 
-  ProductType, 
-  ApprovalFilters, 
+import type {
+  ApprovalStatus,
+  ProductType,
+  ApprovalFilters,
   ApprovalWithRelations,
   ApproveRequestData,
   RejectRequestData,
@@ -87,24 +87,10 @@ export async function approveRequest(
   id: string,
   data: ApproveData
 ): Promise<void> {
-  const updateData: Record<string, any> = {
-    status: "approved",
-    approved_by: data.userId,
-    approved_at: new Date().toISOString(),
-  };
-
-  if (data.observation) {
-    updateData.approval_observation = data.observation;
-  }
-
-  if (data.newPrice !== undefined) {
-    updateData.suggested_price = data.newPrice;
-  }
-
-  const { error } = await supabase
-    .from("price_suggestions")
-    .update(updateData)
-    .eq("id", id);
+  const { error } = await supabase.rpc('approve_price_request', {
+    p_request_id: id,
+    p_observations: data.observation
+  });
 
   if (error) {
     throw error;
@@ -115,20 +101,10 @@ export async function rejectRequest(
   id: string,
   data: RejectData
 ): Promise<void> {
-  const updateData: Record<string, any> = {
-    status: "rejected",
-    approved_by: data.userId,
-    approved_at: new Date().toISOString(),
-  };
-
-  if (data.observation) {
-    updateData.rejection_observation = data.observation;
-  }
-
-  const { error } = await supabase
-    .from("price_suggestions")
-    .update(updateData)
-    .eq("id", id);
+  const { error } = await supabase.rpc('reject_price_request', {
+    p_request_id: id,
+    p_observations: data.observation
+  });
 
   if (error) {
     throw error;

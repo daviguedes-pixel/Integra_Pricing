@@ -79,19 +79,27 @@ export function MobileApprovalsView({
     const visibleCards = pendingApprovals.slice(0, 3);
 
     const handleApprove = async (approval: EnrichedApproval) => {
-        setIsProcessing(true);
-        try {
-            await onApprove(approval);
-            setProcessedIds(prev => new Set([...prev, approval.id]));
-            setLastAction({ type: 'approve', approval });
-            toast.success('Aprovado com sucesso!', {
-                icon: <CheckCircle2 className="h-5 w-5 text-green-500" />
+        // Optimistic UI: Mark as processed IMMEDIATELY to remove card instantly
+        setProcessedIds(prev => new Set([...prev, approval.id]));
+        setLastAction({ type: 'approve', approval });
+
+        // Show success feedback immediately
+        toast.success('Aprovado!', {
+            icon: <CheckCircle2 className="h-5 w-5 text-green-500" />,
+            duration: 1500 // Duração mais curta para sensação de agilidade
+        });
+
+        // Executar em background (fire and forget)
+        onApprove(approval).catch((error) => {
+            console.error("Erro ao aprovar em background:", error);
+            // Rollback optimistic state em caso de erro
+            setProcessedIds(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(approval.id);
+                return newSet;
             });
-        } catch (error) {
-            toast.error('Erro ao aprovar');
-        } finally {
-            setIsProcessing(false);
-        }
+            toast.error('Erro ao salvar aprovação. Tente novamente.');
+        });
     };
 
     const handleReject = (approval: EnrichedApproval) => {
@@ -204,8 +212,7 @@ export function MobileApprovalsView({
     };
 
     const handleViewDetails = (approval: EnrichedApproval) => {
-        setSelectedApproval(approval);
-        setShowDetailsModal(true);
+        navigate(`/approval-details/${approval.id}`);
     };
 
     return (
@@ -305,6 +312,12 @@ export function MobileApprovalsView({
                         </DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4">
+                        {selectedApproval?.observations && (
+                            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg">
+                                <p className="text-[10px] uppercase font-bold text-blue-600 dark:text-blue-400 mb-1">Justificativa do Solicitante</p>
+                                <p className="text-sm text-slate-700 dark:text-slate-300 italic">"{selectedApproval.observations}"</p>
+                            </div>
+                        )}
                         <div>
                             <Label htmlFor="reject-reason">Motivo da rejeição *</Label>
                             <Textarea
@@ -343,6 +356,12 @@ export function MobileApprovalsView({
                         </DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4">
+                        {selectedApproval?.observations && (
+                            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg">
+                                <p className="text-[10px] uppercase font-bold text-blue-600 dark:text-blue-400 mb-1">Justificativa do Solicitante</p>
+                                <p className="text-sm text-slate-700 dark:text-slate-300 italic">"{selectedApproval.observations}"</p>
+                            </div>
+                        )}
                         <div>
                             <Label htmlFor="new-price">Novo preço sugerido</Label>
                             <div className="relative mt-2">

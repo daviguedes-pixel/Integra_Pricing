@@ -52,6 +52,7 @@ export interface AddedCard {
     expanded: boolean;
     costAnalysis?: CostAnalysis;
     attachments?: string[];
+    clientName?: string;
 }
 
 /** Análise de custo para exibição */
@@ -112,10 +113,24 @@ export interface EnrichedPriceRequest {
     updated_at?: string | null;
     observations?: string | null;
     attachments?: string[] | null;
+    /** Contagem de recursos */
+    appeal_count?: number;
+    /** Indica se já houve recurso */
+    has_appealed?: boolean;
+    /** Produto evidenciado (para referência) */
+    evidence_product?: string | null;
+    /** Quem realizou a última ação */
+    last_approver_action_by?: string | null;
+    /** Nome do aprovador atual */
+    current_approver_name?: string | null;
+    /** ID do aprovador atual */
+    current_approver_id?: string | null;
     // Relacionamentos
+
     stations?: { name: string; code: string; municipio?: string; uf?: string } | null;
     stations_list?: Array<{ name: string; code: string; municipio?: string; uf?: string }>;
     clients?: { name: string; code: string } | null;
+    payment_methods?: { name: string; CARTAO?: string; TAXA?: number; PRAZO?: number | string } | null;
 }
 
 /** Lote de propostas */

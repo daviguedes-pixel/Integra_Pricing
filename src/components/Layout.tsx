@@ -97,6 +97,7 @@ const menuStructure: MenuGroupWithIcon[] = [
         label: "Precificação",
         items: [
           { icon: DollarSign, label: "Solicitações", href: "/solicitacao-preco", permission: "price_request" },
+
           { icon: BarChart3, label: "Aprovações", href: "/approvals", permission: "approvals" },
         ]
       },
@@ -121,8 +122,9 @@ const menuStructure: MenuGroupWithIcon[] = [
     label: "Pricing",
     icon: Gauge,
     items: [
-      { icon: DollarSign, label: "Custo do Dia", href: "/custo-dia", permission: "price_request" },
-      { icon: Map, label: "Mapa Contatos (Desenvolvimento)", href: "/mapa-contatos", permission: "price_request" },
+      { icon: TrendingUp, label: "Variações", href: "/variations", permission: "price_request" },
+      { icon: Receipt, label: "Cotações", href: "/quotations", permission: "price_request" },
+      { icon: Map, label: "Mapa Contatos", href: "/mapa-contatos", permission: "price_request" },
       { icon: Truck, label: "Cargas (Desenvolvimento)", href: "/cargas", permission: "price_request" },
       { icon: FileCheck, label: "NFs Incorretas (Desenvolvimento)", href: "/nfs-incorretas", permission: "price_request" },
       { icon: TrendingUp, label: "Paridade (Desenvolvimento)", href: "/paridade", permission: "price_request" },
@@ -134,6 +136,13 @@ const menuStructure: MenuGroupWithIcon[] = [
     items: [
       { icon: Shield, label: "Administração", href: "/settings", permission: "settings" },
       { icon: Settings, label: "Configurações", href: "/profile-settings", permission: "dashboard" },
+    ]
+  },
+  {
+    label: "Financeiro",
+    icon: DollarSign,
+    items: [
+      { icon: FileText, label: "Revisão de Documentos", href: "/financial/review", permission: "price_request" }, // Reusing permission for simplicity
     ]
   }
 ];

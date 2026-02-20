@@ -206,8 +206,8 @@ export default function ApprovalOrderConfig() {
       try {
         localStorage.removeItem('approvals_approvers_cache');
         localStorage.removeItem('approvals_approvers_cache_timestamp');
-        localStorage.removeItem('approvals_suggestions_cache');
-        localStorage.removeItem('approvals_suggestions_cache_timestamp');
+        localStorage.removeItem('approvals_suggestions_cache_v2');
+        localStorage.removeItem('approvals_suggestions_cache_v2_timestamp');
       } catch { }
 
       await loadProfiles();

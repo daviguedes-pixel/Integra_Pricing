@@ -80,13 +80,13 @@ export const useDatabase = () => {
     const loadAllData = async () => {
       await Promise.all([
         loadStations(),
-        loadClients(),  
+        loadClients(),
         loadPaymentMethods(),
         loadPriceHistoryFunc(),
         loadSuggestions()
       ]);
     };
-    
+
     loadAllData();
   }, []);
 
@@ -94,10 +94,10 @@ export const useDatabase = () => {
     try {
       // Tentar usar a função RPC que já busca id_empresa
       const { data: rpcData, error: rpcError } = await supabase.rpc('get_sis_empresa_stations');
-      
+
       if (!rpcError && rpcData) {
         console.log('✅ Postos carregados via RPC:', rpcData.length);
-        const stationsWithActive = (rpcData as any)?.map((station: any) => ({ 
+        const stationsWithActive = (rpcData as any)?.map((station: any) => ({
           id: String(station.id_empresa || station.cnpj_cpf || `${station.nome_empresa}-${Math.random()}`),
           name: station.nome_empresa,
           code: station.cnpj_cpf,
@@ -105,19 +105,21 @@ export const useDatabase = () => {
           longitude: station.longitude,
           bandeira: station.bandeira,
           rede: station.rede,
-          active: true 
+          municipio: station.municipio,
+          uf: station.uf,
+          active: true
         })) || [];
-        
+
         setStations(stationsWithActive);
         console.log('📊 Total de postos:', stationsWithActive.length);
         return;
       }
-      
+
       // Fallback: buscar diretamente sem id_empresa
       console.log('🏪 Carregando postos diretamente da tabela sis_empresa...');
       const { data, error } = await supabase
         .from('sis_empresa')
-        .select('nome_empresa, cnpj_cpf, latitude, longitude, bandeira, rede, registro_ativo')
+        .select('nome_empresa, cnpj_cpf, latitude, longitude, bandeira, rede, registro_ativo, municipio, uf')
         .order('nome_empresa');
 
       if (error) {
@@ -129,7 +131,7 @@ export const useDatabase = () => {
       console.log('✅ Postos brutos carregados:', data?.length || 0);
 
       const stationsWithActive = (data as any)
-        ?.map((station: any) => ({ 
+        ?.map((station: any) => ({
           id: station.cnpj_cpf || `${station.nome_empresa}-${Math.random()}`,
           name: station.nome_empresa,
           code: station.cnpj_cpf,
@@ -137,7 +139,9 @@ export const useDatabase = () => {
           longitude: station.longitude,
           bandeira: station.bandeira,
           rede: station.rede,
-          active: true 
+          municipio: station.municipio,
+          uf: station.uf,
+          active: true
         })) || [];
 
       setStations(stationsWithActive);
@@ -154,15 +158,16 @@ export const useDatabase = () => {
         .from('clientes' as any)
         .select('id_cliente, nome')
         .order('nome');
-      
+
       if (error) throw error;
       // Mapear campos e adicionar active: true
-      const clientsWithActive = (data as any)?.map((client: any) => ({ 
+      const clientsWithActive = (data as any)?.map((client: any) => ({
         id: client.id_cliente,
         name: client.nome,
         code: client.id_cliente,
-        active: true 
+        active: true
       })) || [];
+      console.log('✅ loadClients: Clientes carregados:', clientsWithActive.length);
       setClients(clientsWithActive);
     } catch (error) {
       console.error('Error loading clients:', error);
@@ -172,24 +177,24 @@ export const useDatabase = () => {
   const loadPaymentMethods = async () => {
     try {
       console.log('🔄 ===== CARREGANDO TIPOS DE PAGAMENTO =====');
-      
+
       const { data, error } = await supabase
         .from('tipos_pagamento' as any)
         .select('*')
         .order('"CARTAO"');
-      
+
       console.log('📊 Resultado da consulta:', { data, error });
       console.log('📊 Quantidade de registros:', data?.length || 0);
-      
+
       if (error) {
         console.error('❌ Erro ao carregar tipos de pagamento:', error);
         setPaymentMethods([]);
         return;
       }
-      
+
       console.log('✅ Tipos de pagamento carregados:', data);
       setPaymentMethods((data as any) || []);
-      
+
     } catch (err) {
       console.error('❌ Error loading payment methods:', err);
       setPaymentMethods([]);
@@ -202,18 +207,18 @@ export const useDatabase = () => {
       if (!stationId || stationId === '' || stationId === 'none') {
         return [];
       }
-      
+
       // Buscar tipos de pagamento que correspondem ao stationId (id_empresa)
       const { data, error } = await supabase
         .from('tipos_pagamento' as any)
         .select('*')
         .eq('ID_POSTO', stationId);
-      
+
       if (error) {
         console.error('❌ Erro ao buscar tipos de pagamento:', error);
         return [];
       }
-      
+
       // Agrupar por CARTAO e ID_POSTO para evitar duplicatas
       const grouped = new Map<string, any>();
       (data || []).forEach((method: any) => {
@@ -224,9 +229,9 @@ export const useDatabase = () => {
           grouped.set(key, method);
         }
       });
-      
+
       return Array.from(grouped.values()) as any[];
-      
+
     } catch (error) {
       console.error('❌ Erro em getPaymentMethodsForStation:', error);
       return [];
@@ -236,89 +241,89 @@ export const useDatabase = () => {
   const loadPriceHistoryFunc = async () => {
     try {
       console.log('🔍 Carregando histórico de price_suggestions aprovadas...');
-      
+
       // SEMPRE buscar de price_suggestions aprovadas
       const { data: approvedSuggestions, error: suggestionsError } = await supabase
-          .from('price_suggestions')
-          .select('*')
-          .eq('status', 'approved')
+        .from('price_suggestions')
+        .select('*')
+        .eq('status', 'approved')
         .order('created_at', { ascending: false })
-          .limit(1000);
-        
+        .limit(1000);
+
       if (suggestionsError) {
         console.error('❌ Erro ao carregar price_suggestions:', suggestionsError);
         setPriceHistory([]);
         return;
       }
-      
+
       if (!approvedSuggestions || approvedSuggestions.length === 0) {
         console.log('⚠️ Nenhuma sugestão aprovada encontrada');
         setPriceHistory([]);
         return;
       }
-      
+
       console.log('✅ Encontradas', approvedSuggestions.length, 'sugestões aprovadas');
-      
+
       // Buscar todos os IDs únicos de postos, clientes e aprovadores
       const stationIds = [...new Set((approvedSuggestions || []).map((s: any) => s.station_id).filter(Boolean))];
       const clientIds = [...new Set((approvedSuggestions || []).map((s: any) => s.client_id).filter(Boolean))];
-      
+
       console.log('📊 IDs únicos encontrados:');
       console.log('  📍 Postos:', stationIds.length, stationIds);
       console.log('  👤 Clientes:', clientIds.length, clientIds);
-      
+
       // Extrair UUIDs de aprovadores
       const approverIds = [...new Set((approvedSuggestions || [])
         .map((s: any) => s.approved_by)
         .filter(Boolean)
         .filter((id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))
       )];
-      
+
       // Buscar nomes dos postos em sis_empresa
-        const stationsMap = new Map<string, string>();
-        if (stationIds.length > 0) {
-          console.log('🔍 Buscando nomes de', stationIds.length, 'postos em sis_empresa...');
-          console.log('  📋 IDs originais:', stationIds);
-          
+      const stationsMap = new Map<string, string>();
+      if (stationIds.length > 0) {
+        console.log('🔍 Buscando nomes de', stationIds.length, 'postos em sis_empresa...');
+        console.log('  📋 IDs originais:', stationIds);
+
         // Converter IDs para strings (id_empresa na tabela é text/varchar)
         const stringIds = stationIds.map(id => String(id)).filter(Boolean);
-          
+
         console.log('  📋 IDs convertidos para strings:', stringIds);
-          
+
         if (stringIds.length > 0) {
           console.log('  🔍 Executando RPC get_sis_empresa_by_ids com', stringIds.length, 'IDs...');
           // Usar função RPC para buscar empresas do schema cotacao
           const { data: sisEmpresaData, error: sisError } = await supabase.rpc('get_sis_empresa_by_ids', {
             p_ids: stringIds
           });
-            
-              if (sisError) {
+
+          if (sisError) {
             console.error('❌ Erro ao buscar postos em sis_empresa via RPC:', sisError);
             console.error('  Query:', 'id_empresa IN', stringIds);
-              } else {
-            console.log('  📊 Resultado da query RPC:', { 
-                  encontrados: sisEmpresaData?.length || 0, 
-              esperados: stringIds.length,
-                  dados: sisEmpresaData 
-                });
-                
-                if (sisEmpresaData && sisEmpresaData.length > 0) {
-                  console.log('✅ Encontrados', sisEmpresaData.length, 'postos em sis_empresa');
-                  sisEmpresaData.forEach((e: any) => {
-                    const stationId = String(e.id_empresa);
-                const stationName = e.nome_empresa || 'Posto Desconhecido';
-                    stationsMap.set(stationId, stationName);
-                    console.log('  📍 Posto mapeado:', stationId, '->', stationName);
-                  });
-                } else {
-              console.warn('⚠️ Nenhum posto encontrado em sis_empresa para os IDs:', stringIds);
-              }
-            }
           } else {
-          console.warn('⚠️ Nenhum ID válido para buscar postos');
+            console.log('  📊 Resultado da query RPC:', {
+              encontrados: sisEmpresaData?.length || 0,
+              esperados: stringIds.length,
+              dados: sisEmpresaData
+            });
+
+            if (sisEmpresaData && sisEmpresaData.length > 0) {
+              console.log('✅ Encontrados', sisEmpresaData.length, 'postos em sis_empresa');
+              sisEmpresaData.forEach((e: any) => {
+                const stationId = String(e.id_empresa);
+                const stationName = e.nome_empresa || 'Posto Desconhecido';
+                stationsMap.set(stationId, stationName);
+                console.log('  📍 Posto mapeado:', stationId, '->', stationName);
+              });
+            } else {
+              console.warn('⚠️ Nenhum posto encontrado em sis_empresa para os IDs:', stringIds);
+            }
           }
+        } else {
+          console.warn('⚠️ Nenhum ID válido para buscar postos');
         }
-        
+      }
+
       // Buscar nomes dos clientes em clientes (os IDs são numéricos, não UUIDs)
       const clientsMap = new Map<string, string>();
       if (clientIds.length > 0) {
@@ -328,13 +333,13 @@ export const useDatabase = () => {
           const numId = typeof id === 'string' ? parseInt(id, 10) : id;
           return isNaN(numId) ? null : numId;
         }).filter(Boolean);
-        
+
         if (numericIds.length > 0) {
           const { data: clientesData, error: clientesError } = await supabase
             .from('clientes' as any)
             .select('id_cliente, nome')
             .in('id_cliente', numericIds);
-          
+
           if (clientesError) {
             console.error('❌ Erro ao buscar clientes:', clientesError);
           } else if (clientesData) {
@@ -347,7 +352,7 @@ export const useDatabase = () => {
           }
         }
       }
-      
+
       // Buscar nomes dos aprovadores
       const approversMap = new Map<string, string>();
       if (approverIds.length > 0) {
@@ -355,56 +360,56 @@ export const useDatabase = () => {
           .from('user_profiles')
           .select('user_id, nome, email')
           .in('user_id', approverIds);
-        
+
         if (approversData) {
           approversData.forEach((a: any) => {
             approversMap.set(a.user_id, a.nome || a.email);
           });
         }
       }
-      
+
       // Converter price_suggestions aprovadas para formato de price_history com nomes
       // Usar nomes do JOIN se disponível, senão usar do mapa
       const convertedHistory = approvedSuggestions.map((suggestion: any) => ({
-          id: suggestion.id,
-          suggestion_id: suggestion.id,
-          station_id: suggestion.station_id,
-          client_id: suggestion.client_id,
-          product: suggestion.product,
-          old_price: null, // Não temos old_price em price_suggestions
-          new_price: suggestion.final_price >= 100 ? suggestion.final_price / 100 : suggestion.final_price,
-          margin_cents: suggestion.margin_cents || 0,
-          approved_by: (() => {
-            const approverId = suggestion.approved_by;
-            if (!approverId) return 'Sistema';
-            // Se for UUID, buscar nome do mapa
-            if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(approverId)) {
-              return approversMap.get(approverId) || approverId;
-            }
-            // Se não for UUID, pode ser email ou nome direto
-            return approverId;
-          })(),
-          change_type: null,
-          created_at: suggestion.approved_at || suggestion.created_at,
-          stations: suggestion.station_id ? (() => {
-            const stationId = String(suggestion.station_id);
-            const stationName = stationsMap.get(stationId);
-            if (!stationName) {
-              console.warn('⚠️ Posto não encontrado no mapa:', stationId, 'Mapa tem:', Array.from(stationsMap.keys()));
-            }
-            return { name: stationName || 'Posto Desconhecido' };
-          })() : null,
-          clients: suggestion.client_id ? (() => {
-            const clientId = String(suggestion.client_id);
-            const clientName = clientsMap.get(clientId);
-            if (!clientName) {
-              console.warn('⚠️ Cliente não encontrado no mapa:', clientId, 'Mapa tem:', Array.from(clientsMap.keys()));
-            }
-            return { name: clientName || 'Cliente Desconhecido' };
-          })() : null,
-          price_suggestions: suggestion
-        }));
-        
+        id: suggestion.id,
+        suggestion_id: suggestion.id,
+        station_id: suggestion.station_id,
+        client_id: suggestion.client_id,
+        product: suggestion.product,
+        old_price: null, // Não temos old_price em price_suggestions
+        new_price: suggestion.final_price >= 100 ? suggestion.final_price / 100 : suggestion.final_price,
+        margin_cents: suggestion.margin_cents || 0,
+        approved_by: (() => {
+          const approverId = suggestion.approved_by;
+          if (!approverId) return 'Sistema';
+          // Se for UUID, buscar nome do mapa
+          if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(approverId)) {
+            return approversMap.get(approverId) || approverId;
+          }
+          // Se não for UUID, pode ser email ou nome direto
+          return approverId;
+        })(),
+        change_type: null,
+        created_at: suggestion.approved_at || suggestion.created_at,
+        stations: suggestion.station_id ? (() => {
+          const stationId = String(suggestion.station_id);
+          const stationName = stationsMap.get(stationId);
+          if (!stationName) {
+            console.warn('⚠️ Posto não encontrado no mapa:', stationId, 'Mapa tem:', Array.from(stationsMap.keys()));
+          }
+          return { name: stationName || 'Posto Desconhecido' };
+        })() : null,
+        clients: suggestion.client_id ? (() => {
+          const clientId = String(suggestion.client_id);
+          const clientName = clientsMap.get(clientId);
+          if (!clientName) {
+            console.warn('⚠️ Cliente não encontrado no mapa:', clientId, 'Mapa tem:', Array.from(clientsMap.keys()));
+          }
+          return { name: clientName || 'Cliente Desconhecido' };
+        })() : null,
+        price_suggestions: suggestion
+      }));
+
       console.log('✅ Histórico carregado de price_suggestions:', convertedHistory.length, 'registros');
       setPriceHistory(convertedHistory);
     } catch (error) {
@@ -419,7 +424,7 @@ export const useDatabase = () => {
         .from('price_suggestions')
         .select('*')
         .order('created_at', { ascending: false });
-      
+
       if (error) throw error;
       setSuggestions(data || []);
     } catch (error) {
@@ -520,7 +525,7 @@ export const useDatabase = () => {
 
     const { data, error } = await query;
     if (error) throw error;
-    
+
     // Enriquecer dados com nomes de postos e clientes se não vieram das foreign keys
     const enrichedData = await Promise.all((data || []).map(async (item: any) => {
       // Se não tem nome do posto, buscar
@@ -531,7 +536,7 @@ export const useDatabase = () => {
             .select('name')
             .eq('id', item.station_id)
             .single();
-          
+
           if (stationData?.name) {
             item.stations = { name: stationData.name };
           }
@@ -539,7 +544,7 @@ export const useDatabase = () => {
           console.warn('Erro ao buscar nome do posto:', err);
         }
       }
-      
+
       // Se não tem nome do cliente, buscar
       if (!item.clients?.name && item.client_id) {
         try {
@@ -548,7 +553,7 @@ export const useDatabase = () => {
             .select('name')
             .eq('id', item.client_id)
             .single();
-          
+
           if (clientData?.name) {
             item.clients = { name: clientData.name };
           } else {
@@ -558,7 +563,7 @@ export const useDatabase = () => {
               .select('nome')
               .eq('id_cliente', item.client_id)
               .single();
-            
+
             if (clientesData?.nome) {
               item.clients = { name: clientesData.nome };
             }
@@ -567,10 +572,10 @@ export const useDatabase = () => {
           console.warn('Erro ao buscar nome do cliente:', err);
         }
       }
-      
+
       return item;
     }));
-    
+
     return enrichedData;
   };
 

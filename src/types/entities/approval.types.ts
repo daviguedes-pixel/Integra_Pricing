@@ -2,7 +2,7 @@
  * Tipos para aprovações de preço
  */
 
-export type ApprovalStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'price_suggested' | 'in_approval';
+export type ApprovalStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'price_suggested' | 'in_approval' | 'awaiting_justification' | 'awaiting_evidence';
 
 export type ProductType =
   | 's10'
@@ -86,6 +86,7 @@ export interface ApprovalHistoryEntry {
   approver_name: string;
   action: string;
   observations?: string;
+  attachment_url?: string;
   approval_level?: number;
   created_at: string;
 }
@@ -156,6 +157,12 @@ export interface EnrichedApproval extends Omit<Approval, 'product' | 'requested_
   is_reference?: boolean;
   /** ID do solicitante (pode ser null em dados do banco) */
   requested_by?: string | null;
+  /** Contagem de recursos */
+  appeal_count?: number;
+  /** Produto evidenciado (para referência) */
+  evidence_product?: string | null;
+  /** Quem realizou a última ação */
+  last_approver_action_by?: string | null;
 }
 
 /** Grupo de aprovações em lote para exibição */

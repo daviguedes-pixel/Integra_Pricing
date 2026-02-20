@@ -3,10 +3,12 @@ import { useNotifications } from '@/hooks/useNotifications';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
 
 export function RealtimeNotifications() {
   const { refresh } = useNotifications();
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!user) return;
@@ -24,7 +26,7 @@ export function RealtimeNotifications() {
         },
         async (payload) => {
           const notification = payload.new;
-          
+
           // Mostrar toast para notificações não lidas
           if (!notification.read) {
             // Tocar som de notificação
@@ -50,17 +52,24 @@ export function RealtimeNotifications() {
                 console.log('Erro ao tocar som de notificação:', audioError);
               }
             }
-            
+
             toast.info(notification.title || 'Nova notificação', {
               description: notification.message,
               duration: 5000,
               action: {
                 label: 'Ver',
                 onClick: () => {
-                  // Abrir centro de notificações
-                  const bellButton = document.querySelector('[data-notification-bell]') as HTMLElement;
-                  if (bellButton) {
-                    bellButton.click();
+                  // Navegar diretamente para os detalhes da solicitação
+                  if (notification.suggestion_id) {
+                    navigate(`/approval-details/${notification.suggestion_id}`);
+                  } else if (notification.data?.suggestion_id) {
+                    navigate(`/approval-details/${notification.data.suggestion_id}`);
+                  } else {
+                    // Fallback: abrir centro de notificações
+                    const bellButton = document.querySelector('[data-notification-bell]') as HTMLElement;
+                    if (bellButton) {
+                      bellButton.click();
+                    }
                   }
                 }
               }
@@ -74,7 +83,7 @@ export function RealtimeNotifications() {
                 title: notification.title || 'Nova notificação',
                 body: notification.message,
                 data: notification.data || {},
-                url: notification.data?.url || '/approvals',
+                url: notification.suggestion_id ? `/approval-details/${notification.suggestion_id}` : (notification.data?.url || '/approvals'),
                 tag: notification.type || 'notification'
               });
             } catch (pushError) {

@@ -12,7 +12,15 @@ export const priceSuggestionSchema = z.object({
   station_id: z.string().min(1, 'Selecione um posto'),
   client_id: z.string().min(1, 'Selecione um cliente'),
   product: z.string().min(1, 'Selecione um produto'),
-  suggested_price: z.string().min(1, 'Preço sugerido é obrigatório'),
+  suggested_price: z.string().min(1, 'Preço sugerido é obrigatório').refine(
+    (val) => {
+      // Remove symbols and ensure it's a number
+      const clean = val.replace(/[^\d,]/g, '').replace(',', '.');
+      const num = parseFloat(clean);
+      return !isNaN(num) && num > 0;
+    },
+    { message: 'Preço sugerido deve ser maior que zero' }
+  ),
   current_price: z.string().optional(),
   purchase_cost: z.string().optional(),
   freight_cost: z.string().optional(),
@@ -111,7 +119,7 @@ export function validateWithSchema<T>(
   data: unknown
 ): { success: true; data: T } | { success: false; errors: z.ZodError } {
   const result = schema.safeParse(data);
-  
+
   if (result.success) {
     return { success: true, data: result.data };
   } else {
@@ -152,12 +160,12 @@ export const referenceRegistrationSchema = z.object({
  */
 export function getValidationErrors(error: z.ZodError): Record<string, string> {
   const errors: Record<string, string> = {};
-  
+
   error.errors.forEach((err) => {
     const path = err.path.join('.');
     errors[path] = err.message;
   });
-  
+
   return errors;
 }
 

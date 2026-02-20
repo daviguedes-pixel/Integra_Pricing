@@ -46,12 +46,14 @@ CREATE TABLE IF NOT EXISTS public.attachments (
 ALTER TABLE public.attachments ENABLE ROW LEVEL SECURITY;
 
 -- Política para attachments
-CREATE POLICY IF NOT EXISTS "Users can view attachments" 
+DROP POLICY IF EXISTS "Users can view attachments" ON public.attachments;
+CREATE POLICY "Users can view attachments" 
 ON public.attachments 
 FOR SELECT 
 USING (auth.role() = 'authenticated');
 
-CREATE POLICY IF NOT EXISTS "Users can insert attachments" 
+DROP POLICY IF EXISTS "Users can insert attachments" ON public.attachments;
+CREATE POLICY "Users can insert attachments" 
 ON public.attachments 
 FOR INSERT 
 WITH CHECK (auth.role() = 'authenticated');
@@ -73,17 +75,20 @@ CREATE TABLE IF NOT EXISTS public.notifications (
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
 -- Políticas para notifications
-CREATE POLICY IF NOT EXISTS "Users can view own notifications" 
+DROP POLICY IF EXISTS "Users can view own notifications" ON public.notifications;
+CREATE POLICY "Users can view own notifications" 
 ON public.notifications 
 FOR SELECT 
 USING (auth.uid() = user_id);
 
-CREATE POLICY IF NOT EXISTS "Users can update own notifications" 
+DROP POLICY IF EXISTS "Users can update own notifications" ON public.notifications;
+CREATE POLICY "Users can update own notifications" 
 ON public.notifications 
 FOR UPDATE 
 USING (auth.uid() = user_id);
 
-CREATE POLICY IF NOT EXISTS "System can insert notifications" 
+DROP POLICY IF EXISTS "System can insert notifications" ON public.notifications;
+CREATE POLICY "System can insert notifications" 
 ON public.notifications 
 FOR INSERT 
 WITH CHECK (true);
@@ -108,7 +113,8 @@ CREATE TABLE IF NOT EXISTS public.email_settings (
 ALTER TABLE public.email_settings ENABLE ROW LEVEL SECURITY;
 
 -- Política para email_settings (apenas admins)
-CREATE POLICY IF NOT EXISTS "Admins can manage email settings" 
+DROP POLICY IF EXISTS "Admins can manage email settings" ON public.email_settings;
+CREATE POLICY "Admins can manage email settings" 
 ON public.email_settings 
 FOR ALL 
 USING (
@@ -135,7 +141,8 @@ CREATE TABLE IF NOT EXISTS public.email_templates (
 ALTER TABLE public.email_templates ENABLE ROW LEVEL SECURITY;
 
 -- Política para email_templates (apenas admins)
-CREATE POLICY IF NOT EXISTS "Admins can manage email templates" 
+DROP POLICY IF EXISTS "Admins can manage email templates" ON public.email_templates;
+CREATE POLICY "Admins can manage email templates" 
 ON public.email_templates 
 FOR ALL 
 USING (
@@ -161,7 +168,8 @@ CREATE TABLE IF NOT EXISTS public.email_logs (
 ALTER TABLE public.email_logs ENABLE ROW LEVEL SECURITY;
 
 -- Política para email_logs (apenas admins)
-CREATE POLICY IF NOT EXISTS "Admins can view email logs" 
+DROP POLICY IF EXISTS "Admins can view email logs" ON public.email_logs;
+CREATE POLICY "Admins can view email logs" 
 ON public.email_logs 
 FOR SELECT 
 USING (
@@ -216,9 +224,9 @@ INSERT INTO public.email_templates (name, subject, body_html, body_text, variabl
 (
   'new_reference',
   'Nova Referência Cadastrada',
-  '<h2>Nova Referência</h2><p>Uma nova referência foi cadastrada:</p><ul><li>Cliente: {{client_name}}</li><li>Produto: {{product}}</li><li>Preço: R$ {{reference_price}}</li><li>Posto: {{station_name}}</li></ul><p>Cadastrado por: {{created_by}}</p><p>Data: {{created_at}}</p>',
-  'Nova Referência\n\nUma nova referência foi cadastrada:\n- Cliente: {{client_name}}\n- Produto: {{product}}\n- Preço: R$ {{reference_price}}\n- Posto: {{station_name}}\n\nCadastrado por: {{created_by}}\nData: {{created_at}}',
-  '["client_name", "product", "reference_price", "station_name", "created_by", "created_at"]'
+  '<h2>Nova Referência</h2><p>Uma nova referência foi cadastrada:</p><ul><li>Cliente: {{client_name}}</li><li>Produto: {{produto}}</li><li>Preço: R$ {{reference_price}}</li><li>Posto: {{station_name}}</li></ul><p>Cadastrado por: {{created_by}}</p><p>Data: {{created_at}}</p>',
+  'Nova Referência\n\nUma nova referência foi cadastrada:\n- Cliente: {{client_name}}\n- Produto: {{produto}}\n- Preço: R$ {{reference_price}}\n- Posto: {{station_name}}\n\nCadastrado por: {{created_by}}\nData: {{created_at}}',
+  '["client_name", "produto", "reference_price", "station_name", "created_by", "created_at"]'
 )
 ON CONFLICT (name) DO NOTHING;
 
@@ -287,7 +295,7 @@ BEGIN
       jsonb_build_object(
         'suggestion_id', NEW.id,
         'client_name', (SELECT name FROM public.clients WHERE id = NEW.client_id),
-        'product', NEW.product,
+        'product', NEW.produto,
         'final_price', NEW.final_price
       )
     );
@@ -318,7 +326,7 @@ BEGIN
       jsonb_build_object(
         'suggestion_id', NEW.id,
         'client_name', (SELECT name FROM public.clients WHERE id = NEW.client_id),
-        'product', NEW.product,
+        'product', NEW.produto,
         'final_price', NEW.final_price
       )
     );
@@ -369,16 +377,16 @@ CREATE TRIGGER new_reference_notification
 
 -- Atualizar dados de exemplo com nomes reais de produtos
 UPDATE public.price_suggestions 
-SET product = 'gasolina_comum' 
-WHERE product = 'diesel_comum';
+SET produto = 'gasolina_comum' 
+WHERE produto = 'diesel_comum';
 
 UPDATE public.price_suggestions 
-SET product = 'diesel_s10' 
-WHERE product = 'diesel_s10';
+SET produto = 'diesel_s10' 
+WHERE produto = 'diesel_s10';
 
 UPDATE public.price_suggestions 
-SET product = 'diesel_s500' 
-WHERE product = 'diesel_s500';
+SET produto = 'diesel_s500' 
+WHERE produto = 'diesel_s500';
 
 -- Atualizar referencias também
 UPDATE public.referencias 
@@ -395,13 +403,13 @@ WHERE produto = 'diesel_s500';
 
 -- Atualizar competitor_research também
 UPDATE public.competitor_research 
-SET product = 'gasolina_comum' 
-WHERE product = 'diesel_comum';
+SET produto = 'gasolina_comum' 
+WHERE produto = 'diesel_comum';
 
 UPDATE public.competitor_research 
-SET product = 'diesel_s10' 
-WHERE product = 'diesel_s10';
+SET produto = 'diesel_s10' 
+WHERE produto = 'diesel_s10';
 
 UPDATE public.competitor_research 
-SET product = 'diesel_s500' 
-WHERE product = 'diesel_s500';
+SET produto = 'diesel_s500' 
+WHERE produto = 'diesel_s500';

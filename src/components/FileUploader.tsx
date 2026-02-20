@@ -13,9 +13,9 @@ interface FileUploaderProps {
   currentFiles?: string[];
 }
 
-export const FileUploader = ({ 
-  onFilesUploaded, 
-  maxFiles = 5, 
+export const FileUploader = ({
+  onFilesUploaded,
+  maxFiles = 5,
   acceptedTypes = "image/*,.pdf",
   currentFiles = []
 }: FileUploaderProps) => {
@@ -28,10 +28,10 @@ export const FileUploader = ({
   // Sincronizar uploadedFiles com currentFiles quando mudar
   // Usar useRef para rastrear o valor anterior e evitar loops infinitos
   const prevCurrentFilesRef = useRef<string>(JSON.stringify(currentFiles));
-  
+
   useEffect(() => {
     const currentFilesStr = JSON.stringify(currentFiles);
-    
+
     // Só atualizar se realmente mudou (comparação de string)
     if (prevCurrentFilesRef.current !== currentFilesStr) {
       prevCurrentFilesRef.current = currentFilesStr;
@@ -63,7 +63,7 @@ export const FileUploader = ({
         const filePath = `uploads/${fileName}`;
 
         const { error: uploadError } = await supabase.storage
-          .from('attachments')
+          .from('financial-documents')
           .upload(filePath, file);
 
         if (uploadError) {
@@ -71,7 +71,7 @@ export const FileUploader = ({
         }
 
         const { data: publicUrl } = supabase.storage
-          .from('attachments')
+          .from('financial-documents')
           .getPublicUrl(filePath);
 
         newFileUrls.push(publicUrl.publicUrl);
@@ -116,7 +116,7 @@ export const FileUploader = ({
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     const files = Array.from(e.dataTransfer.files);
     if (files.length === 0) return;
 
@@ -140,7 +140,7 @@ export const FileUploader = ({
         const filePath = `uploads/${fileName}`;
 
         const { error: uploadError } = await supabase.storage
-          .from('attachments')
+          .from('financial-documents')
           .upload(filePath, file);
 
         if (uploadError) {
@@ -148,7 +148,7 @@ export const FileUploader = ({
         }
 
         const { data: publicUrl } = supabase.storage
-          .from('attachments')
+          .from('financial-documents')
           .getPublicUrl(filePath);
 
         newFileUrls.push(publicUrl.publicUrl);
@@ -176,7 +176,7 @@ export const FileUploader = ({
 
   return (
     <div className="space-y-2">
-      <div 
+      <div
         className="border-2 border-dashed border-border rounded-lg p-2.5 text-center cursor-pointer hover:bg-secondary/20 transition-colors flex flex-col justify-center min-h-[72px]"
         onClick={() => fileInputRef.current?.click()}
         onDragOver={handleDragOver}

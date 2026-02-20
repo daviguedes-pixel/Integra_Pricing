@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS public.external_connections (
 ALTER TABLE public.external_connections ENABLE ROW LEVEL SECURITY;
 
 -- Política para external_connections (apenas admins)
-CREATE POLICY IF NOT EXISTS "Admins can manage external connections" 
+DROP POLICY IF EXISTS "Admins can manage external connections" ON public.external_connections;
+CREATE POLICY "Admins can manage external connections" 
 ON public.external_connections 
 FOR ALL 
 USING (
@@ -55,7 +56,8 @@ CREATE TABLE IF NOT EXISTS public.external_table_mappings (
 ALTER TABLE public.external_table_mappings ENABLE ROW LEVEL SECURITY;
 
 -- Política para external_table_mappings (apenas admins)
-CREATE POLICY IF NOT EXISTS "Admins can manage table mappings" 
+DROP POLICY IF EXISTS "Admins can manage table mappings" ON public.external_table_mappings;
+CREATE POLICY "Admins can manage table mappings" 
 ON public.external_table_mappings 
 FOR ALL 
 USING (
@@ -85,7 +87,8 @@ CREATE TABLE IF NOT EXISTS public.sync_logs (
 ALTER TABLE public.sync_logs ENABLE ROW LEVEL SECURITY;
 
 -- Política para sync_logs (apenas admins)
-CREATE POLICY IF NOT EXISTS "Admins can view sync logs" 
+DROP POLICY IF EXISTS "Admins can view sync logs" ON public.sync_logs;
+CREATE POLICY "Admins can view sync logs" 
 ON public.sync_logs 
 FOR SELECT 
 USING (

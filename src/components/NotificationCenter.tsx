@@ -33,7 +33,7 @@ const getNotificationIcon = (type: string) => {
 const getNotificationColor = (type: string, read: boolean) => {
   const baseDark = read ? 'dark:bg-slate-800/50' : 'dark:bg-slate-800';
   const baseLight = read ? 'bg-slate-50/30' : 'bg-slate-50';
-  
+
   switch (type) {
     case 'rate_expiry':
       return `border-l-orange-500 ${baseLight} dark:bg-orange-900/20 dark:border-orange-600 ${baseDark}`;
@@ -53,7 +53,7 @@ const getNotificationColor = (type: string, read: boolean) => {
 export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps) {
   const { notifications, unreadCount, markAsRead, markAllAsRead, deleteNotification, refresh } = useNotifications();
   const navigate = useNavigate();
-  
+
   // Forçar refresh quando o modal abrir
   ReactUseEffect(() => {
     if (isOpen) {
@@ -63,16 +63,33 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
   }, [isOpen, refresh]);
 
   const handleNotificationClick = (notification: any) => {
-    // Navegar para a página de aprovações
+    // Marcar como lida
+    if (!notification.read) {
+      markAsRead(notification.id);
+    }
+
+    // Determinar para onde navegar baseado no suggestion_id ou data.url
+    let url = '/approvals';
+    if (notification.suggestion_id) {
+      url = `/approval-details/${notification.suggestion_id}`;
+    } else if (notification.data?.suggestion_id) {
+      url = `/approval-details/${notification.data.suggestion_id}`;
+    } else if (notification.data?.url) {
+      url = notification.data.url;
+    }
+
+    console.log('🔔 Navegando para:', url, 'tipo:', notification.type, 'suggestion_id:', notification.suggestion_id);
+
+    // Fechar o modal e navegar
     onClose();
-    navigate('/approvals');
+    navigate(url);
   };
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 dark:bg-black/80" onClick={onClose}>
-      <div 
+      <div
         className="fixed right-0 sm:right-4 top-12 sm:top-20 w-full sm:w-96 max-w-full sm:max-w-none max-h-[calc(100vh-3rem)] sm:max-h-[600px] bg-white dark:bg-slate-900 border-0 sm:border border-slate-200 dark:border-slate-700 rounded-none sm:rounded-lg shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
@@ -105,7 +122,7 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
             </div>
           </div>
         </div>
-        
+
         <div className="p-0">
           <ScrollArea className="h-[500px]">
             {notifications.length === 0 ? (
@@ -148,21 +165,22 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
                                 type: notification.type,
                                 data: notification.data,
                                 dataType: typeof notification.data,
-                                approved_by: notification.data?.approved_by,
-                                rejected_by: notification.data?.rejected_by,
+                                approved_by: (notification.data as any)?.approved_by,
+                                rejected_by: (notification.data as any)?.rejected_by,
                                 fullNotification: notification
                               });
                             }
-                            
+
                             // Tentar múltiplas formas de acessar o approved_by
-                            const approvedBy = notification.data?.approved_by || 
-                                             (typeof notification.data === 'string' ? JSON.parse(notification.data)?.approved_by : null) ||
-                                             (notification as any).approved_by;
-                            
-                            const rejectedBy = notification.data?.rejected_by || 
-                                              (typeof notification.data === 'string' ? JSON.parse(notification.data)?.rejected_by : null) ||
-                                              (notification as any).rejected_by;
-                            
+                            const notifData = notification.data as any;
+                            const approvedBy = notifData?.approved_by ||
+                              (typeof notification.data === 'string' ? JSON.parse(notification.data)?.approved_by : null) ||
+                              (notification as any).approved_by;
+
+                            const rejectedBy = notifData?.rejected_by ||
+                              (typeof notification.data === 'string' ? JSON.parse(notification.data)?.rejected_by : null) ||
+                              (notification as any).rejected_by;
+
                             if (approvedBy) {
                               return (
                                 <p className="text-xs font-medium text-green-600 dark:text-green-400 mt-1">
@@ -170,7 +188,7 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
                                 </p>
                               );
                             }
-                            
+
                             if (rejectedBy) {
                               return (
                                 <p className="text-xs font-medium text-red-600 dark:text-red-400 mt-1">
@@ -178,7 +196,7 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
                                 </p>
                               );
                             }
-                            
+
                             return null;
                           })()}
                           <p className="text-xs text-slate-500 dark:text-slate-500 mt-2">
@@ -189,7 +207,7 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
                           </p>
                         </div>
                       </div>
-                      
+
                       <div className="flex items-center gap-1">
                         {!notification.read && (
                           <Button

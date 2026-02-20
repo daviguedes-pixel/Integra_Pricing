@@ -23,17 +23,17 @@ interface ClientComboboxProps {
   required?: boolean;
 }
 
-export const ClientCombobox = ({ 
-  label = "Cliente", 
-  value, 
+export const ClientCombobox = ({
+  label = "Cliente",
+  value,
   onSelect,
-  required = false 
+  required = false
 }: ClientComboboxProps) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [filteredClients, setFilteredClients] = useState<Client[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-  
+
   const { clients } = useDatabase();
 
   // Load selected client if value is provided, or clear if value is empty
@@ -44,25 +44,25 @@ export const ClientCombobox = ({
     } else if (value && clients.length > 0) {
       // Normalizar value para string para comparação
       const normalizedValue = String(value);
-      
+
       // Tentar encontrar por id (que é id_cliente no useDatabase)
       let client = clients.find(c => String(c.id) === normalizedValue);
-      
+
       // Se não encontrou por id, tentar por code (que também é id_cliente)
       if (!client) {
         client = clients.find(c => String(c.code) === normalizedValue);
       }
-      
+
       console.log('🔍 ClientCombobox buscando cliente:', {
         value: normalizedValue,
         clientsCount: clients.length,
         found: !!client,
         clientIds: clients.slice(0, 3).map(c => ({ id: c.id, code: c.code, name: c.name }))
       });
-      
+
       if (client) {
         // Atualizar o nome exibido para qualquer cliente com o mesmo nome
-        const clientsWithSameName = clients.filter(c => 
+        const clientsWithSameName = clients.filter(c =>
           c.name.toLowerCase() === client!.name.toLowerCase()
         );
         if (clientsWithSameName.length > 0) {
@@ -89,9 +89,9 @@ export const ClientCombobox = ({
 
     const term = searchTerm.toLowerCase();
     const norm = (v: any) => (v ?? "").toString().toLowerCase();
-    
+
     // Filtrar clientes
-    const filtered = (clients || []).filter((client: any) => 
+    const filtered = (clients || []).filter((client: any) =>
       norm(client.name).includes(term) ||
       norm(client.code).includes(term) ||
       norm(client.contact_email).includes(term)
@@ -122,15 +122,15 @@ export const ClientCombobox = ({
 
   const handleSelect = (client: Client) => {
     // Agrupar: encontrar todos os clientes com o mesmo nome
-    const clientsWithSameName = (clients || []).filter(c => 
+    const clientsWithSameName = (clients || []).filter(c =>
       c.name.toLowerCase() === client.name.toLowerCase()
     );
-    
+
     // Selecionar o primeiro cliente ativo, senão o primeiro disponível
     const clientToSelect = clientsWithSameName.find(c => c.active) || clientsWithSameName[0] || client;
-    
+
     setSelectedClient(clientToSelect);
-    
+
     // Retornar o ID do cliente selecionado (primeiro do grupo)
     onSelect(clientToSelect.id, clientToSelect.name);
     setSearchTerm("");
@@ -157,52 +157,40 @@ export const ClientCombobox = ({
         {label} {required && <span className="text-red-500">*</span>}
       </Label>
 
-      {/* Selected Client Display */}
+      {/* Selected Client Display - Premium Card */}
       {selectedClient ? (
-        <Card className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20 border-green-200 dark:border-green-800">
-          <CardContent className="p-2">
-            <div className="flex items-start justify-between gap-1.5">
-              <div className="flex items-start gap-1.5 flex-1">
-                <CheckCircle2 className="h-3.5 w-3.5 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                <div className="space-y-0.5 flex-1 min-w-0">
-                  <div className="text-xs font-semibold text-green-900 dark:text-green-100">
-                    {selectedClient.name}
-                  </div>
-                  <div className="flex flex-wrap gap-1 text-xs">
-                    <Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200">
-                      {selectedClient.code}
-                    </Badge>
-                    {!selectedClient.active && (
-                      <Badge variant="destructive" className="text-xs">
-                        Inativo
-                      </Badge>
-                    )}
-                  </div>
-                  {selectedClient.contact_email && (
-                    <p className="text-xs text-green-700 dark:text-green-300 flex items-center gap-1">
-                      <Mail className="h-2.5 w-2.5" />
-                      {selectedClient.contact_email}
-                    </p>
-                  )}
-                  {selectedClient.contact_phone && (
-                    <p className="text-xs text-green-700 dark:text-green-300 flex items-center gap-1">
-                      <Phone className="h-2.5 w-2.5" />
-                      {selectedClient.contact_phone}
-                    </p>
-                  )}
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleClear}
-                className="h-6 w-6 p-0 text-green-600 hover:text-green-800 hover:bg-green-100 dark:text-green-400 dark:hover:text-green-200"
-              >
-                <X className="h-3 w-3" />
-              </Button>
+        <div className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg group">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-1.5 bg-emerald-50 dark:bg-emerald-900/40 rounded-md text-emerald-600 dark:text-emerald-400">
+              <Users className="h-4 w-4" />
             </div>
-          </CardContent>
-        </Card>
+            <div className="flex flex-col min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">
+                  {selectedClient.name}
+                </span>
+                {selectedClient.active && (
+                  <Badge variant="outline" className="bg-emerald-600 text-white border-transparent text-[9px] h-4 px-1.5 font-bold uppercase tracking-tight">
+                    ATIVO
+                  </Badge>
+                )}
+              </div>
+              {selectedClient.code && (
+                <span className="text-[10px] text-slate-500 font-mono">
+                  COD: {selectedClient.code}
+                </span>
+              )}
+            </div>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleClear}
+            className="h-7 w-7 text-slate-400 hover:text-red-500 rounded-md flex-shrink-0"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
       ) : (
         /* Search Input */
         <div className="relative">
@@ -285,8 +273,8 @@ export const ClientCombobox = ({
 
           {/* Overlay to close dropdown */}
           {isOpen && (
-            <div 
-              className="fixed inset-0 z-40" 
+            <div
+              className="fixed inset-0 z-40"
               onClick={() => setIsOpen(false)}
             />
           )}

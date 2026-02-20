@@ -30,11 +30,11 @@ interface SisEmpresaComboboxProps {
   required?: boolean;
 }
 
-export const SisEmpresaCombobox = ({ 
-  label = "Posto", 
-  value, 
+export const SisEmpresaCombobox = ({
+  label = "Posto",
+  value,
   onSelect,
-  required = false 
+  required = false
 }: SisEmpresaComboboxProps) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [empresas, setEmpresas] = useState<SisEmpresa[]>([]);
@@ -54,9 +54,9 @@ export const SisEmpresaCombobox = ({
       // Se value for vazio, limpar seleção
       setSelectedEmpresa(null);
     } else if (value && empresas.length > 0) {
-      const empresa = empresas.find(e => 
-        String(e.id_empresa) === String(value) || 
-        e.nome_empresa === value || 
+      const empresa = empresas.find(e =>
+        String(e.id_empresa) === String(value) ||
+        e.nome_empresa === value ||
         String(e.cnpj_cpf) === String(value)
       );
       if (empresa) {
@@ -74,13 +74,13 @@ export const SisEmpresaCombobox = ({
       // Tentar nova função primeiro, depois fallback para a original
       let data = null;
       let error = null;
-      
+
       const result = await supabase.rpc('get_sis_empresa_stations');
       data = result.data;
       error = result.error;
 
       if (error) throw error;
-      
+
       // Log detalhado para debug
       if (data && data.length > 0) {
         console.log('📊 Empresas carregadas (primeiras 3):', data.slice(0, 3).map(e => ({
@@ -89,7 +89,7 @@ export const SisEmpresaCombobox = ({
           nome_empresa: e.nome_empresa
         })));
       }
-      
+
       setEmpresas(data || []);
     } catch (error) {
       console.error('Error loading sis_empresa:', error);
@@ -106,7 +106,7 @@ export const SisEmpresaCombobox = ({
     }
 
     const term = searchTerm.toLowerCase();
-    const filtered = empresas.filter(empresa => 
+    const filtered = empresas.filter(empresa =>
       empresa.nome_empresa?.toLowerCase().includes(term) ||
       empresa.cnpj_cpf?.includes(term) ||
       empresa.municipio?.toLowerCase().includes(term) ||
@@ -124,18 +124,18 @@ export const SisEmpresaCombobox = ({
   const handleSelect = (empresa: SisEmpresa) => {
     // Usar id_empresa para compatibilidade com tipos_pagamento
     const empresaId = String(empresa.id_empresa || empresa.cnpj_cpf || empresa.nome_empresa);
-    
+
     console.log('🔄 SisEmpresaCombobox - Selecionou empresa:', {
       nome: empresa.nome_empresa,
       id_empresa: empresa.id_empresa,
       cnpj_cpf: empresa.cnpj_cpf,
       empresaId_selecionado: empresaId
     });
-    
+
     setSelectedEmpresa(empresa);
     setSearchTerm("");
     setIsOpen(false);
-    
+
     onSelect(empresaId, empresa.nome_empresa);
   };
 
@@ -159,70 +159,40 @@ export const SisEmpresaCombobox = ({
         {label} {required && <span className="text-red-500">*</span>}
       </Label>
 
-      {/* Selected Empresa Display */}
+      {/* Selected Empresa Display - Premium Card */}
       {selectedEmpresa ? (
-        <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border-blue-200 dark:border-blue-800">
-          <CardContent className="p-2">
-            <div className="flex items-start justify-between gap-1.5">
-              <div className="flex items-start gap-1.5 flex-1">
-                <CheckCircle2 className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
-                <div className="space-y-0.5 flex-1 min-w-0">
-                  <div className="text-xs font-semibold text-blue-900 dark:text-blue-100">
-                    {selectedEmpresa.nome_empresa}
-                  </div>
-                  <div className="flex flex-wrap gap-1 text-xs">
-                    {selectedEmpresa.bandeira && (
-                      <Badge variant="secondary" className="bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200">
-                        {selectedEmpresa.bandeira}
-                      </Badge>
-                    )}
-                    {selectedEmpresa.rede && (
-                      <Badge variant="outline" className="border-blue-300 text-blue-700 dark:border-blue-700 dark:text-blue-300">
-                        {selectedEmpresa.rede}
-                      </Badge>
-                    )}
-                    {selectedEmpresa.municipio && selectedEmpresa.uf && (
-                      <Badge variant="outline" className="border-blue-300 text-blue-700 dark:border-blue-700 dark:text-blue-300">
-                        <MapPin className="h-3 w-3 mr-1" />
-                        {selectedEmpresa.municipio} - {selectedEmpresa.uf}
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-1 text-xs">
-                    {selectedEmpresa.raizen_code && (
-                      <span className="text-blue-700 dark:text-blue-300 text-xs">
-                        Raizen: {selectedEmpresa.raizen_code}
-                      </span>
-                    )}
-                    {selectedEmpresa.vibra_code && (
-                      <span className="text-blue-700 dark:text-blue-300 text-xs">
-                        Vibra: {selectedEmpresa.vibra_code}
-                      </span>
-                    )}
-                    {selectedEmpresa.ipp_code && (
-                      <span className="text-blue-700 dark:text-blue-300 text-xs">
-                        IPP: {selectedEmpresa.ipp_code}
-                      </span>
-                    )}
-                  </div>
-                  {selectedEmpresa.cnpj_cpf && (
-                    <p className="text-xs text-blue-600 dark:text-blue-400 font-mono">
-                      CNPJ: {selectedEmpresa.cnpj_cpf}
-                    </p>
-                  )}
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleClear}
-                className="h-6 w-6 p-0 text-blue-600 hover:text-blue-800 hover:bg-blue-100 dark:text-blue-400 dark:hover:text-blue-200"
-              >
-                <X className="h-3 w-3" />
-              </Button>
+        <div className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg group">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-1.5 bg-blue-50 dark:bg-blue-900/40 rounded-md text-blue-600 dark:text-blue-400">
+              <Building2 className="h-4 w-4" />
             </div>
-          </CardContent>
-        </Card>
+            <div className="flex flex-col min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">
+                  {selectedEmpresa.nome_empresa}
+                </span>
+                {selectedEmpresa.bandeira && (
+                  <Badge variant="outline" className="bg-blue-600 text-white border-transparent text-[9px] h-4 px-1.5 font-bold uppercase tracking-tight">
+                    {selectedEmpresa.bandeira}
+                  </Badge>
+                )}
+              </div>
+              {selectedEmpresa.cnpj_cpf && (
+                <span className="text-[10px] text-slate-500 font-mono">
+                  {selectedEmpresa.cnpj_cpf}
+                </span>
+              )}
+            </div>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleClear}
+            className="h-7 w-7 text-slate-400 hover:text-red-500 rounded-md flex-shrink-0"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
       ) : (
         /* Search Input */
         <div className="relative">
@@ -321,8 +291,8 @@ export const SisEmpresaCombobox = ({
 
           {/* Overlay to close dropdown */}
           {isOpen && (
-            <div 
-              className="fixed inset-0 z-40" 
+            <div
+              className="fixed inset-0 z-40"
               onClick={() => setIsOpen(false)}
             />
           )}
