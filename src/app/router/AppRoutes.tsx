@@ -149,7 +149,7 @@ export function AppRoutes() {
           path="/quotations"
           element={
             <ProtectedRoute>
-              <AppRoute permission="price_request">
+              <AppRoute permission="quotations">
                 <Quotations />
               </AppRoute>
             </ProtectedRoute>
@@ -159,9 +159,8 @@ export function AppRoutes() {
           path="/approval-details/:id"
           element={
             <ProtectedRoute>
-              <AppRoute permission="approvals">
-                <ApprovalDetails />
-              </AppRoute>
+              {/* No AppRoute here to allow both Approvers and Requesters to view */}
+              <ApprovalDetails />
             </ProtectedRoute>
           }
         />
@@ -199,7 +198,7 @@ export function AppRoutes() {
           path="/portfolio-manager"
           element={
             <ProtectedRoute>
-              <AppRoute permission="price_history">
+              <AppRoute permission="portfolio_manager">
                 <PortfolioManager />
               </AppRoute>
             </ProtectedRoute>
@@ -307,7 +306,7 @@ export function AppRoutes() {
           path="/mapa-contatos"
           element={
             <ProtectedRoute>
-              <AppRoute permission="price_request">
+              <AppRoute permission="mapa_contatos">
                 <MapaContatos />
               </AppRoute>
             </ProtectedRoute>
@@ -317,7 +316,7 @@ export function AppRoutes() {
           path="/variations"
           element={
             <ProtectedRoute>
-              <AppRoute permission="price_request">
+              <AppRoute permission="variations">
                 <Variations />
               </AppRoute>
             </ProtectedRoute>
@@ -327,8 +326,9 @@ export function AppRoutes() {
           path="/financial/review"
           element={
             <ProtectedRoute>
-              {/* Permission check: reuse an existing or add new one. Using admin for now via layout logic */}
-              <DocumentReview />
+              <AppRoute permission="financial_review">
+                <DocumentReview />
+              </AppRoute>
             </ProtectedRoute>
           }
         />

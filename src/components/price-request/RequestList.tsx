@@ -713,7 +713,7 @@ export function RequestList({ filterStatus }: RequestListProps) {
                         <RequestsTableView
                             requests={filteredRequests}
                             onDelete={(id) => handleDeleteRequest(id)}
-                            onView={(request) => navigate(`/solicitacao-preco/${request.id}`)}
+                            onView={(request) => navigate(`/approval-details/${request.id}`)}
                             onAcceptSuggestion={async (id) => {
                                 try {
                                     await acceptSuggestedPrice(id);

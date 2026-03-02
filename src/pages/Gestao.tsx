@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { Search, Edit, Save, Package, Plus, RefreshCcw } from 'lucide-react';
 import { usePermissions } from '@/hooks/usePermissions';
+import { removeCache } from '@/lib/cache';
 import {
   Dialog,
   DialogContent,
@@ -31,7 +32,7 @@ import {
 
 interface Station {
   id: number;
-  id_empresa?: string;
+  id_empresa: string; // Tornando obrigatório já que o RPC retorna
   cnpj_cpf?: string;
   nome_empresa: string;
   brinde_enabled?: boolean;
@@ -48,7 +49,7 @@ interface PaymentMethod {
   CARTAO: string;
   TAXA: number;
   PRAZO: string;
-  ID_POSTO: number;
+  ID_POSTO: number | string;
 }
 
 export default function Gestao() {
@@ -273,6 +274,8 @@ export default function Gestao() {
       toast.success('Método de pagamento atualizado com sucesso!');
       setEditPaymentMethodDialogOpen(false);
       setSelectedPaymentMethod(null);
+      // Limpar cache de postos para que Approvals veja as mudanças (caso ID_POSTO tenha mudado ou algo assim)
+      removeCache('stations-data');
       loadPaymentMethods();
     } catch (error) {
       console.error('Erro ao atualizar método de pagamento:', error);
@@ -280,10 +283,10 @@ export default function Gestao() {
     }
   };
 
-  // Obter nome do posto pelo ID_POSTO
+  // Obter nome do posto pelo ID_POSTO (id_empresa)
   const getStationName = (idPosto: number | string) => {
     const station = stations.find(s =>
-      String(s.id_empresa || s.id) === String(idPosto)
+      String(s.id_empresa) === String(idPosto)
     );
     return station?.nome_empresa || `Posto ${idPosto}`;
   };
@@ -331,12 +334,14 @@ export default function Gestao() {
           brinde_enabled: brindeEnabled,
           brinde_value: parseFloat(brindeValue) || 0
         })
-        .eq('id', editStation.id);
+        .eq('id_empresa', editStation.id_empresa);
 
       if (error) throw error;
 
       toast.success('Brinde atualizado com sucesso!');
       setEditDialogOpen(false);
+      // Limpar cache de postos para garantir que os brindes nos cards sejam atualizados
+      removeCache('stations-data');
       loadStations();
     } catch (error) {
       console.error('Erro ao salvar brinde:', error);
@@ -403,7 +408,7 @@ export default function Gestao() {
         let errorCount = 0;
 
         for (const data of insertData) {
-          // Verificar se já existe
+          /* Remover trava de duplicidade para permitir múltiplas taxas 
           const { data: existing } = await supabase
             .from('tipos_pagamento')
             .select('CARTAO')
@@ -414,18 +419,18 @@ export default function Gestao() {
           if (existing) {
             console.log('Já existe:', data);
             errorCount++;
-          } else {
-            const { error } = await supabase
-              .from('tipos_pagamento')
-              .insert(data);
+          } else { */
+          const { error } = await supabase
+            .from('tipos_pagamento')
+            .insert(data);
 
-            if (error) {
-              console.error('Erro ao inserir:', data, error);
-              errorCount++;
-            } else {
-              successCount++;
-            }
+          if (error) {
+            console.error('Erro ao inserir:', data, error);
+            errorCount++;
+          } else {
+            successCount++;
           }
+          // }
         }
 
         if (errorCount > 0 && successCount === 0) {
@@ -437,7 +442,7 @@ export default function Gestao() {
         }
       } else {
         // Inserir para um posto específico
-        const selectedStation = stations.find(s => s.id.toString() === newPaymentPostoId);
+        const selectedStation = stations.find(s => String(s.id_empresa) === newPaymentPostoId);
         const idPosto = selectedStation?.id_empresa || newPaymentPostoId;
 
         console.log('Inserindo dados:', {
@@ -447,7 +452,7 @@ export default function Gestao() {
           ID_POSTO: String(idPosto)
         });
 
-        // Verificar se já existe
+        /* Remover trava de duplicidade para permitir múltiplas taxas
         const { data: existing } = await supabase
           .from('tipos_pagamento')
           .select('CARTAO')
@@ -458,7 +463,7 @@ export default function Gestao() {
         if (existing) {
           toast.error('Este tipo de pagamento já existe para este posto');
           return;
-        }
+        } */
 
         const { error } = await supabase
           .from('tipos_pagamento')
@@ -484,6 +489,7 @@ export default function Gestao() {
       setNewPaymentPrazo('');
       setNewPaymentPostoId('');
       setApplyToAllStations(false);
+      removeCache('stations-data');
       loadPaymentMethods();
     } catch (error) {
       console.error('Erro ao adicionar tipo de pagamento:', error);
@@ -565,9 +571,9 @@ export default function Gestao() {
                       </div>
                     ) : (
                       <div className="space-y-2">
-                        {filteredStations.map((station) => (
+                        {filteredStations.map((station, idx) => (
                           <div
-                            key={station.id}
+                            key={`station-card-${station.id_empresa}-${station.cnpj_cpf}-${idx}`}
                             className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent transition-colors"
                           >
                             <div className="flex items-center gap-4 flex-1">
@@ -652,9 +658,9 @@ export default function Gestao() {
                       </div>
                     ) : (
                       <div className="space-y-2">
-                        {filteredClients.map((client) => (
+                        {filteredClients.map((client, idx) => (
                           <div
-                            key={client.id_cliente}
+                            key={`client-card-${client.id_cliente}-${idx}`}
                             className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent transition-colors cursor-pointer"
                             onClick={() => openClientDetails(client)}
                           >
@@ -716,9 +722,9 @@ export default function Gestao() {
                       </div>
                     ) : (
                       <div className="space-y-2">
-                        {filteredPaymentMethods.map((pm) => (
+                        {filteredPaymentMethods.map((pm, idx) => (
                           <div
-                            key={pm.id}
+                            key={`pm-card-${pm.id}-${pm.ID_POSTO}-${pm.CARTAO}-${idx}`}
                             className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent transition-colors"
                           >
                             <div className="flex items-center gap-4 flex-1">
@@ -940,9 +946,9 @@ export default function Gestao() {
                       </SelectTrigger>
                       <SelectContent>
                         {stations.map((station, index) => {
-                          const key = station.id || station.cnpj_cpf || index;
+                          const keyValue = `station-opt-${station.id_empresa || index}`;
                           return (
-                            <SelectItem key={key} value={String(station.id)}>
+                            <SelectItem key={keyValue} value={String(station.id_empresa)}>
                               {station.nome_empresa} {station.cnpj_cpf ? `(${station.cnpj_cpf})` : ''}
                             </SelectItem>
                           );

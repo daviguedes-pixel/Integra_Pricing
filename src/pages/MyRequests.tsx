@@ -15,7 +15,8 @@ import {
   Edit,
   Trash2,
   RefreshCcw,
-  Zap
+  Zap,
+  User
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
@@ -655,11 +656,17 @@ export default function MyRequests() {
                   <div key={request.id} className="p-4 bg-gradient-to-r from-white to-slate-50 dark:from-card dark:to-secondary rounded-xl border border-slate-200 dark:border-border hover:shadow-lg transition-all duration-300">
                     <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                       <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
+                        <div className="flex items-center gap-3 mb-2 flex-wrap">
                           <span className="font-semibold text-slate-800 dark:text-slate-200">
                             {request.stations?.name || (request.station_id ? `Posto (${String(request.station_id).substring(0, 8)}...)` : 'Posto não informado')} - {request.clients?.name || (request.client_id ? `Cliente (${String(request.client_id).substring(0, 8)}...)` : 'Cliente não informado')}
                           </span>
                           {getStatusBadge(request.status)}
+                          {request.status === 'pending' && request.current_approver_name && (
+                            <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700 ml-2">
+                              <User className="h-3 w-3 mr-1" />
+                              Com: {request.current_approver_name}
+                            </Badge>
+                          )}
                         </div>
 
                         <div className="space-y-2">

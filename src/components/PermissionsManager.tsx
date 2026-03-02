@@ -16,11 +16,24 @@ interface ProfilePermission {
   price_history: boolean;
   reference_registration: boolean;
   admin: boolean;
+  station_management: boolean;
+  client_management: boolean;
+  tax_management: boolean;
+  audit_logs: boolean;
+  approval_margin_config: boolean;
   settings: boolean;
   gestao: boolean;
   gestao_stations: boolean;
   gestao_clients: boolean;
   gestao_payment_methods: boolean;
+  portfolio_manager: boolean;
+  variations: boolean;
+  quotations: boolean;
+  mapa_contatos: boolean;
+  cargas: boolean;
+  nfs_incorretas: boolean;
+  paridade: boolean;
+  financial_review: boolean;
   can_approve: boolean;
   can_register: boolean;
   can_edit: boolean;
@@ -54,7 +67,15 @@ const abas = [
   { label: 'Config. Margem Aprovação', key: 'approval_margin_config' },
   { label: 'Administração', key: 'admin' },
   { label: 'Configurações', key: 'settings' },
-  { label: 'Gestão Geral', key: 'gestao' }
+  { label: 'Gestão Geral', key: 'gestao' },
+  { label: 'Gestor de Carteiras', key: 'portfolio_manager' },
+  { label: 'Variações', key: 'variations' },
+  { label: 'Cotações (Trading)', key: 'quotations' },
+  { label: 'Mapa de Contatos', key: 'mapa_contatos' },
+  { label: 'Cargas', key: 'cargas' },
+  { label: 'NFs Incorretas', key: 'nfs_incorretas' },
+  { label: 'Paridade', key: 'paridade' },
+  { label: 'Revisão Financeira', key: 'financial_review' }
 ];
 
 const subabasGestao = [
@@ -114,6 +135,14 @@ export function PermissionsManager() {
           gestao_stations: false,
           gestao_clients: false,
           gestao_payment_methods: false,
+          portfolio_manager: false,
+          variations: false,
+          quotations: false,
+          mapa_contatos: false,
+          cargas: false,
+          nfs_incorretas: false,
+          paridade: false,
+          financial_review: false,
           can_approve: false,
           can_register: false,
           can_edit: false,
@@ -164,6 +193,14 @@ export function PermissionsManager() {
         gestao_stations: false,
         gestao_clients: false,
         gestao_payment_methods: false,
+        portfolio_manager: false,
+        variations: false,
+        quotations: false,
+        mapa_contatos: false,
+        cargas: false,
+        nfs_incorretas: false,
+        paridade: false,
+        financial_review: false,
         can_approve: false,
         can_register: false,
         can_edit: false,

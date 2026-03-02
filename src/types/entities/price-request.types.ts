@@ -151,6 +151,7 @@ export type ProposalItem = ProposalBatch | EnrichedPriceRequest;
 
 /** Método de pagamento do posto */
 export interface StationPaymentMethod {
+    id?: number | string;
     CARTAO: string;
     TAXA?: number;
     PRAZO?: number | string;

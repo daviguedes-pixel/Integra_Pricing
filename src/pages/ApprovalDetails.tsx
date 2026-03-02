@@ -37,7 +37,8 @@ import {
     appealPriceRequest,
     acceptSuggestedPrice
 } from "@/api/priceRequestsApi";
-import { parseBrazilianDecimal, formatNameFromEmail } from "@/lib/utils";
+import { parseBrazilianDecimal, formatNameFromEmail, formatCurrency } from "@/lib/utils";
+import { formatPrice4Decimals } from "@/lib/pricing-utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -710,7 +711,7 @@ export default function ApprovalDetails() {
                             )}
                         </div>
                         <div className={`text-2xl font-bold mt-1 tracking-tight ${(metrics?.margin || 0) < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                            {formatCurrency(metrics?.margin)}
+                            {formatPrice4Decimals(metrics?.margin)}
                         </div>
                     </div>
                 </div>
@@ -739,7 +740,7 @@ export default function ApprovalDetails() {
                                                 {suggestion.station_municipio ? `${suggestion.station_municipio} / ${suggestion.station_uf || ''}` : suggestion.price_origin_base ? `Base: ${suggestion.price_origin_base}` : 'Origem não inf.'}
                                             </div>
                                         </td>
-                                        <td className="py-4 px-2 text-right font-medium">{formatCurrency(metrics?.purchaseCost)}</td>
+                                        <td className="py-4 px-2 text-right font-medium">{formatPrice4Decimals(metrics?.purchaseCost)}</td>
                                         <td className="py-4 px-2 text-right text-slate-400">
                                             {formatCurrency((metrics?.purchaseCost || 0) * (metrics?.volumeL || 0))}
                                             {/* Note: This total is simplified, could vary if volume is m3 vs L. purchaseCost usually per Liter */}
@@ -749,7 +750,7 @@ export default function ApprovalDetails() {
                                     {/* Frete */}
                                     <tr>
                                         <td className="py-3 px-2 text-slate-600 font-medium">Frete</td>
-                                        <td className="py-3 px-2 text-right font-medium">{formatCurrency(metrics?.freightCost)}</td>
+                                        <td className="py-3 px-2 text-right font-medium">{formatPrice4Decimals(metrics?.freightCost)}</td>
                                         <td className="py-3 px-2 text-right text-slate-400">
                                             {formatCurrency((metrics?.freightCost || 0) * (metrics?.volumeL || 0))}
                                         </td>
@@ -768,7 +769,7 @@ export default function ApprovalDetails() {
 
                                     <tr className="bg-slate-50/50 border-t-2 border-slate-100">
                                         <td className="py-3 px-2 font-bold text-slate-900 uppercase text-[10px]">Custo Final (Combustível)</td>
-                                        <td className="py-3 px-2 text-right font-bold text-slate-900">{formatCurrency(metrics?.finalCost)}</td>
+                                        <td className="py-3 px-2 text-right font-bold text-slate-900">{formatPrice4Decimals(metrics?.finalCost)}</td>
                                         <td className="py-3 px-2 text-right font-bold text-slate-900 text-xs">
                                             {formatCurrency((metrics?.finalCost || 0) * (metrics?.volumeL || 0))}
                                         </td>
@@ -792,7 +793,7 @@ export default function ApprovalDetails() {
 
                                     <tr className="bg-slate-900 text-white shadow-lg">
                                         <td className="py-3 px-4 font-bold rounded-l-md tracking-tight uppercase text-[10px]">Preço Sugerido (Venda)</td>
-                                        <td className="py-3 px-2 text-right font-bold">{formatCurrency(metrics?.suggestedPrice)}</td>
+                                        <td className="py-3 px-2 text-right font-bold">{formatPrice4Decimals(metrics?.suggestedPrice)}</td>
                                         <td className="py-3 px-4 text-right font-bold rounded-r-md">
                                             {formatCurrency((metrics?.suggestedPrice || 0) * (metrics?.volumeL || 0))}
                                         </td>
@@ -849,7 +850,7 @@ export default function ApprovalDetails() {
                                     <span className={`font-bold ${(metrics?.totalFuelMargin || 0) < 0 ? 'text-red-600' : 'text-slate-800'}`}>
                                         {formatCurrency(metrics?.totalFuelMargin)}
                                     </span>
-                                    <span className="text-[10px] text-slate-400 ml-2">{((metrics?.volumeL || 0) / 1000).toLocaleString('pt-BR')} m³ × {formatCurrency(metrics?.margin)}/L</span>
+                                    <span className="text-[10px] text-slate-400 ml-2">{((metrics?.volumeL || 0) / 1000).toLocaleString('pt-BR')} m³ × {formatPrice4Decimals(metrics?.margin)}/L</span>
                                 </div>
                             </div>
                             {(metrics?.arlaPrice || 0) > 0 && (
@@ -859,7 +860,7 @@ export default function ApprovalDetails() {
                                         <span className={`font-bold ${(metrics?.totalArlaMargin || 0) < 0 ? 'text-red-600' : 'text-slate-800'}`}>
                                             {formatCurrency(metrics?.totalArlaMargin)}
                                         </span>
-                                        <span className="text-[10px] text-slate-400 ml-2">{(metrics?.arlaVolumeM3 || 0).toFixed(2)} m³ × {formatCurrency(metrics?.arlaMargin)}/L</span>
+                                        <span className="text-[10px] text-slate-400 ml-2">{(metrics?.arlaVolumeM3 || 0).toFixed(2)} m³ × {formatPrice4Decimals(metrics?.arlaMargin)}/L</span>
                                     </div>
                                 </div>
                             )}

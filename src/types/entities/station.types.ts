@@ -13,6 +13,8 @@ export interface Station {
   address?: string;
   city?: string;
   state?: string;
+  municipio?: string;
+  uf?: string;
   active: boolean;
 }
 
@@ -21,6 +23,7 @@ export interface StationWithPayments extends Station {
 }
 
 export interface PaymentMethod {
+  id?: number | string;
   ID_POSTO?: string;
   POSTO?: string;
   CARTAO: string;

@@ -24,8 +24,8 @@ WITH params AS (
 product_classifier AS (
     SELECT * FROM (VALUES 
         ('ET', ARRAY['%ETANOL%', '%ETANOL%COMUM%', '%ETANOL%ADITIVADO%', '%EC%', '%EA%']),
-        ('GC', ARRAY['%GASOLINA%COMUM%', '%GASOLINA C%', '%GC%', '%GASOLINA%TIPO%C%', '%GASOLINA%ORIGINAL%']),
-        ('GA', ARRAY['%GASOLINA%ADITIVADA%', '%GASOLINA A%', '%GA%', '%GASOLINA%PREMIUM%', '%GASOLINA%ORIGINAL%ADITIVADA%', '%DT%CLEAN%']),
+        ('GC', ARRAY['%GASOLINA%COMUM%', '%GASOLINA C%', '%GC%', '%GASOLINA%TIPO%C%']),
+        ('GA', ARRAY['%GASOLINA%ADITIVADA%', '%GASOLINA A%', '%GA%', '%GASOLINA%PREMIUM%', '%GASOLINA%ORIGINAL%ADITIVADA%', '%GASOLINA%ORIGINAL%', '%DT%CLEAN%']),
         ('S10', ARRAY['%DIESEL%S10%', '%S10%']),
         ('S500', ARRAY['%DIESEL%S500%', '%S500%', '%OLEO%DIESEL%B%S500%'])
     ) AS t(categoria, wildcards)
@@ -117,8 +117,8 @@ WITH params AS (
 product_classifier AS (
     SELECT * FROM (VALUES 
         ('ET', ARRAY['%ETANOL%', '%ETANOL%COMUM%', '%ETANOL%ADITIVADO%', '%EC%', '%EA%']),
-        ('GC', ARRAY['%GASOLINA%COMUM%', '%GASOLINA C%', '%GC%', '%GASOLINA%TIPO%C%', '%GASOLINA%ORIGINAL%']),
-        ('GA', ARRAY['%GASOLINA%ADITIVADA%', '%GASOLINA A%', '%GA%', '%GASOLINA%PREMIUM%', '%GASOLINA%ORIGINAL%ADITIVADA%', '%DT%CLEAN%']),
+        ('GC', ARRAY['%GASOLINA%COMUM%', '%GASOLINA C%', '%GC%', '%GASOLINA%TIPO%C%']),
+        ('GA', ARRAY['%GASOLINA%ADITIVADA%', '%GASOLINA A%', '%GA%', '%GASOLINA%PREMIUM%', '%GASOLINA%ORIGINAL%ADITIVADA%', '%GASOLINA%ORIGINAL%', '%DT%CLEAN%']),
         ('S10', ARRAY['%DIESEL%S10%', '%S10%']),
         ('S500', ARRAY['%DIESEL%S500%', '%S500%', '%OLEO%DIESEL%B%S500%'])
     ) AS t(categoria, wildcards)
@@ -139,18 +139,18 @@ all_companies AS (
     WHERE (pa.filter_uf_posto IS NULL OR se.uf = pa.filter_uf_posto)
 ),
 company_prices AS (
-    -- A. BANDEIRA BRANCA: Spot
+    -- A. BANDEIRA BRANCA: Spot (mostrando cada empresa individualmente)
     SELECT DISTINCT
-        0 as id_empresa,
+        ac.id_empresa,
         COALESCE(bf.nome, '--') as base_origem,
         COALESCE(bf.uf, '--') as uf_origem,
         COALESCE(gf.nome, 'MERCADO SPOT') as distribuidora_nome,
         pc.categoria as produto_cat,
         (cg.valor_unitario - COALESCE(cg.desconto_valor, 0)) as fob_price,
-        COALESCE(gf.nome, 'MERCADO SPOT') as nome_empresa,
-        'BRANCA' as bandeira,
-        '--' as uf_posto,
-        '--' as municipio_posto
+        ac.nome_empresa,
+        COALESCE(ac.bandeira, 'BRANCA') as bandeira,
+        ac.uf_posto,
+        ac.municipio_posto
     FROM all_companies ac
     CROSS JOIN params pa
     JOIN cotacao.base_fornecedor bf ON bf.uf::text = ac.uf_posto::text
@@ -383,18 +383,37 @@ serve(async (req: Request) => {
             let filterQuery = '';
             if (view === 'market') {
                 filterQuery = `
-          WITH params AS(SELECT $1:: date as data_ref)
-          SELECT DISTINCT
-COALESCE(bf.uf, '--') || '/' || COALESCE(se.uf, '--') as praca,
-    COALESCE(bf.nome, '--') as base_origem
-          FROM cotacao.sis_empresa se
-          JOIN cotacao.frete_empresa fe ON fe.id_empresa:: text = se.id_empresa:: text
-          JOIN cotacao.base_fornecedor bf ON bf.id_base_fornecedor:: text = fe.id_base_fornecedor:: text
-          JOIN cotacao.cotacao_geral_combustivel cg ON cg.id_base_fornecedor:: text = bf.id_base_fornecedor:: text
-          CROSS JOIN params pa
-          WHERE fe.registro_ativo = true
-            AND DATE(cg.data_cotacao) = pa.data_ref
-            AND UPPER(TRIM(cg.forma_entrega)) = 'FOB'
+          WITH params AS(SELECT $1::date as data_ref)
+          SELECT DISTINCT praca, base_origem FROM (
+            -- Spot (cotacao_geral)
+            SELECT DISTINCT
+              COALESCE(bf.uf, '--') || '/' || COALESCE(se.uf, '--') as praca,
+              COALESCE(bf.nome, '--') as base_origem
+            FROM cotacao.sis_empresa se
+            JOIN cotacao.frete_empresa fe ON fe.id_empresa::text = se.id_empresa::text
+            JOIN cotacao.base_fornecedor bf ON bf.id_base_fornecedor::text = fe.id_base_fornecedor::text
+            JOIN cotacao.cotacao_geral_combustivel cg ON cg.id_base_fornecedor::text = bf.id_base_fornecedor::text
+            CROSS JOIN params pa
+            WHERE fe.registro_ativo = true
+              AND DATE(cg.data_cotacao) = pa.data_ref
+              AND UPPER(TRIM(cg.forma_entrega)) = 'FOB'
+
+            UNION
+
+            -- Bandeirados (cotacao_combustivel)
+            SELECT DISTINCT
+              COALESCE(bf.uf, '--') || '/' || COALESCE(se.uf, '--') as praca,
+              COALESCE(bf.nome, '--') as base_origem
+            FROM cotacao.sis_empresa se
+            JOIN cotacao.frete_empresa fe ON fe.id_empresa::text = se.id_empresa::text
+            JOIN cotacao.base_fornecedor bf ON bf.id_base_fornecedor::text = fe.id_base_fornecedor::text
+            JOIN cotacao.cotacao_combustivel cc ON cc.id_empresa::text = se.id_empresa::text AND cc.id_base_fornecedor::text = bf.id_base_fornecedor::text
+            CROSS JOIN params pa
+            WHERE fe.registro_ativo = true
+              AND DATE(cc.data_cotacao) = pa.data_ref
+              AND UPPER(TRIM(cc.forma_entrega)) = 'FOB'
+              AND NOT (se.bandeira IS NULL OR TRIM(se.bandeira) = '' OR UPPER(TRIM(se.bandeira)) LIKE '%BRANCA%')
+          ) sub
           ORDER BY praca, base_origem
     `;
             } else {
@@ -429,6 +448,82 @@ COALESCE(bf.uf, '--') || '/' || COALESCE(ac.uf, '--') as praca,
     `;
             }
             result = await client.queryObject(filterQuery, [dateRef])
+        } else if (action === 'previous_prices') {
+            // Busca o último preço antes da data selecionada para cada distribuidora/base/produto
+            const prevQuery = `
+            WITH params AS (
+                SELECT $1::date as data_ref
+            ),
+            product_classifier AS (
+                SELECT * FROM (VALUES 
+                    ('ET', ARRAY['%ETANOL%', '%ETANOL%COMUM%', '%ETANOL%ADITIVADO%', '%EC%', '%EA%']),
+                    ('GC', ARRAY['%GASOLINA%COMUM%', '%GASOLINA C%', '%GC%', '%GASOLINA%TIPO%C%']),
+                    ('GA', ARRAY['%GASOLINA%ADITIVADA%', '%GASOLINA A%', '%GA%', '%GASOLINA%PREMIUM%', '%GASOLINA%ORIGINAL%ADITIVADA%', '%GASOLINA%ORIGINAL%', '%DT%CLEAN%']),
+                    ('S10', ARRAY['%DIESEL%S10%', '%S10%']),
+                    ('S500', ARRAY['%DIESEL%S500%', '%S500%', '%OLEO%DIESEL%B%S500%'])
+                ) AS t(categoria, wildcards)
+            ),
+            all_prev AS (
+                -- Spot
+                SELECT 
+                    COALESCE(bf.nome, '--') as base_origem,
+                    COALESCE(bf.uf, '--') as uf_origem,
+                    COALESCE(gf.nome, 'MERCADO SPOT') as distribuidora,
+                    pc.categoria as produto_cat,
+                    (cg.valor_unitario - COALESCE(cg.desconto_valor, 0)) as fob_price,
+                    DATE(cg.data_cotacao) as data_cotacao,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY bf.nome, bf.uf, COALESCE(gf.nome, 'MERCADO SPOT'), pc.categoria
+                        ORDER BY cg.data_cotacao DESC
+                    ) as rn
+                FROM cotacao.base_fornecedor bf
+                LEFT JOIN cotacao.grupo_fornecedor gf ON gf.id_grupo_fornecedor::text = bf.id_grupo_fornecedor::text
+                JOIN cotacao.cotacao_geral_combustivel cg ON cg.id_base_fornecedor::text = bf.id_base_fornecedor::text
+                JOIN cotacao.grupo_codigo_item gci ON cg.id_grupo_codigo_item::text = gci.id_grupo_codigo_item::text
+                JOIN product_classifier pc ON gci.nome ILIKE ANY(pc.wildcards)
+                CROSS JOIN params pa
+                WHERE DATE(cg.data_cotacao) < pa.data_ref
+                  AND UPPER(TRIM(cg.forma_entrega)) = 'FOB'
+
+                UNION ALL
+
+                -- Bandeirados
+                SELECT 
+                    COALESCE(bf.nome, '--') as base_origem,
+                    COALESCE(bf.uf, '--') as uf_origem,
+                    COALESCE(se.bandeira, 'OUTROS') as distribuidora,
+                    pc.categoria as produto_cat,
+                    (cc.valor_unitario - COALESCE(cc.desconto_valor, 0)) as fob_price,
+                    DATE(cc.data_cotacao) as data_cotacao,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY bf.nome, bf.uf, COALESCE(se.bandeira, 'OUTROS'), pc.categoria
+                        ORDER BY cc.data_cotacao DESC
+                    ) as rn
+                FROM cotacao.sis_empresa se
+                JOIN cotacao.frete_empresa fe ON fe.id_empresa::text = se.id_empresa::text
+                JOIN cotacao.base_fornecedor bf ON bf.id_base_fornecedor::text = fe.id_base_fornecedor::text
+                JOIN cotacao.cotacao_combustivel cc ON cc.id_empresa::text = se.id_empresa::text AND cc.id_base_fornecedor::text = bf.id_base_fornecedor::text
+                JOIN cotacao.grupo_codigo_item gci ON cc.id_grupo_codigo_item::text = gci.id_grupo_codigo_item::text
+                JOIN product_classifier pc ON gci.nome ILIKE ANY(pc.wildcards)
+                CROSS JOIN params pa
+                WHERE fe.registro_ativo = true
+                  AND DATE(cc.data_cotacao) < pa.data_ref
+                  AND UPPER(TRIM(cc.forma_entrega)) = 'FOB'
+                  AND NOT (se.bandeira IS NULL OR TRIM(se.bandeira) = '' OR UPPER(TRIM(se.bandeira)) LIKE '%BRANCA%')
+            )
+            SELECT 
+                base_origem as "Base Origem",
+                uf_origem as "UF Origem",
+                distribuidora as "Distribuidora",
+                produto_cat as "Produto",
+                TO_CHAR(fob_price, 'FMR$ 99.0000') as "Preco",
+                fob_price as "Valor",
+                data_cotacao as "Data"
+            FROM all_prev
+            WHERE rn = 1
+            ORDER BY distribuidora, base_origem, produto_cat
+            `;
+            result = await client.queryObject(prevQuery, [dateRef])
         }
 
         await client.end()

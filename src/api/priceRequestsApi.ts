@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { ApprovalWithRelations, ApprovalFilters } from "@/types";
+import { isValidUUID } from "@/lib/pricing-utils";
 
 // Types
 export interface PriceRequestFilters extends Omit<ApprovalFilters, 'onlyMyApprovals'> {
@@ -267,6 +268,11 @@ export async function sendBatchForApproval(ids: string[], batchName?: string): P
 
 // Approve price request
 export async function approvePriceRequest(id: string, observations?: string): Promise<any> {
+  if (!isValidUUID(id)) {
+    console.error(`[approvePriceRequest] ID inválido para RPC: "${id}"`);
+    throw new Error(`ID de solicitação inválido: "${id}". Um UUID era esperado.`);
+  }
+
   const { data, error } = await supabase.rpc('approve_price_request', {
     p_request_id: id,
     p_observations: observations
@@ -280,6 +286,11 @@ export async function approvePriceRequest(id: string, observations?: string): Pr
 
 // Reject price request
 export async function rejectPriceRequest(id: string, observations: string): Promise<any> {
+  if (!isValidUUID(id)) {
+    console.error(`[rejectPriceRequest] ID inválido para RPC: "${id}"`);
+    throw new Error(`ID de solicitação inválido: "${id}". Um UUID era esperado.`);
+  }
+
   const { data, error } = await supabase.rpc('reject_price_request', {
     p_request_id: id,
     p_observations: observations
@@ -298,6 +309,11 @@ export async function suggestPriceRequest(
   observations?: string,
   arlaPrice?: number
 ): Promise<any> {
+  if (!isValidUUID(id)) {
+    console.error(`[suggestPriceRequest] ID inválido para RPC: "${id}"`);
+    throw new Error(`ID de solicitação inválido: "${id}". Um UUID era esperado.`);
+  }
+
   const { data, error } = await supabase.rpc('suggest_price_request', {
     p_request_id: id,
     p_suggested_price: suggestedPrice,
@@ -311,6 +327,11 @@ export async function suggestPriceRequest(
 
 // Request justification from requester
 export async function requestJustification(id: string, observations: string): Promise<any> {
+  if (!isValidUUID(id)) {
+    console.error(`[requestJustification] ID inválido para RPC: "${id}"`);
+    throw new Error(`ID de solicitação inválido: "${id}". Um UUID era esperado.`);
+  }
+
   const { data, error } = await supabase.rpc('request_justification', {
     p_request_id: id,
     p_observations: observations
@@ -326,6 +347,11 @@ export async function requestEvidence(
   product: 'principal' | 'arla',
   observations?: string
 ): Promise<any> {
+  if (!isValidUUID(id)) {
+    console.error(`[requestEvidence] ID inválido para RPC: "${id}"`);
+    throw new Error(`ID de solicitação inválido: "${id}". Um UUID era esperado.`);
+  }
+
   const { data, error } = await supabase.rpc('request_evidence', {
     p_request_id: id,
     p_product: product,
@@ -338,6 +364,11 @@ export async function requestEvidence(
 
 // Requester provides justification
 export async function provideJustification(id: string, justification: string): Promise<any> {
+  if (!isValidUUID(id)) {
+    console.error(`[provideJustification] ID inválido para RPC: "${id}"`);
+    throw new Error(`ID de solicitação inválido: "${id}". Um UUID era esperado.`);
+  }
+
   const { data, error } = await supabase.rpc('provide_justification', {
     p_request_id: id,
     p_justification: justification
@@ -353,6 +384,13 @@ export async function provideEvidence(
   attachmentUrl: string,
   observations?: string
 ): Promise<any> {
+  console.warn(`[provideEvidence] Enviando para ID: "${id}"`);
+
+  if (!isValidUUID(id)) {
+    console.error(`[provideEvidence] ID inválido detectado. Abortando chamada RPC. ID: "${id}"`);
+    throw new Error(`ID de solicitação inválido: "${id}". Operação cancelada para evitar erro de banco de dados.`);
+  }
+
   const { data, error } = await supabase.rpc('provide_evidence', {
     p_request_id: id,
     p_attachment_url: attachmentUrl,
@@ -370,6 +408,11 @@ export async function appealPriceRequest(
   observations?: string,
   arlaPrice?: number
 ): Promise<any> {
+  if (!isValidUUID(id)) {
+    console.error(`[appealPriceRequest] ID inválido para RPC: "${id}"`);
+    throw new Error(`ID de solicitação inválido: "${id}". Um UUID era esperado.`);
+  }
+
   const { data, error } = await supabase.rpc('appeal_price_request', {
     p_request_id: id,
     p_new_price: newPrice,
@@ -383,6 +426,10 @@ export async function appealPriceRequest(
 
 // Requester accepts a suggested price
 export async function acceptSuggestedPrice(id: string, observations?: string): Promise<any> {
+  if (!isValidUUID(id)) {
+    throw new Error(`ID de solicitação inválido: "${id}"`);
+  }
+
   const { data, error } = await supabase.rpc('accept_suggested_price', {
     p_request_id: id,
     p_observations: observations || null

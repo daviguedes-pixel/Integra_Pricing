@@ -870,10 +870,47 @@ export default function Approvals() {
           : null;
 
         // Buscar tipo de pagamento
-        const paymentMethod = paymentMethodsRes.data?.find((pm: any) =>
-          pm.CARTAO === suggestion.payment_method_id ||
-          String(pm.ID_POSTO) === String(suggestion.payment_method_id)
-        );
+        // Priorizar busca por Posto E Cartão, depois Generico e depois all
+        // Incluir cnpj_cpf como fallback caso id_empresa e id sejam nulos
+        const stationLegacyId = station?.id_empresa || station?.id || station?.cnpj_cpf;
+
+        let paymentMethod = null;
+        if (suggestion.payment_method_id) {
+          const pmid = suggestion.payment_method_id;
+
+          // 1. Posto específico
+          if (stationLegacyId) {
+            paymentMethod = paymentMethodsRes.data?.find((pm: any) =>
+              (String(pm.id) === String(pmid)) || (
+                (String(pm.ID_POSTO).trim() === String(stationLegacyId).trim()) &&
+                String(pm.CARTAO).trim().toUpperCase() === String(pmid).trim().toUpperCase()
+              )
+            );
+          }
+
+          // 2. GENERICO
+          if (!paymentMethod) {
+            paymentMethod = paymentMethodsRes.data?.find((pm: any) =>
+              (String(pm.id) === String(pmid)) || (
+                String(pm.ID_POSTO) === 'GENERICO' && pm.CARTAO === pmid
+              )
+            );
+          }
+
+          // 3. all
+          if (!paymentMethod) {
+            paymentMethod = paymentMethodsRes.data?.find((pm: any) =>
+              (String(pm.id) === String(pmid)) || (
+                String(pm.ID_POSTO) === 'all' && pm.CARTAO === pmid
+              )
+            );
+          }
+
+          // 4. Fallback legacy match
+          if (!paymentMethod) {
+            paymentMethod = paymentMethodsRes.data?.find((pm: any) => pm.CARTAO === pmid);
+          }
+        }
 
         const calculatedPrice = suggestion.cost_price && suggestion.margin_cents
           ? suggestion.cost_price + (suggestion.margin_cents / 100)
@@ -881,8 +918,36 @@ export default function Approvals() {
 
         const finalSuggestedPrice = suggestion.suggested_price ?? suggestion.final_price ?? calculatedPrice;
 
+        const tax = paymentMethod?.TAXA || 0;
+        const purchaseCost = suggestion.purchase_cost || 0;
+        const freightCost = suggestion.freight_cost || 0;
+        const baseCost = purchaseCost + freightCost;
+
+        // Recalcular Custo Final e Margem Real
+        const finalCost = baseCost * (1 + tax / 100);
+
+        // Considerar margem do Arla se for S10 ou se for Arla direto
+        let arlaCompensation = 0;
+        if ((suggestion.product || '').toLowerCase().includes('s10')) {
+          const arlaPrice = suggestion.arla_purchase_price || 0;
+          const arlaCost = suggestion.arla_cost_price || 0;
+          const volumeProjected = suggestion.volume_projected || 0;
+          if (arlaPrice > 0 && arlaCost > 0 && volumeProjected > 0) {
+            // Arla compensa 5% do volume do diesel (regra de negócio comum)
+            arlaCompensation = (arlaPrice - arlaCost) * 0.05;
+          }
+        } else if ((suggestion.product || '').toLowerCase().includes('arla')) {
+          // Se o produto for Arla, a margem já é do Arla
+        }
+
+        const realMargin = (finalSuggestedPrice != null)
+          ? (finalSuggestedPrice - finalCost + arlaCompensation)
+          : (suggestion.margin_cents ? suggestion.margin_cents / 100 : null);
+
         return {
           ...suggestion,
+          cost_price: finalCost, // Atualiza para o custo final (com taxa)
+          margin_cents: realMargin !== null ? realMargin * 100 : suggestion.margin_cents,
           suggested_price: finalSuggestedPrice,
           stations: station ? { name: station.nome_empresa || station.name, code: station.cnpj_cpf || station.id || station.id_empresa } : null,
           clients: client ? { name: client.nome || client.name, code: String(client.id_cliente || client.id) } : null,
@@ -1674,7 +1739,7 @@ export default function Approvals() {
           // Agrupar solicitações por usuário e por lote
           const requestsByUserAndBatch = new Map<string, Map<string, any[]>>();
           suggestions?.forEach(req => {
-            const userId = req.requested_by || req.created_by;
+            const userId = req.requester?.id || req.requested_by || req.created_by;
             const batchKey = req.batch_id || `individual_${req.id}`;
             if (userId) {
               if (!requestsByUserAndBatch.has(userId)) {
@@ -3035,7 +3100,7 @@ export default function Approvals() {
                                                           try {
                                                             const { createNotification } = await import('@/lib/utils');
                                                             await createNotification(
-                                                              req.requested_by,
+                                                              req.requester?.id || req.requested_by,
                                                               'approval_pending',
                                                               'Preço Sugerido',
                                                               `Um preço foi sugerido para sua solicitação de ${getProductName(req.product)}`,
@@ -3576,12 +3641,17 @@ export default function Approvals() {
                               // Agrupar solicitações por usuário para evitar notificações duplicadas
                               const requestsByUser = new Map<string, any[]>();
                               validRequests.forEach(req => {
-                                const userId = req.requested_by || req.created_by;
-                                if (userId) {
+                                // Tentar obter o UUID do usuário (priorizando requester.id se vier enriquecido)
+                                const userId = req.requester?.id || req.requested_by || req.created_by;
+
+                                // Validar se o ID obtido é um UUID válido antes de agrupar
+                                if (userId && isValidUUID(userId)) {
                                   if (!requestsByUser.has(userId)) {
                                     requestsByUser.set(userId, []);
                                   }
                                   requestsByUser.get(userId)!.push(req);
+                                } else if (userId) {
+                                  console.warn(`⚠️ skipping notification batch: ID de usuário inválido (não é UUID): "${userId}"`);
                                 }
                               });
 

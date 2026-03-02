@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, RefreshCw, Filter, Clock, Check, ChevronsUpDown, X } from "lucide-react";
+import { Loader2, RefreshCw, Filter, Clock, Check, ChevronsUpDown, X, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "@/components/ui/command";
 import { format, isSameDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -67,8 +67,28 @@ const getDistributorColor = (name: string): string => {
 };
 
 // Card de Preço Individual
-const PriceItem = ({ name, price, subtext, className }: { name: string, price: string, subtext?: string, className?: string }) => {
-    if (price === '-' || !price) return null;
+const PriceItem = ({ name, price, variation, subtext, className }: { name: string, price: string, variation?: number | null, subtext?: string, className?: string }) => {
+    if (price === '-' || !price || !name) return null;
+
+    const variationDisplay = () => {
+        if (variation === undefined || variation === null) return null;
+        const pct = variation;
+        if (Math.abs(pct) < 0.01) return (
+            <span className="flex items-center gap-0.5 text-[10px] text-slate-400 font-mono">
+                <Minus className="w-3 h-3" /> 0.00%
+            </span>
+        );
+        if (pct > 0) return (
+            <span className="flex items-center gap-0.5 text-[10px] text-red-600 font-mono">
+                <TrendingUp className="w-3 h-3" /> +{pct.toFixed(2)}%
+            </span>
+        );
+        return (
+            <span className="flex items-center gap-0.5 text-[10px] text-green-600 font-mono">
+                <TrendingDown className="w-3 h-3" /> {pct.toFixed(2)}%
+            </span>
+        );
+    };
 
     return (
         <div className={cn(
@@ -79,7 +99,10 @@ const PriceItem = ({ name, price, subtext, className }: { name: string, price: s
                 <span className="font-bold truncate max-w-[140px]" title={name}>{name.toUpperCase()}</span>
                 {subtext && <span className="text-[10px] opacity-80">{subtext.toUpperCase()}</span>}
             </div>
-            <span className="font-mono font-bold">{price}</span>
+            <div className="flex flex-col items-end">
+                <span className="font-mono font-bold">{price}</span>
+                {variationDisplay()}
+            </div>
         </div>
     );
 };
@@ -207,9 +230,13 @@ export default function Quotations() {
                 return new Date(year, month - 1, day);
             }
         }
-        // Fallback: Ontem
+        // Fallback: Último dia útil (pula fins de semana)
         const d = new Date();
-        d.setDate(d.getDate() - 1);
+        d.setDate(d.getDate() - 1); // Ontem
+        // Se caiu num sábado (6) ou domingo (0), voltar para sexta
+        const dayOfWeek = d.getDay();
+        if (dayOfWeek === 0) d.setDate(d.getDate() - 2); // Domingo → Sexta
+        else if (dayOfWeek === 6) d.setDate(d.getDate() - 1); // Sábado → Sexta
         return d;
     });
 
@@ -218,6 +245,9 @@ export default function Quotations() {
     // Data State
     const [marketData, setMarketData] = useState<MarketQuotation[]>([]);
     const [companyData, setCompanyData] = useState<CompanyQuotation[]>([]);
+
+    // Previous Prices for variation
+    const [previousPrices, setPreviousPrices] = useState<Record<string, number>>({});
 
     // Filter Options
     const [filterOptions, setFilterOptions] = useState<{ ufs: string[], bases: string[] }>({ ufs: [], bases: [] });
@@ -237,25 +267,44 @@ export default function Quotations() {
         }
     }, []); // Run once on mount
 
+    // Helper: chama a edge function com query params via fetch direto
+    // (supabase.functions.invoke v2.57 ignora a opção `query`)
+    const SUPABASE_URL = 'https://ijygsxwfmribbjymxhaf.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlqeWdzeHdmbXJpYmJqeW14aGFmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTczNDMzOTcsImV4cCI6MjA3MjkxOTM5N30.p_c6M_7eUJcOU2bmuOhx6Na7mQC6cRNEMsHMOlQJuMc';
+
+    const callQuotationsApi = async (params: Record<string, string>) => {
+        const url = new URL(`${SUPABASE_URL}/functions/v1/quotations-api`);
+        Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+
+        // Tentar usar token da sessão, fallback para anon key
+        let token = SUPABASE_ANON_KEY;
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.access_token) token = session.access_token;
+        } catch (e) { /* fallback para anon key */ }
+
+        const resp = await fetch(url.toString(), {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'apikey': SUPABASE_ANON_KEY
+            }
+        });
+
+        if (!resp.ok) {
+            const errText = await resp.text();
+            throw new Error(`API error ${resp.status}: ${errText}`);
+        }
+        return await resp.json();
+    };
+
     const fetchData = async () => {
         setLoading(true);
         try {
             const dateStr = format(selectedDate, 'yyyy-MM-dd');
             const action = viewMode === "market" ? "market" : "company";
 
-            const { data, error } = await supabase.functions.invoke('quotations-api', {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                // Passing params as query parameters in the URL
-                query: {
-                    action,
-                    date: dateStr
-                }
-            });
-
-            if (error) throw error;
+            const data = await callQuotationsApi({ action, date: dateStr });
 
             if (viewMode === "market") {
                 setMarketData(data || []);
@@ -271,20 +320,32 @@ export default function Quotations() {
         }
     };
 
+    const fetchPreviousPrices = async () => {
+        try {
+            const dateStr = format(selectedDate, 'yyyy-MM-dd');
+            const data = await callQuotationsApi({ action: 'previous_prices', date: dateStr });
+            if (data) {
+                const map: Record<string, number> = {};
+                data.forEach((item: any) => {
+                    const key = `${(item["Distribuidora"] || '').toUpperCase()}|${(item["Base Origem"] || '').toUpperCase()}|${item["Produto"]}`;
+                    map[key] = parseFloat(item["Valor"]);
+                });
+                setPreviousPrices(map);
+            }
+        } catch (err) {
+            console.error("Error fetching previous prices:", err);
+        }
+    };
+
     const fetchFilterOptions = async () => {
         try {
             const dateStr = format(selectedDate, 'yyyy-MM-dd');
 
-            const { data, error } = await supabase.functions.invoke('quotations-api', {
-                method: 'GET',
-                query: {
-                    action: 'filters',
-                    date: dateStr,
-                    view: viewMode
-                }
+            const data = await callQuotationsApi({
+                action: 'filters',
+                date: dateStr,
+                view: viewMode
             });
-
-            if (error) throw error;
 
             if (data) {
                 const ufs = new Set<string>();
@@ -309,6 +370,7 @@ export default function Quotations() {
     useEffect(() => {
         fetchData();
         fetchFilterOptions();
+        fetchPreviousPrices();
         // Reset local filters when view changes? Maybe keep them if possible. 
         // Clearing is safer to avoid invalid states.
         setSelectedPlaces([]);
@@ -358,6 +420,24 @@ export default function Quotations() {
 
     const isToday = useMemo(() => isSameDay(selectedDate, new Date()), [selectedDate]);
 
+    // Mapping product key to product_classifier category
+    const productCatMap: Record<string, string> = {
+        "Preço Etanol": "ET",
+        "Preço Gasolina C": "GC",
+        "Preço Gasolina Adit": "GA",
+        "Preço Diesel S10": "S10",
+        "Preço Diesel S500": "S500"
+    };
+
+    const getVariation = (distribuidora: string, baseOrigem: string, productKey: string, currentPrice: number): number | null => {
+        const cat = productCatMap[productKey];
+        if (!cat) return null;
+        const key = `${distribuidora.toUpperCase()}|${baseOrigem.toUpperCase()}|${cat}`;
+        const prevPrice = previousPrices[key];
+        if (prevPrice === undefined || prevPrice === 0) return null;
+        return ((currentPrice - prevPrice) / prevPrice) * 100;
+    };
+
     // Grouping Logic
     const products = [
         { key: "Preço Etanol", label: "ETANOL", short: "ET" },
@@ -374,9 +454,9 @@ export default function Quotations() {
             // @ts-ignore
             const price = item[productKey];
             if (price && price !== '-') {
-                const ufDest = viewMode === "market" ? (item as MarketQuotation)["UF Destino"] : (item as CompanyQuotation)["UF Posto"];
-                const ufOrig = (item as any)["UF Origem"];
-                const baseName = (item as any)["Base Origem"];
+                const ufDest = (viewMode === "market" ? (item as MarketQuotation)["UF Destino"] : (item as CompanyQuotation)["UF Posto"]) || '--';
+                const ufOrig = (item as any)["UF Origem"] || '--';
+                const baseName = (item as any)["Base Origem"] || '--';
                 const groupKey = `${ufOrig}/${ufDest}|${baseName}`;
 
                 if (!groups[groupKey]) groups[groupKey] = [];
@@ -519,8 +599,8 @@ export default function Quotations() {
                                                         {items.map((item, idx) => {
                                                             // Determine Name to display
                                                             const nameDisplay = viewMode === "market"
-                                                                ? (item as MarketQuotation)["Distribuidora"]
-                                                                : (item as CompanyQuotation)["Empresa"];
+                                                                ? ((item as MarketQuotation)["Distribuidora"] || 'SEM NOME')
+                                                                : ((item as CompanyQuotation)["Empresa"] || (item as CompanyQuotation)["Distribuidora"] || 'SEM NOME');
 
                                                             // Subtext logic
                                                             let subtext: string | undefined;
@@ -534,18 +614,60 @@ export default function Quotations() {
                                                             const distributorName = (item as any)["Distribuidora"] || (item as any)["Bandeira"];
                                                             const colorClass = getDistributorColor(distributorName);
 
+                                                            // @ts-ignore
+                                                            const currentPriceStr = item[product.key];
+                                                            const currentPriceNum = parsePrice(currentPriceStr);
+                                                            const baseOrig = (item as any)["Base Origem"] || '';
+                                                            const variation = currentPriceNum !== Infinity
+                                                                ? getVariation(distributorName, baseOrig, product.key, currentPriceNum)
+                                                                : null;
+
                                                             return (
                                                                 <PriceItem
                                                                     key={idx}
                                                                     name={nameDisplay}
-                                                                    // @ts-ignore
-                                                                    price={item[product.key]}
+                                                                    price={currentPriceStr}
+                                                                    variation={variation}
                                                                     subtext={subtext}
                                                                     className={colorClass}
                                                                 />
                                                             );
                                                         })}
                                                     </div>
+
+                                                    {/* Média (sem outliers via IQR) */}
+                                                    {(() => {
+                                                        const prices = items
+                                                            // @ts-ignore
+                                                            .map(item => parsePrice(item[product.key]))
+                                                            .filter(p => p !== Infinity && !isNaN(p))
+                                                            .sort((a, b) => a - b);
+                                                        if (prices.length === 0) return null;
+
+                                                        // IQR outlier removal
+                                                        let filtered = prices;
+                                                        if (prices.length >= 4) {
+                                                            const q1 = prices[Math.floor(prices.length * 0.25)];
+                                                            const q3 = prices[Math.floor(prices.length * 0.75)];
+                                                            const iqr = q3 - q1;
+                                                            const lower = q1 - 1.5 * iqr;
+                                                            const upper = q3 + 1.5 * iqr;
+                                                            filtered = prices.filter(p => p >= lower && p <= upper);
+                                                        }
+                                                        if (filtered.length === 0) filtered = prices;
+
+                                                        const avg = filtered.reduce((a, b) => a + b, 0) / filtered.length;
+                                                        const excluded = prices.length - filtered.length;
+                                                        return (
+                                                            <div className="flex justify-between items-center text-[10px] p-1.5 mt-1 bg-blue-50 rounded border border-blue-100">
+                                                                <span className="font-bold text-blue-700">
+                                                                    MÉDIA ({filtered.length})
+                                                                    {excluded > 0 && <span className="text-slate-400 font-normal ml-1">-{excluded} outlier{excluded > 1 ? 's' : ''}</span>}
+                                                                </span>
+                                                                <span className="font-mono font-bold text-blue-700">R$ {avg.toFixed(4)}</span>
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </div>
                                             );
                                         })

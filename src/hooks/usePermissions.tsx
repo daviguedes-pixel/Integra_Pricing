@@ -25,7 +25,15 @@ interface UserPermissions {
     gestao_stations: boolean;
     gestao_clients: boolean;
     gestao_payment_methods: boolean;
-    
+    portfolio_manager: boolean;
+    variations: boolean;
+    quotations: boolean;
+    mapa_contatos: boolean;
+    cargas: boolean;
+    nfs_incorretas: boolean;
+    paridade: boolean;
+    financial_review: boolean;
+
     // Funções habilitadas
     can_approve: boolean;
     can_register: boolean;
@@ -69,6 +77,14 @@ const defaultPermissions: UserPermissions = {
     gestao_stations: false,
     gestao_clients: false,
     gestao_payment_methods: false,
+    portfolio_manager: false,
+    variations: false,
+    quotations: false,
+    mapa_contatos: false,
+    cargas: false,
+    nfs_incorretas: false,
+    paridade: false,
+    financial_review: false,
     can_approve: false,
     can_register: false,
     can_edit: false,
@@ -84,7 +100,7 @@ const PermissionsContext = createContext<PermissionsContextType>({
   canAccess: () => false,
   canPerform: () => false,
   canApproveMargin: () => false,
-  reloadPermissions: async () => {},
+  reloadPermissions: async () => { },
 });
 
 export const usePermissions = () => useContext(PermissionsContext);
@@ -104,9 +120,9 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
     try {
       // ADMIN FIXO: davi.guedes@redesaoroque.com.br sempre tem acesso total
       const email = user.email || '';
-      
+
       console.log('Carregando permissões para:', { email });
-      
+
       // Se for o davi.guedes, forçar permissões de admin
       if (email === 'davi.guedes@redesaoroque.com.br') {
         console.log('Admin fixo detectado: davi.guedes@redesaoroque.com.br');
@@ -132,6 +148,14 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
             gestao_stations: true,
             gestao_clients: true,
             gestao_payment_methods: true,
+            portfolio_manager: true,
+            variations: true,
+            quotations: true,
+            mapa_contatos: true,
+            cargas: true,
+            nfs_incorretas: true,
+            paridade: true,
+            financial_review: true,
             can_approve: true,
             can_register: true,
             can_edit: true,
@@ -173,6 +197,14 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
             gestao_stations: false,
             gestao_clients: false,
             gestao_payment_methods: false,
+            portfolio_manager: false,
+            variations: false,
+            quotations: false,
+            mapa_contatos: false,
+            cargas: false,
+            nfs_incorretas: false,
+            paridade: false,
+            financial_review: false,
             can_approve: false,
             can_register: true,
             can_edit: false,
@@ -196,11 +228,11 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
       const perfilFromDb = (profileData as any).perfil || null;
       const role = profileData.role || 'analista';
       const perfil = perfilFromDb || (
-        role === 'admin' ? 'diretor_comercial' : 
-        role === 'supervisor' ? 'supervisor_comercial' :
-        role === 'gerente' ? 'gerente' : 'analista_pricing'
+        role === 'admin' ? 'diretor_comercial' :
+          role === 'supervisor' ? 'supervisor_comercial' :
+            role === 'gerente' ? 'gerente' : 'analista_pricing'
       );
-      
+
       console.log('Perfil determinado:', { role, perfil, perfilFromDb });
 
       // Buscar permissões da tabela profile_permissions
@@ -233,6 +265,14 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
             gestao_stations: isAdmin,
             gestao_clients: isAdmin,
             gestao_payment_methods: isAdmin,
+            portfolio_manager: isAdmin,
+            variations: isAdmin,
+            quotations: isAdmin,
+            mapa_contatos: isAdmin,
+            cargas: isAdmin,
+            nfs_incorretas: isAdmin,
+            paridade: isAdmin,
+            financial_review: isAdmin,
             can_approve: isAdmin,
             can_register: true,
             can_edit: isAdmin,
@@ -246,7 +286,7 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
       }
 
       const userRole = (perfil === 'diretor_comercial' || perfil === 'diretor_pricing') ? 'admin' : 'user';
-      
+
       const permsData = perms as any;
       console.log('Permissões carregadas do banco:', { perfil, userRole, perms: permsData });
       console.log('🔍 Verificando permissões de gestão:', {
@@ -255,7 +295,7 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
         gestao_clients: permsData.gestao_clients,
         gestao_payment_methods: permsData.gestao_payment_methods
       });
-      
+
       setPermissions({
         role: userRole as 'admin' | 'user',
         max_approval_margin: profileData.max_approval_margin || 0,
@@ -278,6 +318,14 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
           gestao_stations: permsData.gestao_stations || false,
           gestao_clients: permsData.gestao_clients || false,
           gestao_payment_methods: permsData.gestao_payment_methods || false,
+          portfolio_manager: permsData.portfolio_manager || false,
+          variations: permsData.variations || false,
+          quotations: permsData.quotations || false,
+          mapa_contatos: permsData.mapa_contatos || false,
+          cargas: permsData.cargas || false,
+          nfs_incorretas: permsData.nfs_incorretas || false,
+          paridade: permsData.paridade || false,
+          financial_review: permsData.financial_review || false,
           can_approve: permsData.can_approve || false,
           can_register: permsData.can_register || false,
           can_edit: permsData.can_edit || false,
@@ -311,10 +359,10 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
     }
     const key = tab as PermissionKey;
     const hasAccess = permissions.permissions[key] || false;
-    console.log(`🔍 canAccess: ${tab} = ${hasAccess}`, { 
-      tab, 
-      hasAccess, 
-      permissions: permissions.permissions[key] 
+    console.log(`🔍 canAccess: ${tab} = ${hasAccess}`, {
+      tab,
+      hasAccess,
+      permissions: permissions.permissions[key]
     });
     return hasAccess;
   };

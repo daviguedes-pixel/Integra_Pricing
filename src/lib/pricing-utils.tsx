@@ -74,9 +74,17 @@ export const centsToReais = (cents: number | null | undefined): string => {
 };
 
 /** Valida se é um UUID válido */
-export const isValidUUID = (str: string): boolean => {
+export const isValidUUID = (str: any): boolean => {
+    if (typeof str !== 'string') {
+        console.warn(`[isValidUUID] Valor não é string:`, str);
+        return false;
+    }
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    return uuidRegex.test(str);
+    const isValid = uuidRegex.test(str);
+    if (!isValid) {
+        console.warn(`[isValidUUID] UUID inválido detectado: "${str}"`);
+    }
+    return isValid;
 };
 
 /** Formata preço com 4 casas decimais (para valores unitários como custo/L) */

@@ -71,6 +71,7 @@ interface ActionItem {
   role: 'approver' | 'requester';
   action_label: string;
   action_color: string;
+  approver_name?: string;
 }
 
 interface RecentItem {
@@ -162,7 +163,7 @@ const Dashboard = () => {
       // --- 3) Aguardando Meu Parecer (como SOLICITANTE - preciso justificar/enviar referência) ---
       const { data: requesterItems } = await supabase
         .from('price_suggestions')
-        .select('id, product, station_id, suggested_price, final_price, margin_cents, status, created_at')
+        .select('id, product, station_id, suggested_price, final_price, margin_cents, status, created_at, last_approver_action_by')
         .eq('created_by', user.id)
         .in('status', ['awaiting_justification', 'awaiting_evidence'])
         .order('created_at', { ascending: false })
@@ -184,7 +185,7 @@ const Dashboard = () => {
       // --- 6) Atividade Recente (últimas 10) ---
       const { data: recentData } = await supabase
         .from('price_suggestions')
-        .select('id, product, station_id, suggested_price, final_price, status, created_at, requested_by')
+        .select('id, product, station_id, suggested_price, final_price, status, created_at, requested_by, created_by')
         .order('created_at', { ascending: false })
         .limit(10);
 
@@ -223,7 +224,12 @@ const Dashboard = () => {
       }
 
       // --- Resolve requester names for recent ---
-      const requesterIds = Array.from(new Set((recentData || []).map(r => r.requested_by).filter(Boolean)));
+      const requesterIds = Array.from(new Set([
+        ...(recentData || []).map(r => r.requested_by),
+        ...(recentData || []).map(r => r.created_by),
+        ...(requesterItems || []).map(r => r.last_approver_action_by)
+      ].filter(Boolean)));
+
       let profilesMap: Record<string, string> = {};
       if (requesterIds.length > 0) {
         const { data: profiles } = await supabase
@@ -257,6 +263,7 @@ const Dashboard = () => {
           role: 'requester',
           action_label: label,
           action_color: color,
+          approver_name: profilesMap[item.last_approver_action_by] || 'Aprovador',
         });
       });
 
@@ -264,7 +271,7 @@ const Dashboard = () => {
       const recent: RecentItem[] = (recentData || []).map(item => ({
         ...item,
         station_name: stationsMap[item.station_id] || 'Posto',
-        requested_by_name: profilesMap[item.requested_by] || 'Desconhecido',
+        requested_by_name: profilesMap[item.created_by] || profilesMap[item.requested_by] || 'Desconhecido',
       }));
 
       // --- Set state ---
@@ -496,11 +503,7 @@ const Dashboard = () => {
                         animate={{ opacity: 1, x: 0 }}
                         className="flex items-center justify-between p-3 rounded-lg bg-white dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/50 hover:border-primary/30 hover:shadow-sm transition-all group cursor-pointer"
                         onClick={() => {
-                          if (item.role === 'approver') {
-                            navigate(`/approvals`);
-                          } else {
-                            navigate(`/solicitacao-preco/${item.id}`);
-                          }
+                          navigate(`/approval-details/${item.id}`);
                         }}
                       >
                         <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -532,7 +535,12 @@ const Dashboard = () => {
                                 </span>
                               )}
                               <span className="text-[10px] text-muted-foreground/60">
-                                {item.role === 'approver' ? '• Você é o aprovador' : '• Sua solicitação'}
+                                {item.role === 'approver'
+                                  ? '• Você é o aprovador'
+                                  : item.last_approver_action_by
+                                    ? `• Solicitado por: ${formatNameFromEmail(item.approver_name || 'Aprovador')}`
+                                    : '• Sua solicitação'
+                                }
                               </span>
                             </div>
                           </div>
@@ -601,7 +609,7 @@ const Dashboard = () => {
                             <TableRow
                               key={item.id}
                               className="cursor-pointer hover:bg-primary/5 transition-colors"
-                              onClick={() => navigate(`/solicitacao-preco/${item.id}`)}
+                              onClick={() => navigate(`/approval-details/${item.id}`)}
                             >
                               <TableCell className="text-xs font-medium py-2 px-3">
                                 {getProductName(item.product)}

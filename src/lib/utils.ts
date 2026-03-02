@@ -107,6 +107,13 @@ export function mapProductToEnum(product: string | null | undefined): string | n
   return productLower;
 }
 
+// Função para verificar se uma string é um UUID válido
+export function isValidUUID(uuid: string | null | undefined): boolean {
+  if (!uuid) return false;
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(uuid);
+}
+
 // Função para gerar UUID v4 compatível (funciona em todos os ambientes)
 export function generateUUID(): string {
   // Verificar se crypto.randomUUID está disponível (navegadores modernos)
@@ -158,7 +165,14 @@ export async function createNotification(
 ) {
   // Validar userId
   if (!userId || typeof userId !== 'string' || userId.trim().length === 0) {
-    throw new Error('userId inválido: deve ser uma string não vazia');
+    console.error('❌ createNotification: userId vazio ou inválido');
+    return false;
+  }
+
+  if (!isValidUUID(userId)) {
+    console.error(`❌ createNotification: userId NÃO é um UUID válido: "${userId}"`);
+    console.trace('Trace da origem do erro de UUID:');
+    return false;
   }
 
   // Sanitizar inputs para prevenir XSS
@@ -177,9 +191,19 @@ export async function createNotification(
     title: string;
     message: string;
     read: boolean;
-    suggestion_id?: string | null;
+    suggestion_id: string; // Coluna NOT NULL no banco
     data?: Record<string, any> | null;
     expires_at?: string | null;
+  }
+
+  // Garantir que temos um suggestion_id válido (coluna é NOT NULL)
+  let validSuggestionId = '00000000-0000-0000-0000-000000000000';
+  if (data?.suggestion_id && isValidUUID(data.suggestion_id)) {
+    validSuggestionId = data.suggestion_id;
+  } else if (data?.suggestion_id) {
+    console.warn(`⚠️ createNotification: suggestion_id NÃO é um UUID válido: "${data.suggestion_id}". Usando fallback.`);
+  } else {
+    console.warn('⚠️ suggestion_id não fornecido nos dados da notificação. Usando fallback.');
   }
 
   const notificationData: NotificationInsert = {
@@ -187,17 +211,9 @@ export async function createNotification(
     type,
     title: sanitizedTitle,
     message: sanitizedMessage,
-    read: false
+    read: false,
+    suggestion_id: validSuggestionId
   };
-
-  // Adicionar suggestion_id se estiver nos dados (pode ser obrigatório na tabela)
-  if (data?.suggestion_id) {
-    notificationData.suggestion_id = data.suggestion_id;
-  } else {
-    // Se suggestion_id não foi fornecido mas pode ser obrigatório, usar um UUID vazio ou null
-    // Mas primeiro vamos tentar sem ele e ver se dá erro
-    console.warn('⚠️ suggestion_id não fornecido nos dados da notificação');
-  }
 
   // Adicionar campo 'data' apenas se a coluna existir (para evitar erros)
   // Vamos tentar adicionar sempre, mas se der erro, continuamos sem ele
@@ -233,7 +249,7 @@ export async function createNotification(
   try {
     const result = await supabase
       .from('notifications')
-      .insert([notificationData])
+      .insert([notificationData as any])
       .select();
 
     insertedData = result.data;
@@ -396,14 +412,30 @@ export async function createNotificationForUsers(
 ) {
   const { supabase } = await import('@/integrations/supabase/client');
 
-  const notifications = userIds.map(userId => ({
-    user_id: userId,
-    type,
-    title,
-    message,
-    read: false,
-    ...(data && { data })
-  }));
+  const notifications = userIds.map(userId => {
+    // Garantir que temos um suggestion_id válido (coluna é NOT NULL)
+    let validSuggestionId = '00000000-0000-0000-0000-000000000000';
+    if (data?.suggestion_id && isValidUUID(data.suggestion_id)) {
+      validSuggestionId = data.suggestion_id;
+    }
+
+    const item: any = {
+      user_id: userId,
+      type,
+      title,
+      message,
+      read: false,
+      suggestion_id: validSuggestionId
+    };
+
+    if (data) {
+      // Remover suggestion_id dos dados se já estiver no nível superior
+      const { suggestion_id, ...dataWithoutSuggestionId } = data;
+      item.data = dataWithoutSuggestionId;
+    }
+
+    return item;
+  });
 
   const { error } = await supabase
     .from('notifications')

@@ -357,10 +357,13 @@ export function RequestForm({ onSuccess, initialData }: RequestFormProps) {
             let feePercentage = 0;
             if (formData.payment_method_id && formData.payment_method_id !== "none") {
                 const stationMethod = paymentMethods.find(pm =>
-                    pm.CARTAO === formData.payment_method_id &&
-                    (String((pm as any).ID_POSTO) === String(formData.station_id))
+                    String(pm.id) === String(formData.payment_method_id) ||
+                    (pm.CARTAO === formData.payment_method_id && String((pm as any).ID_POSTO) === String(formData.station_id))
                 );
-                const generalMethod = paymentMethods.find(pm => pm.CARTAO === formData.payment_method_id && (pm.ID_POSTO === "all" || pm.ID_POSTO === "GENERICO"));
+                const generalMethod = paymentMethods.find(pm =>
+                    String(pm.id) === String(formData.payment_method_id) ||
+                    (pm.CARTAO === formData.payment_method_id && (pm.ID_POSTO === "all" || pm.ID_POSTO === "GENERICO"))
+                );
                 feePercentage = stationMethod?.TAXA || generalMethod?.TAXA || 0;
             }
 
@@ -397,10 +400,13 @@ export function RequestForm({ onSuccess, initialData }: RequestFormProps) {
             if (formData.payment_method_id && formData.payment_method_id !== 'none') {
                 // Mesmo fallback logic
                 const stationMethod = paymentMethods.find(pm =>
-                    pm.CARTAO === formData.payment_method_id &&
-                    (String((pm as any).ID_POSTO) === String(formData.station_id))
+                    String(pm.id) === String(formData.payment_method_id) ||
+                    (pm.CARTAO === formData.payment_method_id && String((pm as any).ID_POSTO) === String(formData.station_id))
                 );
-                const generalMethod = paymentMethods.find(pm => pm.CARTAO === formData.payment_method_id && (pm.ID_POSTO === 'all' || pm.ID_POSTO === 'GENERICO'));
+                const generalMethod = paymentMethods.find(pm =>
+                    String(pm.id) === String(formData.payment_method_id) ||
+                    (pm.CARTAO === formData.payment_method_id && (pm.ID_POSTO === 'all' || pm.ID_POSTO === 'GENERICO'))
+                );
                 feePercentage = stationMethod?.TAXA || generalMethod?.TAXA || 0;
             }
 
@@ -469,12 +475,34 @@ export function RequestForm({ onSuccess, initialData }: RequestFormProps) {
             toast.error("Preencha produto e preço sugerido");
             return false;
         }
+        // Validar volume projetado
+        const volumeProjected = parseFloat(formData.volume_projected);
+        if (isNaN(volumeProjected) || volumeProjected <= 0) {
+            toast.error("Insira o volume projetado (deve ser maior que zero)");
+            return false;
+        }
+
         // Validar dados numéricos básicos
         const suggested = parsePriceToInteger(formData.suggested_price);
         if (suggested <= 0) {
             toast.error("Insira um preço sugerido válido");
             return false;
         }
+
+        // Validar campos ARLA 32 para S10
+        if (formData.product === 's10' || formData.product === 's10_aditivado') {
+            const arlaCost = parsePriceToInteger(formData.arla_cost_price);
+            if (!arlaCost || arlaCost <= 0) {
+                toast.error("Preencha o campo ARLA 32 (Custo)");
+                return false;
+            }
+            const arlaSale = parsePriceToInteger(formData.arla_purchase_price);
+            if (!arlaSale || arlaSale <= 0) {
+                toast.error("Preencha o campo ARLA 32 (Venda)");
+                return false;
+            }
+        }
+
         return true;
     };
 
@@ -736,7 +764,7 @@ export function RequestForm({ onSuccess, initialData }: RequestFormProps) {
                                         <SelectContent>
                                             <SelectItem value="none">Nenhum / À Vista</SelectItem>
                                             {stationPaymentMethods.map((pm: any, index: number) => (
-                                                <SelectItem key={`${pm.id || 'pm'}-${pm.CARTAO}-${index}`} value={pm.CARTAO}>
+                                                <SelectItem key={`${pm.id || 'pm'}-${pm.CARTAO}-${index}`} value={String(pm.id)}>
                                                     {pm.CARTAO} {pm.TAXA ? `(${pm.TAXA}%)` : ''}
                                                 </SelectItem>
                                             ))}
@@ -789,7 +817,7 @@ export function RequestForm({ onSuccess, initialData }: RequestFormProps) {
                                     <div className="grid grid-cols-2 gap-4 col-span-1 md:col-span-2 pt-3 border-t border-slate-100 dark:border-border mt-3">
                                         <div className="space-y-2">
                                             <Label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                                                ARLA 32 (Custo)
+                                                ARLA 32 (Custo) <span className="text-red-500">*</span>
                                             </Label>
                                             <div className="relative">
                                                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs">R$</span>
@@ -807,7 +835,7 @@ export function RequestForm({ onSuccess, initialData }: RequestFormProps) {
                                         </div>
                                         <div className="space-y-2">
                                             <Label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                                                ARLA 32 (Venda)
+                                                ARLA 32 (Venda) <span className="text-red-500">*</span>
                                             </Label>
                                             <div className="relative">
                                                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs">R$</span>
@@ -851,7 +879,7 @@ export function RequestForm({ onSuccess, initialData }: RequestFormProps) {
                                         <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                                         </svg>
-                                        Volume Projetado (m³)
+                                        Volume Projetado (m³) <span className="text-red-500">*</span>
                                     </Label>
                                     <Input
                                         id="volume_projected"

@@ -1,0 +1,875 @@
+-- =========================================================================================
+-- MIGRATION: 20260227_update_approval_rules.sql
+-- DESCRIÇÃO CONSOLIDADA:
+-- 1. Limpa overloads conflitantes de funções
+-- 2. Corrige UUID errors em provide_evidence, provide_justification, etc
+-- 3. Implementa roteamento direto por regra de margem (approval_margin_rules)
+-- 4. Atualiza _can_profile_finalize para usar regra de margem
+-- 5. Adiciona colunas de config na profile_permissions
+-- =========================================================================================
+
+-- ============================================================================
+-- 0. LIMPAR OVERLOADS CONFLITANTES
+-- Dropar versões com assinatura (text) para manter apenas (uuid)
+-- ============================================================================
+DROP FUNCTION IF EXISTS public.provide_evidence(text, text, text);
+DROP FUNCTION IF EXISTS public.provide_justification(text, text);
+DROP FUNCTION IF EXISTS public.request_justification(text, text);
+DROP FUNCTION IF EXISTS public.request_evidence(text, text, text);
+DROP FUNCTION IF EXISTS public.suggest_price_request(text, numeric, text, numeric);
+DROP FUNCTION IF EXISTS public.appeal_price_request(text, numeric, text, numeric);
+DROP FUNCTION IF EXISTS public.accept_suggested_price(text, text);
+
+-- Dropar versão antiga de _can_profile_finalize (text, integer) se existir
+DROP FUNCTION IF EXISTS public._can_profile_finalize(text, integer);
+
+-- ============================================================================
+-- 1. ADICIONA COLUNAS DE CONFIGURAÇÃO NA TABELA profile_permissions
+-- ============================================================================
+ALTER TABLE public.profile_permissions
+ADD COLUMN IF NOT EXISTS requires_evidence boolean DEFAULT false,
+ADD COLUMN IF NOT EXISTS max_discount_with_evidence_cents integer DEFAULT NULL;
+
+-- Configuração dos perfis
+UPDATE public.profile_permissions
+SET requires_evidence = true, max_discount_with_evidence_cents = 20
+WHERE perfil = 'supervisor_comercial';
+
+UPDATE public.profile_permissions
+SET requires_evidence = false, max_discount_with_evidence_cents = NULL
+WHERE perfil = 'diretor_comercial';
+
+-- ============================================================================
+-- 2. REDEFINE A ORDEM DO FLUXO (Apenas os dois perfis ativos)
+-- ============================================================================
+UPDATE public.approval_profile_order SET is_active = false;
+DELETE FROM public.approval_profile_order WHERE perfil IN ('supervisor_comercial', 'diretor_comercial');
+INSERT INTO public.approval_profile_order (order_position, perfil, is_active)
+VALUES
+    (1, 'supervisor_comercial', true),
+    (2, 'diretor_comercial', true);
+
+
+-- ============================================================================
+-- 3. _find_next_approver: ROTEAMENTO DIRETO POR REGRA DE MARGEM
+-- ============================================================================
+CREATE OR REPLACE FUNCTION public._find_next_approver(
+    p_request_id uuid,
+    p_created_by text,
+    p_current_level integer,
+    p_margin_cents integer
+)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_approval_order text[];
+    v_approval_rule record;
+    v_required_profiles text[];
+    v_next_profile text;
+    v_next_user record;
+    v_already_acted_profiles text[];
+    v_creator_uuid uuid;
+    v_i integer;
+BEGIN
+    v_creator_uuid := public._resolve_user_id(p_created_by);
+
+    SELECT array_agg(perfil ORDER BY order_position ASC) INTO v_approval_order
+    FROM public.approval_profile_order WHERE is_active = true;
+
+    IF v_approval_order IS NULL OR array_length(v_approval_order, 1) = 0 THEN
+        v_approval_order := ARRAY['supervisor_comercial', 'diretor_comercial'];
+    END IF;
+
+    -- Buscar regra de margem -> ir DIRETO ao perfil da regra
+    SELECT * INTO v_approval_rule FROM public.get_approval_margin_rule(p_margin_cents);
+    v_required_profiles := COALESCE(v_approval_rule.required_profiles, ARRAY[]::text[]);
+
+    -- Perfis que já atuaram
+    SELECT COALESCE(array_agg(DISTINCT up.perfil), ARRAY[]::text[])
+    INTO v_already_acted_profiles
+    FROM public.approval_history ah
+    JOIN public.user_profiles up ON up.user_id::text = ah.approver_id::text
+    WHERE ah.suggestion_id = p_request_id
+      AND ah.action IN ('approved', 'rejected');
+
+    -- === ROTEAMENTO DIRETO: se há regra de margem ===
+    IF array_length(v_required_profiles, 1) > 0 THEN
+        FOREACH v_next_profile IN ARRAY v_required_profiles LOOP
+            IF v_next_profile = ANY(v_already_acted_profiles) THEN
+                CONTINUE;
+            END IF;
+
+            SELECT user_id, email, nome INTO v_next_user
+            FROM public.user_profiles
+            WHERE perfil = v_next_profile AND ativo = true
+              AND user_id != COALESCE(v_creator_uuid, '00000000-0000-0000-0000-000000000000'::uuid)
+            LIMIT 1;
+
+            IF v_next_user.user_id IS NULL THEN
+                CONTINUE;
+            END IF;
+
+            -- Achar posição desse perfil
+            v_i := 1;
+            FOR j IN 1..array_length(v_approval_order, 1) LOOP
+                IF v_approval_order[j] = v_next_profile THEN
+                    v_i := j;
+                    EXIT;
+                END IF;
+            END LOOP;
+
+            RETURN json_build_object(
+                'found', true,
+                'level', v_i,
+                'profile', v_next_profile,
+                'user_id', v_next_user.user_id,
+                'user_name', COALESCE(v_next_user.nome, v_next_user.email, 'Perfil: ' || v_next_profile)
+            );
+        END LOOP;
+    END IF;
+
+    -- === FALLBACK: caminhar pelo chain normal ===
+    FOR i IN (p_current_level + 1)..array_length(v_approval_order, 1) LOOP
+        v_next_profile := v_approval_order[i];
+
+        IF v_next_profile = ANY(v_already_acted_profiles) THEN
+            CONTINUE;
+        END IF;
+
+        SELECT user_id, email, nome INTO v_next_user
+        FROM public.user_profiles
+        WHERE perfil = v_next_profile AND ativo = true
+          AND user_id != COALESCE(v_creator_uuid, '00000000-0000-0000-0000-000000000000'::uuid)
+        LIMIT 1;
+
+        IF v_next_user.user_id IS NULL THEN
+            CONTINUE;
+        END IF;
+
+        RETURN json_build_object(
+            'found', true,
+            'level', i,
+            'profile', v_next_profile,
+            'user_id', v_next_user.user_id,
+            'user_name', COALESCE(v_next_user.nome, v_next_user.email, 'Perfil: ' || v_next_profile)
+        );
+    END LOOP;
+
+    RETURN json_build_object('found', false);
+END;
+$$;
+
+
+-- ============================================================================
+-- 4. _can_profile_finalize: verifica regra de margem + evidência
+-- ============================================================================
+CREATE OR REPLACE FUNCTION public._can_profile_finalize(
+    p_profile text,
+    p_suggestion_id uuid
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_request_margin integer;
+    v_attachments text[];
+    v_has_evidence boolean;
+    v_approval_rule record;
+    v_required_profiles text[];
+    v_req_evidence boolean;
+    v_max_disc_evidence_cents integer;
+BEGIN
+    SELECT margin_cents, attachments
+      INTO v_request_margin, v_attachments
+      FROM public.price_suggestions
+     WHERE id = p_suggestion_id;
+
+    v_has_evidence := (v_attachments IS NOT NULL AND array_length(v_attachments, 1) > 0);
+
+    -- Busca regra de margem aplicável
+    SELECT * INTO v_approval_rule FROM public.get_approval_margin_rule(v_request_margin);
+    v_required_profiles := COALESCE(v_approval_rule.required_profiles, ARRAY[]::text[]);
+
+    -- Se há regra com perfis requeridos e o perfil atual NÃO está -> não pode finalizar
+    IF array_length(v_required_profiles, 1) > 0 THEN
+        IF NOT (p_profile = ANY(v_required_profiles)) THEN
+            RETURN false;
+        END IF;
+    END IF;
+
+    -- Checa restrição de evidência do perfil
+    SELECT requires_evidence, max_discount_with_evidence_cents
+      INTO v_req_evidence, v_max_disc_evidence_cents
+      FROM public.profile_permissions
+     WHERE perfil = p_profile;
+
+    IF COALESCE(v_req_evidence, false) AND NOT v_has_evidence THEN
+        RETURN false;
+    END IF;
+
+    IF COALESCE(v_req_evidence, false) AND v_has_evidence AND v_max_disc_evidence_cents IS NOT NULL THEN
+        IF v_request_margin < (-1 * v_max_disc_evidence_cents) THEN
+            RETURN false;
+        END IF;
+    END IF;
+
+    RETURN true;
+END;
+$$;
+
+
+-- ============================================================================
+-- 5. approve_price_request: usa nova _can_profile_finalize
+-- ============================================================================
+CREATE OR REPLACE FUNCTION public.approve_price_request(
+    p_request_id uuid,
+    p_observations text DEFAULT NULL
+)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_user_id uuid;
+    v_request public.price_suggestions;
+    v_profile public.user_profiles;
+    v_permissions public.profile_permissions;
+    v_approver_name text;
+    v_current_level integer;
+    v_can_finalize boolean;
+    v_next_approver json;
+BEGIN
+    v_user_id := auth.uid();
+
+    SELECT * INTO v_request FROM public.price_suggestions WHERE id = p_request_id;
+    IF NOT FOUND THEN RAISE EXCEPTION 'Request not found'; END IF;
+    IF v_request.status NOT IN ('pending', 'appealed') THEN
+        RAISE EXCEPTION 'Request is not pending approval or appealed';
+    END IF;
+
+    SELECT * INTO v_profile FROM public.user_profiles WHERE user_id = v_user_id;
+    SELECT * INTO v_permissions FROM public.profile_permissions WHERE perfil = v_profile.perfil;
+
+    IF v_permissions IS NULL OR NOT v_permissions.can_approve THEN
+        RAISE EXCEPTION 'User (Role: %) does not have approval permissions', v_profile.perfil;
+    END IF;
+
+    v_approver_name := COALESCE(v_profile.nome, v_profile.email, 'Aprovador');
+    v_current_level := COALESCE(v_request.approval_level, 1);
+
+    INSERT INTO public.approval_history (
+        suggestion_id, approver_id, approver_name, action, approval_level, observations
+    ) VALUES (
+        p_request_id, v_user_id, v_approver_name, 'approved', v_current_level, p_observations
+    );
+
+    -- NOVA ASSINATURA: _can_profile_finalize(perfil, suggestion_id)
+    v_can_finalize := public._can_profile_finalize(v_profile.perfil, p_request_id);
+
+    IF v_can_finalize THEN
+        UPDATE public.price_suggestions
+        SET status = 'approved',
+            approved_by = v_user_id,
+            approved_at = now(),
+            current_approver_id = v_user_id,
+            current_approver_name = v_approver_name,
+            approvals_count = COALESCE(approvals_count, 0) + 1,
+            last_approver_action_by = v_user_id,
+            last_observation = p_observations
+        WHERE id = p_request_id;
+
+        IF v_request.created_by IS NOT NULL THEN
+            INSERT INTO public.notifications (user_id, title, message, type, suggestion_id, read)
+            VALUES (
+                public._resolve_user_id(v_request.created_by::text),
+                'Solicitação Aprovada ✅',
+                'Sua solicitação foi aprovada por ' || v_approver_name,
+                'request_approved',
+                p_request_id,
+                false
+            );
+        END IF;
+
+        RETURN json_build_object('success', true, 'status', 'approved');
+    ELSE
+        v_next_approver := public._find_next_approver(
+            p_request_id, v_request.created_by::text, v_current_level, v_request.margin_cents
+        );
+
+        IF (v_next_approver->>'found')::boolean THEN
+            UPDATE public.price_suggestions
+            SET approval_level = (v_next_approver->>'level')::integer,
+                current_approver_id = (v_next_approver->>'user_id')::uuid,
+                current_approver_name = v_next_approver->>'user_name',
+                approvals_count = COALESCE(approvals_count, 0) + 1,
+                last_approver_action_by = v_user_id,
+                last_observation = p_observations
+            WHERE id = p_request_id;
+
+            INSERT INTO public.notifications (user_id, title, message, type, suggestion_id, read)
+            VALUES (
+                (v_next_approver->>'user_id')::uuid,
+                'Nova Aprovação Pendente',
+                'Solicitação aguardando sua aprovação',
+                'approval_pending',
+                p_request_id,
+                false
+            );
+
+            RETURN json_build_object('success', true, 'status', 'pending', 'nextLevel', (v_next_approver->>'level')::integer);
+        ELSE
+            UPDATE public.price_suggestions
+            SET status = 'approved',
+                approved_by = v_user_id,
+                approved_at = now(),
+                current_approver_id = v_user_id,
+                current_approver_name = v_approver_name,
+                approvals_count = COALESCE(approvals_count, 0) + 1,
+                last_approver_action_by = v_user_id,
+                last_observation = p_observations
+            WHERE id = p_request_id;
+
+            RETURN json_build_object('success', true, 'status', 'approved');
+        END IF;
+    END IF;
+END;
+$$;
+
+
+-- ============================================================================
+-- 6. reject_price_request: atualizado com _resolve_user_id seguro
+-- ============================================================================
+CREATE OR REPLACE FUNCTION public.reject_price_request(
+    p_request_id uuid,
+    p_observations text DEFAULT NULL
+)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_user_id uuid;
+    v_request public.price_suggestions;
+    v_profile public.user_profiles;
+    v_permissions public.profile_permissions;
+    v_approver_name text;
+    v_current_level integer;
+    v_next_approver json;
+BEGIN
+    v_user_id := auth.uid();
+
+    SELECT * INTO v_request FROM public.price_suggestions WHERE id = p_request_id;
+    IF NOT FOUND THEN RAISE EXCEPTION 'Request not found'; END IF;
+    IF v_request.status NOT IN ('pending', 'appealed') THEN
+        RAISE EXCEPTION 'Request is not pending approval or appealed';
+    END IF;
+
+    SELECT * INTO v_profile FROM public.user_profiles WHERE user_id = v_user_id;
+    SELECT * INTO v_permissions FROM public.profile_permissions WHERE perfil = v_profile.perfil;
+
+    IF v_permissions IS NULL OR NOT v_permissions.can_approve THEN
+        RAISE EXCEPTION 'User does not have approval permissions';
+    END IF;
+
+    v_approver_name := COALESCE(v_profile.nome, v_profile.email, 'Aprovador');
+    v_current_level := COALESCE(v_request.approval_level, 1);
+
+    INSERT INTO public.approval_history (
+        suggestion_id, approver_id, approver_name, action, approval_level, observations
+    ) VALUES (
+        p_request_id, v_user_id, v_approver_name, 'rejected', v_current_level, p_observations
+    );
+
+    v_next_approver := public._find_next_approver(
+        p_request_id, v_request.created_by::text, v_current_level, v_request.margin_cents
+    );
+
+    IF (v_next_approver->>'found')::boolean THEN
+        UPDATE public.price_suggestions
+        SET status = 'pending',
+            approval_level = (v_next_approver->>'level')::integer,
+            current_approver_id = (v_next_approver->>'user_id')::uuid,
+            current_approver_name = v_next_approver->>'user_name',
+            rejections_count = COALESCE(rejections_count, 0) + 1,
+            last_approver_action_by = v_user_id,
+            rejection_reason = p_observations,
+            last_observation = p_observations
+        WHERE id = p_request_id;
+
+        INSERT INTO public.notifications (user_id, title, message, type, suggestion_id, read)
+        VALUES (
+            (v_next_approver->>'user_id')::uuid,
+            'Solicitação Escalada',
+            'Uma solicitação foi rejeitada por ' || v_approver_name || ' e enviada para você.',
+            'approval_pending',
+            p_request_id,
+            false
+        );
+
+        RETURN json_build_object('success', true, 'status', 'pending', 'action', 'escalated');
+    ELSE
+        UPDATE public.price_suggestions
+        SET status = 'rejected',
+            approved_by = v_user_id,
+            approved_at = now(),
+            current_approver_id = NULL,
+            current_approver_name = NULL,
+            rejections_count = COALESCE(rejections_count, 0) + 1,
+            last_approver_action_by = v_user_id,
+            rejection_reason = p_observations,
+            last_observation = p_observations
+        WHERE id = p_request_id;
+
+        IF v_request.created_by IS NOT NULL THEN
+            INSERT INTO public.notifications (user_id, title, message, type, suggestion_id, read)
+            VALUES (
+                public._resolve_user_id(v_request.created_by::text),
+                'Solicitação Rejeitada ❌',
+                'Sua solicitação foi rejeitada por ' || v_approver_name,
+                'price_rejected',
+                p_request_id,
+                false
+            );
+        END IF;
+
+        RETURN json_build_object('success', true, 'status', 'rejected', 'action', 'terminated');
+    END IF;
+END;
+$$;
+
+
+-- ============================================================================
+-- 7. suggest_price_request: corrigido UUID em notificações
+-- ============================================================================
+CREATE OR REPLACE FUNCTION public.suggest_price_request(
+    p_request_id uuid,
+    p_suggested_price numeric,
+    p_observations text DEFAULT NULL,
+    p_arla_price numeric DEFAULT NULL
+)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_user_id uuid;
+    v_request public.price_suggestions;
+    v_profile public.user_profiles;
+    v_permissions public.profile_permissions;
+    v_approver_name text;
+    v_current_level integer;
+    v_new_margin_cents integer;
+BEGIN
+    v_user_id := auth.uid();
+
+    SELECT * INTO v_request FROM public.price_suggestions WHERE id = p_request_id;
+    IF NOT FOUND THEN RAISE EXCEPTION 'Request not found'; END IF;
+    IF v_request.status NOT IN ('pending', 'appealed') THEN
+        RAISE EXCEPTION 'Request is not pending approval or appealed';
+    END IF;
+
+    IF p_suggested_price IS NULL OR p_suggested_price <= 0 THEN
+        RAISE EXCEPTION 'Suggested price must be greater than 0';
+    END IF;
+
+    SELECT * INTO v_profile FROM public.user_profiles WHERE user_id = v_user_id;
+    SELECT * INTO v_permissions FROM public.profile_permissions WHERE perfil = v_profile.perfil;
+
+    IF v_permissions IS NULL OR NOT v_permissions.can_approve THEN
+        RAISE EXCEPTION 'User does not have approval permissions';
+    END IF;
+
+    v_approver_name := COALESCE(v_profile.nome, v_profile.email, 'Aprovador');
+    v_current_level := COALESCE(v_request.approval_level, 1);
+    v_new_margin_cents := ((p_suggested_price - COALESCE(v_request.cost_price, 0)) * 100)::integer;
+
+    INSERT INTO public.approval_history (
+        suggestion_id, approver_id, approver_name, action, approval_level, observations
+    ) VALUES (
+        p_request_id, v_user_id, v_approver_name, 'price_suggested',
+        v_current_level,
+        COALESCE(p_observations, '') || ' | Preço sugerido: R$ ' || p_suggested_price::text
+    );
+
+    UPDATE public.price_suggestions
+    SET status = 'price_suggested',
+        suggested_price = p_suggested_price,
+        final_price = p_suggested_price,
+        arla_price = COALESCE(p_arla_price, arla_price),
+        margin_cents = v_new_margin_cents,
+        current_approver_id = v_user_id,
+        current_approver_name = v_approver_name,
+        last_approver_action_by = v_user_id,
+        last_observation = p_observations
+    WHERE id = p_request_id;
+
+    IF v_request.created_by IS NOT NULL THEN
+        INSERT INTO public.notifications (user_id, title, message, type, suggestion_id, read)
+        VALUES (
+            public._resolve_user_id(v_request.created_by::text),
+            'Preço Sugerido 💰',
+            v_approver_name || ' sugeriu um novo preço para sua solicitação.',
+            'price_suggested',
+            p_request_id,
+            false
+        );
+    END IF;
+
+    RETURN json_build_object('success', true, 'status', 'price_suggested', 'suggestedPrice', p_suggested_price);
+END;
+$$;
+
+
+-- ============================================================================
+-- 8. request_justification: corrigido UUID em notificações
+-- ============================================================================
+CREATE OR REPLACE FUNCTION public.request_justification(
+    p_request_id uuid,
+    p_observations text
+)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_user_id uuid;
+    v_request public.price_suggestions;
+    v_profile public.user_profiles;
+    v_permissions public.profile_permissions;
+    v_approver_name text;
+BEGIN
+    v_user_id := auth.uid();
+
+    IF p_observations IS NULL OR trim(p_observations) = '' THEN
+        RAISE EXCEPTION 'Observações obrigatórias';
+    END IF;
+
+    SELECT * INTO v_request FROM public.price_suggestions WHERE id = p_request_id;
+    IF NOT FOUND THEN RAISE EXCEPTION 'Request not found'; END IF;
+    IF v_request.status NOT IN ('pending', 'appealed') THEN
+        RAISE EXCEPTION 'Request is not pending approval or appealed';
+    END IF;
+
+    SELECT * INTO v_profile FROM public.user_profiles WHERE user_id = v_user_id;
+    SELECT * INTO v_permissions FROM public.profile_permissions WHERE perfil = v_profile.perfil;
+
+    IF v_permissions IS NULL OR NOT v_permissions.can_approve THEN
+        RAISE EXCEPTION 'User does not have approval permissions';
+    END IF;
+
+    v_approver_name := COALESCE(v_profile.nome, v_profile.email, 'Aprovador');
+
+    INSERT INTO public.approval_history (
+        suggestion_id, approver_id, approver_name, action, approval_level, observations
+    ) VALUES (
+        p_request_id, v_user_id, v_approver_name, 'request_justification',
+        COALESCE(v_request.approval_level, 1), p_observations
+    );
+
+    UPDATE public.price_suggestions
+    SET status = 'awaiting_justification',
+        last_approver_action_by = v_user_id,
+        last_observation = p_observations
+    WHERE id = p_request_id;
+
+    IF v_request.created_by IS NOT NULL THEN
+        INSERT INTO public.notifications (user_id, title, message, type, suggestion_id, read)
+        VALUES (
+            public._resolve_user_id(v_request.created_by::text),
+            'Justificativa Solicitada 📝',
+            v_approver_name || ' solicitou uma justificativa.',
+            'justification_requested',
+            p_request_id,
+            false
+        );
+    END IF;
+
+    RETURN json_build_object('success', true, 'status', 'awaiting_justification');
+END;
+$$;
+
+
+-- ============================================================================
+-- 9. request_evidence: corrigido UUID em notificações
+-- ============================================================================
+CREATE OR REPLACE FUNCTION public.request_evidence(
+    p_request_id uuid,
+    p_product text,
+    p_observations text DEFAULT NULL
+)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_user_id uuid;
+    v_request public.price_suggestions;
+    v_profile public.user_profiles;
+    v_permissions public.profile_permissions;
+    v_approver_name text;
+BEGIN
+    v_user_id := auth.uid();
+
+    IF p_product NOT IN ('principal', 'arla') THEN
+        RAISE EXCEPTION 'Product must be "principal" or "arla"';
+    END IF;
+
+    SELECT * INTO v_request FROM public.price_suggestions WHERE id = p_request_id;
+    IF NOT FOUND THEN RAISE EXCEPTION 'Request not found'; END IF;
+    IF v_request.status NOT IN ('pending', 'appealed') THEN
+        RAISE EXCEPTION 'Request is not pending approval or appealed';
+    END IF;
+
+    SELECT * INTO v_profile FROM public.user_profiles WHERE user_id = v_user_id;
+    SELECT * INTO v_permissions FROM public.profile_permissions WHERE perfil = v_profile.perfil;
+
+    IF v_permissions IS NULL OR NOT v_permissions.can_approve THEN
+        RAISE EXCEPTION 'User does not have approval permissions';
+    END IF;
+
+    v_approver_name := COALESCE(v_profile.nome, v_profile.email, 'Aprovador');
+
+    INSERT INTO public.approval_history (
+        suggestion_id, approver_id, approver_name, action, approval_level, observations
+    ) VALUES (
+        p_request_id, v_user_id, v_approver_name, 'request_evidence',
+        COALESCE(v_request.approval_level, 1),
+        COALESCE(p_observations, '') || ' | Produto: ' || p_product
+    );
+
+    UPDATE public.price_suggestions
+    SET status = 'awaiting_evidence',
+        evidence_product = p_product,
+        last_approver_action_by = v_user_id,
+        last_observation = p_observations
+    WHERE id = p_request_id;
+
+    IF v_request.created_by IS NOT NULL THEN
+        INSERT INTO public.notifications (user_id, title, message, type, suggestion_id, read)
+        VALUES (
+            public._resolve_user_id(v_request.created_by::text),
+            'Referência Solicitada 📎',
+            v_approver_name || ' solicitou uma referência de preço (' ||
+            CASE WHEN p_product = 'principal' THEN 'Produto Principal' ELSE 'ARLA' END || ').',
+            'evidence_requested',
+            p_request_id,
+            false
+        );
+    END IF;
+
+    RETURN json_build_object('success', true, 'status', 'awaiting_evidence', 'evidenceProduct', p_product);
+END;
+$$;
+
+
+-- ============================================================================
+-- 10. provide_evidence: CORRIGIDO - usa UUID, sem cast perigoso de created_by
+-- ============================================================================
+CREATE OR REPLACE FUNCTION public.provide_evidence(
+    p_request_id uuid,
+    p_attachment_url text,
+    p_observations text DEFAULT NULL
+)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_user_id uuid;
+    v_request public.price_suggestions;
+    v_profile public.user_profiles;
+    v_requester_name text;
+    v_current_attachments text[];
+    v_creator_uuid uuid;
+BEGIN
+    v_user_id := auth.uid();
+
+    SELECT * INTO v_request FROM public.price_suggestions WHERE id = p_request_id;
+    IF NOT FOUND THEN RAISE EXCEPTION 'Solicitação não encontrada'; END IF;
+    IF v_request.status != 'awaiting_evidence' THEN RAISE EXCEPTION 'Estado inválido'; END IF;
+
+    -- Autorização: verificar se quem envia é o criador
+    v_creator_uuid := public._resolve_user_id(v_request.created_by::text);
+    IF v_creator_uuid IS NOT NULL AND v_creator_uuid != v_user_id THEN
+        -- Fallback: se não resolveu por UUID, comparar como texto
+        IF v_request.created_by::text != v_user_id::text THEN
+            RAISE EXCEPTION 'Não autorizado a fornecer evidência';
+        END IF;
+    END IF;
+
+    SELECT nome, email INTO v_profile FROM public.user_profiles WHERE user_id = v_user_id;
+    v_requester_name := COALESCE(v_profile.nome, v_profile.email, 'Solicitante');
+
+    v_current_attachments := COALESCE(v_request.attachments, ARRAY[]::text[]);
+    IF p_attachment_url IS NOT NULL AND p_attachment_url != '' THEN
+        v_current_attachments := array_append(v_current_attachments, p_attachment_url);
+    END IF;
+
+    INSERT INTO public.approval_history (suggestion_id, approver_id, approver_name, action, approval_level, observations, attachment_url)
+    VALUES (p_request_id, v_user_id, v_requester_name, 'evidence_provided', v_request.approval_level,
+            COALESCE(p_observations, 'Referência enviada.'), p_attachment_url);
+
+    UPDATE public.price_suggestions
+    SET status = 'pending',
+        evidence_url = COALESCE(p_attachment_url, evidence_url),
+        attachments = v_current_attachments,
+        evidence_product = NULL
+    WHERE id = p_request_id;
+
+    -- Notificar aprovador usando last_approver_action_by (já é UUID)
+    IF v_request.last_approver_action_by IS NOT NULL THEN
+        INSERT INTO public.notifications (user_id, title, message, type, suggestion_id, read)
+        VALUES (v_request.last_approver_action_by, 'Referência Fornecida 📎',
+                v_requester_name || ' enviou uma referência de preço.', 'evidence_provided', p_request_id, false);
+    END IF;
+
+    RETURN json_build_object('success', true, 'status', 'pending');
+END;
+$$;
+
+
+-- ============================================================================
+-- 11. provide_justification: CORRIGIDO - usa UUID, sem cast perigoso de created_by
+-- ============================================================================
+CREATE OR REPLACE FUNCTION public.provide_justification(
+    p_request_id uuid,
+    p_justification text
+)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_user_id uuid;
+    v_request public.price_suggestions;
+    v_profile public.user_profiles;
+    v_requester_name text;
+    v_creator_uuid uuid;
+BEGIN
+    v_user_id := auth.uid();
+
+    SELECT * INTO v_request FROM public.price_suggestions WHERE id = p_request_id;
+    IF NOT FOUND THEN RAISE EXCEPTION 'Solicitação não encontrada'; END IF;
+    IF v_request.status != 'awaiting_justification' THEN RAISE EXCEPTION 'Estado inválido'; END IF;
+
+    -- Autorização
+    v_creator_uuid := public._resolve_user_id(v_request.created_by::text);
+    IF v_creator_uuid IS NOT NULL AND v_creator_uuid != v_user_id THEN
+        IF v_request.created_by::text != v_user_id::text THEN
+            RAISE EXCEPTION 'Não autorizado a fornecer justificativa';
+        END IF;
+    END IF;
+
+    SELECT nome, email INTO v_profile FROM public.user_profiles WHERE user_id = v_user_id;
+    v_requester_name := COALESCE(v_profile.nome, v_profile.email, 'Solicitante');
+
+    INSERT INTO public.approval_history (suggestion_id, approver_id, approver_name, action, approval_level, observations)
+    VALUES (p_request_id, v_user_id, v_requester_name, 'justification_provided', v_request.approval_level, p_justification);
+
+    UPDATE public.price_suggestions
+    SET status = 'pending',
+        last_observation = p_justification
+    WHERE id = p_request_id;
+
+    -- Notificar aprovador usando last_approver_action_by (já é UUID)
+    IF v_request.last_approver_action_by IS NOT NULL THEN
+        INSERT INTO public.notifications (user_id, title, message, type, suggestion_id, read)
+        VALUES (v_request.last_approver_action_by, 'Justificativa Fornecida 💬',
+                v_requester_name || ' enviou uma justificativa.', 'justification_provided', p_request_id, false);
+    END IF;
+
+    RETURN json_build_object('success', true, 'status', 'pending');
+END;
+$$;
+
+
+-- ============================================================================
+-- 12. appeal_price_request: CORRIGIDO
+-- ============================================================================
+CREATE OR REPLACE FUNCTION public.appeal_price_request(
+    p_request_id uuid,
+    p_new_price numeric,
+    p_observations text DEFAULT NULL,
+    p_arla_price numeric DEFAULT NULL
+)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_user_id uuid;
+    v_request public.price_suggestions;
+BEGIN
+    v_user_id := auth.uid();
+
+    SELECT * INTO v_request FROM public.price_suggestions WHERE id = p_request_id;
+    IF NOT FOUND THEN RAISE EXCEPTION 'Solicitação não encontrada'; END IF;
+    IF v_request.status NOT IN ('price_suggested') THEN RAISE EXCEPTION 'Não está em modo sugestão'; END IF;
+
+    INSERT INTO public.approval_history (suggestion_id, approver_id, approver_name, action, approval_level, observations)
+    VALUES (p_request_id, v_user_id, 'Solicitante (Recurso)', 'appealed', v_request.approval_level,
+            COALESCE(p_observations, '') || ' | Contraproposta: R$ ' || p_new_price::text);
+
+    UPDATE public.price_suggestions
+    SET status = 'appealed',
+        suggested_price = p_new_price,
+        arla_price = COALESCE(p_arla_price, arla_price),
+        last_observation = p_observations
+    WHERE id = p_request_id;
+
+    IF v_request.current_approver_id IS NOT NULL THEN
+        INSERT INTO public.notifications (user_id, title, message, type, suggestion_id, read)
+        VALUES (v_request.current_approver_id, 'Recurso de Preço ↩️',
+                'O solicitante enviou uma contraproposta.', 'appealed', p_request_id, false);
+    END IF;
+
+    RETURN json_build_object('success', true, 'status', 'appealed');
+END;
+$$;
+
+
+-- ============================================================================
+-- 13. accept_suggested_price: CORRIGIDO
+-- ============================================================================
+CREATE OR REPLACE FUNCTION public.accept_suggested_price(
+    p_request_id uuid,
+    p_observations text DEFAULT NULL
+)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_user_id uuid;
+    v_request public.price_suggestions;
+BEGIN
+    v_user_id := auth.uid();
+
+    SELECT * INTO v_request FROM public.price_suggestions WHERE id = p_request_id;
+    IF NOT FOUND THEN RAISE EXCEPTION 'Solicitação não encontrada'; END IF;
+    IF v_request.status NOT IN ('price_suggested') THEN RAISE EXCEPTION 'Não está em modo sugestão'; END IF;
+
+    INSERT INTO public.approval_history (suggestion_id, approver_id, approver_name, action, approval_level, observations)
+    VALUES (p_request_id, v_user_id, 'Solicitante', 'accepted_suggestion', v_request.approval_level,
+            COALESCE(p_observations, 'Aceito o preço sugerido.'));
+
+    UPDATE public.price_suggestions
+    SET status = 'approved',
+        approved_by = v_request.current_approver_id,
+        approved_at = now(),
+        last_approver_action_by = v_user_id,
+        last_observation = p_observations
+    WHERE id = p_request_id;
+
+    IF v_request.current_approver_id IS NOT NULL THEN
+        INSERT INTO public.notifications (user_id, title, message, type, suggestion_id, read)
+        VALUES (v_request.current_approver_id, 'Sugestão Aceita ✅',
+                'O solicitante aceitou o preço sugerido.', 'suggestion_accepted', p_request_id, false);
+    END IF;
+
+    RETURN json_build_object('success', true, 'status', 'approved');
+END;
+$$;

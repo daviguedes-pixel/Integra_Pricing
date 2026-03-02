@@ -23,7 +23,7 @@ import {
 } from "@/api/priceRequestsApi";
 import { supabase } from "@/integrations/supabase/client";
 import { CurrencyInput } from "@/components/ui/currency-input"; // Implemented previously
-import { parseBrazilianDecimal } from "@/lib/utils"; // Ensure this helper exists or implement inline
+import { parseBrazilianDecimal, isValidUUID } from "@/lib/utils"; // Ensure this helper exists or implement inline
 
 interface RequesterResponseActionsProps {
     requests: any[];
@@ -43,10 +43,35 @@ export function RequesterResponseActions({ requests, onSuccess }: RequesterRespo
     const status = first.status;
     const requestId = first.id;
 
+    const notifyApprover = async (type: string, title: string, message: string) => {
+        const approverId = first.current_approver_id || first.created_by;
+        if (!approverId || !isValidUUID(approverId)) return;
+
+        // Se for um lote, o ID pode não ser um UUID
+        const isUuid = isValidUUID(requestId);
+        const data = isUuid
+            ? { suggestion_id: requestId, url: `/approvals` }
+            : { batch_id: requestId, url: `/approvals` };
+
+        try {
+            const { createNotification } = await import('@/lib/utils');
+            await createNotification(
+                approverId,
+                type as any,
+                title,
+                message,
+                data
+            );
+        } catch (e) {
+            console.error('Erro ao enviar notificação:', e);
+        }
+    };
+
     const handleAcceptPrice = async () => {
         setLoading(true);
         try {
             await acceptSuggestedPrice(requestId, "Aceito pelo solicitante via interface.");
+            await notifyApprover('system', 'Preço Aceito', 'O solicitante aceitou o preço sugerido.');
             toast.success("Preço sugerido aceito com sucesso!");
             onSuccess();
         } catch (error: any) {
@@ -64,6 +89,7 @@ export function RequesterResponseActions({ requests, onSuccess }: RequesterRespo
         setLoading(true);
         try {
             await provideJustification(requestId, justification);
+            await notifyApprover('approval_pending', 'Justificativa Recebida', 'O solicitante enviou a justificativa solicitada.');
             toast.success("Justificativa enviada com sucesso!");
             setJustification("");
             onSuccess();
@@ -85,6 +111,7 @@ export function RequesterResponseActions({ requests, onSuccess }: RequesterRespo
         setLoading(true);
         try {
             await appealPriceRequest(requestId, price, justification || "Apelação de preço sugerido.");
+            await notifyApprover('approval_pending', 'Recurso Recebido', 'O solicitante enviou uma contraproposta/recurso.');
             toast.success("Apelação enviada com sucesso!");
             setIsAppealing(false);
             onSuccess();
@@ -116,6 +143,7 @@ export function RequesterResponseActions({ requests, onSuccess }: RequesterRespo
                 .getPublicUrl(filePath);
 
             await provideEvidence(requestId, publicUrl, justification || "Evidência anexada.");
+            await notifyApprover('approval_pending', 'Evidência Recebida', 'O solicitante anexou a evidência solicitada.');
             toast.success("Evidência enviada com sucesso!");
             onSuccess();
         } catch (error: any) {

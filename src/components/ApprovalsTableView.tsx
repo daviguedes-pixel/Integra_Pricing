@@ -162,7 +162,12 @@ export function ApprovalsTableView({
         if (cents === null || cents === undefined) return '—';
         const val = cents / 100;
         const color = val >= 0 ? 'text-green-600' : 'text-red-600';
-        return <span className={color}>{val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>;
+        return <span className={color}>{val.toLocaleString('pt-BR', {
+            style: 'currency',
+            currency: 'BRL',
+            minimumFractionDigits: 4,
+            maximumFractionDigits: 4
+        })}</span>;
     };
 
     const isArlaProduct = (product: string) => {

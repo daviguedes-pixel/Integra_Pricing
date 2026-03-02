@@ -447,11 +447,11 @@ export function MobileApprovalsView({
                                     </div>
                                     <div className="bg-slate-50 dark:bg-slate-800 rounded p-2 text-center">
                                         <p className="text-[10px] text-muted-foreground">Margem</p>
-                                        <p className="font-semibold text-green-600 text-sm">R$ {margin.toFixed(3)}/L</p>
+                                        <p className="font-semibold text-green-600 text-sm">R$ {margin.toFixed(4)}/L</p>
                                     </div>
                                     <div className="bg-slate-50 dark:bg-slate-800 rounded p-2 text-center">
                                         <p className="text-[10px] text-muted-foreground">Custo</p>
-                                        <p className="font-semibold text-sm">R$ {totalCost.toFixed(3)}</p>
+                                        <p className="font-semibold text-sm">R$ {totalCost.toFixed(4)}</p>
                                         {paymentMethod && (
                                             <p className="text-[9px] text-muted-foreground">{paymentMethod} {paymentTax > 0 && `(${paymentTax.toFixed(1)}%)`}</p>
                                         )}
