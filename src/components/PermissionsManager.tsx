@@ -228,11 +228,15 @@ export function PermissionsManager() {
       }));
 
       for (const update of updates) {
-        const { error } = await supabase
-          .from('profile_permissions')
-          .upsert(update, { onConflict: 'perfil' });
+        const { error } = await supabase.rpc('upsert_profile_permissions', {
+          p_perfil: update.perfil,
+          p_permissions: update
+        });
 
-        if (error) throw error;
+        if (error) {
+          console.error('RPC Error:', error);
+          throw error;
+        }
       }
 
       toast.success('Permissões salvas com sucesso!');
