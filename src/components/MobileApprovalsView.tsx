@@ -464,6 +464,10 @@ export function MobileApprovalsView({
                                         <p className="text-[10px] text-muted-foreground">% ARLA</p>
                                         <p className="text-xs font-semibold text-blue-600">{arlaPercentage}%</p>
                                     </div>
+                                    <div className="flex justify-between text-[10px] text-slate-500 mb-2">
+                                        <span>Custo: R$ {arlaCostPrice.toFixed(4)}</span>
+                                        <span>Venda: R$ {arlaPurchasePrice.toFixed(4)}</span>
+                                    </div>
                                     <Slider
                                         value={[arlaPercentage]}
                                         onValueChange={(value) => setArlaPercentage(value[0])}

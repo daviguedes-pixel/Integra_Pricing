@@ -239,6 +239,10 @@ export function SwipeableApprovalCard({
                                 <p className="text-[10px] text-slate-500 uppercase tracking-wider">ARLA {arlaPercentage}%</p>
                                 <p className="text-xs font-medium text-slate-700">{arlaProfit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
                             </div>
+                            <div className="flex justify-between text-[9px] text-slate-400 mb-2">
+                                <span>Custo: {formatPrice(arlaCostPrice)}</span>
+                                <span>Venda: {formatPrice(arlaPurchasePrice)}</span>
+                            </div>
                             <Slider
                                 value={[arlaPercentage]}
                                 onValueChange={(value) => setArlaPercentage(value[0])}
