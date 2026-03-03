@@ -759,10 +759,11 @@ export function RequestForm({ onSuccess, initialData }: RequestFormProps) {
                                         <SelectContent>
                                             <SelectItem value="none">Nenhum / À Vista</SelectItem>
                                             {stationPaymentMethods.map((pm: any, index: number) => {
-                                                const uniqueValue = pm.id ? String(pm.id) : `${pm.CARTAO}_${pm.TAXA ?? 0}_${index}`;
+                                                const uniqueValue = pm.id ? String(pm.id) : `pm_${index}`;
+                                                const displayText = `${pm.CARTAO || 'Método'}${pm.TAXA ? ` (${pm.TAXA}%)` : ''}${pm.PRAZO ? ` - ${pm.PRAZO}d` : ''}`;
                                                 return (
-                                                    <SelectItem key={`pm-${uniqueValue}`} value={uniqueValue}>
-                                                        {pm.CARTAO} {pm.TAXA ? `(${pm.TAXA}%)` : ''}
+                                                    <SelectItem key={uniqueValue} value={uniqueValue} textValue={displayText + ` #${uniqueValue}`}>
+                                                        {displayText}
                                                     </SelectItem>
                                                 );
                                             })}
