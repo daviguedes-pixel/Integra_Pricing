@@ -15,6 +15,7 @@ interface ApprovalMarginRule {
   min_margin_cents: number;
   max_margin_cents: number | null;
   required_profiles: string[];
+  escalation_profiles: string[];
   rule_name: string | null;
   is_active: boolean;
   priority_order: number;
@@ -89,22 +90,23 @@ export default function ApprovalMarginConfig() {
         min_margin_cents: rule.min_margin_cents,
         max_margin_cents: rule.max_margin_cents ?? null,
         required_profiles: rule.required_profiles,
+        escalation_profiles: rule.escalation_profiles || [],
         rule_name: rule.rule_name || null,
         is_active: rule.is_active ?? true,
         priority_order: rule.priority_order ?? 0
       };
 
       console.log('💾 Salvando regra:', ruleData);
-      
+
       if (editingRule?.id) {
         // Atualizar regra existente
         const { error } = await supabase
           .from('approval_margin_rules' as any)
           .update(ruleData)
           .eq('id', editingRule.id);
-        
+
         if (error) throw error;
-        
+
         toast({
           title: "Sucesso",
           description: 'Regra atualizada com sucesso',
@@ -114,15 +116,15 @@ export default function ApprovalMarginConfig() {
         const { error } = await supabase
           .from('approval_margin_rules' as any)
           .insert([ruleData]);
-        
+
         if (error) throw error;
-        
+
         toast({
           title: "Sucesso",
           description: 'Regra criada com sucesso',
         });
       }
-      
+
       setEditingRule(null);
       setIsCreating(false);
       loadRules();
@@ -146,14 +148,14 @@ export default function ApprovalMarginConfig() {
         .from('approval_margin_rules' as any)
         .delete()
         .eq('id', id);
-      
+
       if (error) throw error;
-      
+
       toast({
         title: "Sucesso",
         description: 'Regra excluída com sucesso',
       });
-      
+
       loadRules();
     } catch (error: any) {
       console.error('Erro ao excluir regra:', error);
@@ -171,14 +173,14 @@ export default function ApprovalMarginConfig() {
         .from('approval_margin_rules' as any)
         .update({ is_active: !rule.is_active })
         .eq('id', rule.id);
-      
+
       if (error) throw error;
-      
+
       toast({
         title: "Sucesso",
         description: `Regra ${!rule.is_active ? 'ativada' : 'desativada'} com sucesso`,
       });
-      
+
       loadRules();
     } catch (error: any) {
       console.error('Erro ao alterar status da regra:', error);
@@ -221,6 +223,7 @@ export default function ApprovalMarginConfig() {
               min_margin_cents: 0,
               max_margin_cents: null,
               required_profiles: [],
+              escalation_profiles: [],
               rule_name: '',
               is_active: true,
               priority_order: 0
@@ -358,11 +361,50 @@ export default function ApprovalMarginConfig() {
               </p>
             </div>
 
+            <div className="space-y-1.5">
+              <Label>Perfis de Escalonamento (Em caso de rejeição)</Label>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                {AVAILABLE_PROFILES.map((profile) => {
+                  const isSelected = editingRule?.escalation_profiles?.includes(profile) || false;
+                  return (
+                    <div key={`escalation_${profile}`} className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id={`escalation_${profile}`}
+                        checked={isSelected}
+                        onChange={(e) => {
+                          const currentProfiles = editingRule?.escalation_profiles || [];
+                          if (e.target.checked) {
+                            setEditingRule({
+                              ...editingRule!,
+                              escalation_profiles: [...currentProfiles, profile]
+                            });
+                          } else {
+                            setEditingRule({
+                              ...editingRule!,
+                              escalation_profiles: currentProfiles.filter(p => p !== profile)
+                            });
+                          }
+                        }}
+                        className="rounded border-slate-300"
+                      />
+                      <Label htmlFor={`escalation_${profile}`} className="text-sm font-normal cursor-pointer">
+                        {profile.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                      </Label>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Perfis que a solicitação deve seguir caso seja <b>REJEITADA</b> pelos perfis requeridos originais. (Deixe vazio para finalizar a solicitação).
+              </p>
+            </div>
+
             <div className="flex gap-2 pt-2">
               <Button
                 onClick={() => {
                   if (!editingRule) return;
-                  
+
                   // Validar antes de salvar
                   if (!editingRule.required_profiles || editingRule.required_profiles.length === 0) {
                     toast({
@@ -372,7 +414,7 @@ export default function ApprovalMarginConfig() {
                     });
                     return;
                   }
-                  
+
                   handleSave(editingRule);
                 }}
                 disabled={!editingRule?.required_profiles?.length || editingRule.required_profiles.length === 0}
@@ -445,15 +487,34 @@ export default function ApprovalMarginConfig() {
                 </div>
               </CardHeader>
               <CardContent className="pt-0">
-                <div className="flex flex-wrap gap-2">
-                  {rule.required_profiles.map((profile) => (
-                    <span
-                      key={profile}
-                      className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs rounded"
-                    >
-                      {profile.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                    </span>
-                  ))}
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium">Requeridos:</span>
+                    {rule.required_profiles.map((profile) => (
+                      <span
+                        key={`req_${profile}`}
+                        className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs rounded"
+                      >
+                        {profile.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium">Escalonamento:</span>
+                    {rule.escalation_profiles && rule.escalation_profiles.length > 0 ? (
+                      rule.escalation_profiles.map((profile) => (
+                        <span
+                          key={`esc_${profile}`}
+                          className="px-2 py-1 bg-orange-100 dark:bg-orange-900 text-orange-800 dark:text-orange-200 text-xs rounded"
+                        >
+                          {profile.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-xs text-slate-500 italic">Nenhum</span>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
