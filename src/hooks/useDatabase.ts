@@ -219,12 +219,13 @@ export const useDatabase = () => {
         return [];
       }
 
-      // Agrupar por CARTAO e ID_POSTO para evitar duplicatas
+      // Deduplicate by CARTAO + ID_POSTO + TAXA to keep cards with same name but different rates
       const grouped = new Map<string, any>();
       (data || []).forEach((method: any) => {
         const cardName = method.CARTAO || method.name || 'Método';
         const postoId = method.ID_POSTO || 'all';
-        const key = `${cardName}_${postoId}`;
+        const taxa = method.TAXA ?? 0;
+        const key = `${cardName}_${postoId}_${taxa}`;
         if (!grouped.has(key)) {
           grouped.set(key, method);
         }

@@ -356,15 +356,13 @@ export function RequestForm({ onSuccess, initialData }: RequestFormProps) {
 
             let feePercentage = 0;
             if (formData.payment_method_id && formData.payment_method_id !== "none") {
-                const stationMethod = paymentMethods.find(pm =>
-                    String(pm.id) === String(formData.payment_method_id) ||
-                    (pm.CARTAO === formData.payment_method_id && String((pm as any).ID_POSTO) === String(formData.station_id))
+                const selectedPm = stationPaymentMethods.find((pm: any) => {
+                    const pmValue = pm.id ? String(pm.id) : `${pm.CARTAO}_${pm.TAXA ?? 0}`;
+                    return String(pm.id) === formData.payment_method_id || pmValue === formData.payment_method_id;
+                }) || paymentMethods.find(pm =>
+                    String((pm as any).id) === formData.payment_method_id
                 );
-                const generalMethod = paymentMethods.find(pm =>
-                    String(pm.id) === String(formData.payment_method_id) ||
-                    (pm.CARTAO === formData.payment_method_id && (pm.ID_POSTO === "all" || pm.ID_POSTO === "GENERICO"))
-                );
-                feePercentage = stationMethod?.TAXA || generalMethod?.TAXA || 0;
+                feePercentage = selectedPm?.TAXA || 0;
             }
 
             const finalCost = baseCost * (1 + feePercentage / 100);
@@ -384,7 +382,7 @@ export function RequestForm({ onSuccess, initialData }: RequestFormProps) {
         } catch (e) {
             console.error(e);
         }
-    }, [formData, paymentMethods]);
+    }, [formData, paymentMethods, stationPaymentMethods]);
 
 
     const calculateCosts = useCallback(() => {
@@ -398,16 +396,13 @@ export function RequestForm({ onSuccess, initialData }: RequestFormProps) {
 
             let feePercentage = 0;
             if (formData.payment_method_id && formData.payment_method_id !== 'none') {
-                // Mesmo fallback logic
-                const stationMethod = paymentMethods.find(pm =>
-                    String(pm.id) === String(formData.payment_method_id) ||
-                    (pm.CARTAO === formData.payment_method_id && String((pm as any).ID_POSTO) === String(formData.station_id))
+                const selectedPm = stationPaymentMethods.find((pm: any) => {
+                    const pmValue = pm.id ? String(pm.id) : `${pm.CARTAO}_${pm.TAXA ?? 0}`;
+                    return String(pm.id) === formData.payment_method_id || pmValue === formData.payment_method_id;
+                }) || paymentMethods.find(pm =>
+                    String((pm as any).id) === formData.payment_method_id
                 );
-                const generalMethod = paymentMethods.find(pm =>
-                    String(pm.id) === String(formData.payment_method_id) ||
-                    (pm.CARTAO === formData.payment_method_id && (pm.ID_POSTO === 'all' || pm.ID_POSTO === 'GENERICO'))
-                );
-                feePercentage = stationMethod?.TAXA || generalMethod?.TAXA || 0;
+                feePercentage = selectedPm?.TAXA || 0;
             }
 
             const finalCost = baseCost * (1 + feePercentage / 100);
@@ -763,11 +758,14 @@ export function RequestForm({ onSuccess, initialData }: RequestFormProps) {
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="none">Nenhum / À Vista</SelectItem>
-                                            {stationPaymentMethods.map((pm: any, index: number) => (
-                                                <SelectItem key={`${pm.id || 'pm'}-${pm.CARTAO}-${index}`} value={String(pm.id)}>
-                                                    {pm.CARTAO} {pm.TAXA ? `(${pm.TAXA}%)` : ''}
-                                                </SelectItem>
-                                            ))}
+                                            {stationPaymentMethods.map((pm: any, index: number) => {
+                                                const uniqueValue = pm.id ? String(pm.id) : `${pm.CARTAO}_${pm.TAXA ?? 0}_${index}`;
+                                                return (
+                                                    <SelectItem key={`pm-${uniqueValue}`} value={uniqueValue}>
+                                                        {pm.CARTAO} {pm.TAXA ? `(${pm.TAXA}%)` : ''}
+                                                    </SelectItem>
+                                                );
+                                            })}
                                         </SelectContent>
                                     </Select>
                                 </div>
