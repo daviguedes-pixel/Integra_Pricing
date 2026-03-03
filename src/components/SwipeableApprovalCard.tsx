@@ -68,16 +68,21 @@ export function SwipeableApprovalCard({
     const handleDragEnd = (_: any, info: PanInfo) => {
         if (isDraggingSlider) return; // Não processar se estava no slider
 
-        const threshold = 100;
-        const velocity = 500;
+        // Thresholds mais altos para evitar deslize acidental no mobile
+        const offsetThreshold = 180; // px - precisa arrastar bastante
+        const velocityThreshold = 1200; // px/s - precisa ser rápido E intencional
 
-        if (info.offset.x > threshold || info.velocity.x > velocity) {
+        // Requer offset GRANDE ou (offset médio + velocidade alta)
+        const absOffsetX = Math.abs(info.offset.x);
+        const absVelocityX = Math.abs(info.velocity.x);
+
+        if (info.offset.x > 0 && (absOffsetX > offsetThreshold || (absOffsetX > 120 && absVelocityX > velocityThreshold))) {
             setExitDirection('right');
             setTimeout(() => onApprove(approval), 300);
-        } else if (info.offset.x < -threshold || info.velocity.x < -velocity) {
+        } else if (info.offset.x < 0 && (absOffsetX > offsetThreshold || (absOffsetX > 120 && absVelocityX > velocityThreshold))) {
             setExitDirection('left');
             setTimeout(() => onReject(approval), 300);
-        } else if (info.offset.y < -threshold || info.velocity.y < -velocity) {
+        } else if (info.offset.y < -150 || info.velocity.y < -800) {
             // Arrastar para cima abre o menu de ações
             onShowActions(approval);
         }
@@ -127,7 +132,7 @@ export function SwipeableApprovalCard({
             style={{ x, y, rotate, backgroundColor }}
             drag={isTopCard && !isDraggingSlider}
             dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
-            dragElastic={0.7}
+            dragElastic={0.35}
             onDragEnd={handleDragEnd}
             animate={exitDirection ? exitVariants[exitDirection] : {}}
             whileTap={{ cursor: 'grabbing' }}
