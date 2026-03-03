@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { corsHeaders } from "../shared/cors.ts"
 
-const WEBHOOK_URL = "http://n8n.hetz.com/webhook/b372035b-bcc3-4e85-8d2e-350aed49c105"
+const WEBHOOK_URL = "https://brapoio-n8n.fly.dev/webhook/b372035b-bcc3-4e85-8d2e-350aed49c105"
 
 serve(async (req: Request) => {
     // Handle CORS

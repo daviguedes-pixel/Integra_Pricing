@@ -161,7 +161,10 @@ export function RequestForm({ onSuccess, initialData }: RequestFormProps) {
             if (formData.station_id && formData.station_id !== 'none') {
                 try {
                     const methods = await getPaymentMethodsForStation(formData.station_id);
+                    console.log('💳 Tipos de pagamento:', methods.length, 'métodos carregados');
                     setStationPaymentMethods(methods);
+                    // Reset pagamento ao trocar de posto para evitar valor stale
+                    handleInputChange("payment_method_id", "none");
                 } catch (error) {
                     console.error('Erro ao carregar tipos de pagamento:', error);
                     setStationPaymentMethods([]);
@@ -356,12 +359,9 @@ export function RequestForm({ onSuccess, initialData }: RequestFormProps) {
 
             let feePercentage = 0;
             if (formData.payment_method_id && formData.payment_method_id !== "none") {
-                const selectedPm = stationPaymentMethods.find((pm: any) => {
-                    const pmValue = pm.id ? String(pm.id) : `${pm.CARTAO}_${pm.TAXA ?? 0}`;
-                    return String(pm.id) === formData.payment_method_id || pmValue === formData.payment_method_id;
-                }) || paymentMethods.find(pm =>
-                    String((pm as any).id) === formData.payment_method_id
-                );
+                // Extrair index do safeValue: "0__CARTAO_TAXA_PRAZO"
+                const pmIndex = parseInt(formData.payment_method_id.split('__')[0], 10);
+                const selectedPm = !isNaN(pmIndex) ? stationPaymentMethods[pmIndex] : null;
                 feePercentage = selectedPm?.TAXA || 0;
             }
 
@@ -396,12 +396,9 @@ export function RequestForm({ onSuccess, initialData }: RequestFormProps) {
 
             let feePercentage = 0;
             if (formData.payment_method_id && formData.payment_method_id !== 'none') {
-                const selectedPm = stationPaymentMethods.find((pm: any) => {
-                    const pmValue = pm.id ? String(pm.id) : `${pm.CARTAO}_${pm.TAXA ?? 0}`;
-                    return String(pm.id) === formData.payment_method_id || pmValue === formData.payment_method_id;
-                }) || paymentMethods.find(pm =>
-                    String((pm as any).id) === formData.payment_method_id
-                );
+                // Extrair index do safeValue: "0__CARTAO_TAXA_PRAZO"
+                const pmIndex = parseInt(formData.payment_method_id.split('__')[0], 10);
+                const selectedPm = !isNaN(pmIndex) ? stationPaymentMethods[pmIndex] : null;
                 feePercentage = selectedPm?.TAXA || 0;
             }
 
@@ -749,26 +746,25 @@ export function RequestForm({ onSuccess, initialData }: RequestFormProps) {
                                         </svg>
                                         Tipo de Pagamento
                                     </Label>
-                                    <Select
+                                    <select
                                         value={formData.payment_method_id}
-                                        onValueChange={(val) => handleInputChange("payment_method_id", val)}
+                                        onChange={(e) => {
+                                            handleInputChange("payment_method_id", e.target.value);
+                                        }}
+                                        className="flex h-9 w-full items-center rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                     >
-                                        <SelectTrigger className="h-9">
-                                            <SelectValue placeholder="Selecione o pagamento" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="none">Nenhum / À Vista</SelectItem>
-                                            {stationPaymentMethods.map((pm: any, index: number) => {
-                                                const uniqueValue = pm.id ? String(pm.id) : `pm_${index}`;
-                                                const displayText = `${pm.CARTAO || 'Método'}${pm.TAXA ? ` (${pm.TAXA}%)` : ''}${pm.PRAZO ? ` - ${pm.PRAZO}d` : ''}`;
-                                                return (
-                                                    <SelectItem key={uniqueValue} value={uniqueValue} textValue={displayText + ` #${uniqueValue}`}>
-                                                        {displayText}
-                                                    </SelectItem>
-                                                );
-                                            })}
-                                        </SelectContent>
-                                    </Select>
+                                        <option value="none">Nenhum / À Vista</option>
+                                        {stationPaymentMethods.map((pm: any, index: number) => {
+                                            // Chave SEMPRE única: usa index que é garantido ser diferente
+                                            const safeValue = `${index}__${pm.CARTAO || ''}_${pm.TAXA ?? 0}_${pm.PRAZO || 0}`;
+                                            const displayText = `${pm.CARTAO || 'Método'}${pm.TAXA != null ? ` (${pm.TAXA}%)` : ''}${pm.PRAZO ? ` - ${pm.PRAZO}d` : ''}`;
+                                            return (
+                                                <option key={safeValue} value={safeValue}>
+                                                    {displayText}
+                                                </option>
+                                            );
+                                        })}
+                                    </select>
                                 </div>
 
                                 {/* Preço Atual */}
