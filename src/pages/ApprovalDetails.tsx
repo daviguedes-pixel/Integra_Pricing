@@ -18,8 +18,8 @@ import {
     Loader2,
     TrendingUp, // Added for positive margin
     X,
-    ExternalLink,
-    Upload
+    Upload,
+    RefreshCcw
 } from 'lucide-react';
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -470,6 +470,7 @@ export default function ApprovalDetails() {
             case 'request_evidence': return <FileSearch size={14} className="text-blue-500" />;
             case 'provide_evidence': return <Paperclip size={14} className="text-purple-500" />;
             case 'accept_suggestion': return <CheckCircle size={14} className="text-emerald-500" />;
+            case 'resubmitted': return <RefreshCcw size={14} className="text-blue-500" />;
             default: return <Clock size={14} />;
         }
     };
@@ -955,6 +956,7 @@ export default function ApprovalDetails() {
                                                     evidence_provided: 'Forneceu evidência',
                                                     accept_suggestion: 'Aceitou sugestão',
                                                     appealed: 'Recorreu do preço',
+                                                    resubmitted: 'Reenviou p/ revisão',
                                                 };
                                                 const baseLabel = actionLabels[item.action] || item.action || 'Ação registrada';
 

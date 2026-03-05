@@ -35,6 +35,8 @@ export default function MyRequests() {
   const [showDetails, setShowDetails] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [requestsWithHistory, setRequestsWithHistory] = useState<Set<string>>(new Set());
+  const [selectedRequests, setSelectedRequests] = useState<Set<string>>(new Set());
+  const [resubmitting, setResubmitting] = useState(false);
 
   const [filters, setFilters] = useState({
     status: "all",
@@ -90,6 +92,37 @@ export default function MyRequests() {
       toast.error(`Falha na sincronização: ${error.message}`);
     } finally {
       setSyncingN8N(false);
+    }
+  };
+
+  const toggleSelection = (id: string, currentStatus: string) => {
+    if (currentStatus === 'approved') return;
+    const newDoc = new Set(selectedRequests);
+    if (newDoc.has(id)) newDoc.delete(id);
+    else newDoc.add(id);
+    setSelectedRequests(newDoc);
+  };
+
+  const handleResubmit = async () => {
+    if (selectedRequests.size === 0) return;
+
+    setResubmitting(true);
+    try {
+      const { data, error } = await supabase.rpc('resubmit_price_requests_to_review', {
+        p_request_ids: Array.from(selectedRequests),
+        p_user_id: user?.id
+      });
+
+      if (error) throw error;
+
+      toast.success(`${selectedRequests.size} solicitação(ões) re-enviada(s) para revisão com sucesso!`);
+      setSelectedRequests(new Set());
+      loadMyRequests();
+    } catch (error: any) {
+      console.error('Erro ao re-enviar:', error);
+      toast.error(error.message || 'Erro ao re-enviar solicitações');
+    } finally {
+      setResubmitting(false);
     }
   };
 
@@ -511,7 +544,6 @@ export default function MyRequests() {
                 disabled={syncingN8N}
                 className="bg-white/10 hover:bg-white/20 text-white border-white/20 backdrop-blur-sm"
               >
-                <Zap className={`mr-2 h-4 w-4 ${syncingN8N ? 'text-yellow-300' : 'text-yellow-400'}`} />
                 {syncingN8N ? 'Sincronizando...' : 'Atualizar Custos (n8n)'}
               </Button>
             </div>
@@ -625,8 +657,18 @@ export default function MyRequests() {
 
         {/* My Requests List */}
         <Card className="shadow-xl border-0 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm">
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Minhas Solicitações ({filteredRequests.length})</CardTitle>
+            {selectedRequests.size > 0 && (
+              <Button
+                onClick={handleResubmit}
+                disabled={resubmitting || syncingN8N}
+                className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg flex items-center gap-2"
+              >
+                <RefreshCcw className={`h-4 w-4 ${resubmitting ? 'animate-spin' : ''}`} />
+                {resubmitting ? 'Enviando...' : `Re-enviar p/ Revisão (${selectedRequests.size})`}
+              </Button>
+            )}
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -655,6 +697,16 @@ export default function MyRequests() {
                 return (
                   <div key={request.id} className="p-4 bg-gradient-to-r from-white to-slate-50 dark:from-card dark:to-secondary rounded-xl border border-slate-200 dark:border-border hover:shadow-lg transition-all duration-300">
                     <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                      {request.status !== 'approved' && (
+                        <div className="pt-1 flex-shrink-0">
+                          <input
+                            type="checkbox"
+                            className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer transition-colors"
+                            checked={selectedRequests.has(request.id)}
+                            onChange={() => toggleSelection(request.id, request.status)}
+                          />
+                        </div>
+                      )}
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2 flex-wrap">
                           <span className="font-semibold text-slate-800 dark:text-slate-200">

@@ -7,14 +7,14 @@ import Layout from "@/components/Layout";
 import { AppRoute } from "@/components/AppRoute";
 
 const Login = lazy(() => import("@/pages/Login"));
+const ForgotPassword = lazy(() => import("@/pages/ForgotPassword"));
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const PriceRequest = lazy(() => import("@/pages/PriceRequest"));
 const Approvals = lazy(() => import("@/pages/Approvals"));
 const Admin = lazy(() => import("@/pages/Admin"));
-const MapView = lazy(() => import("@/pages/MapView"));
 const PriceHistory = lazy(() => import("@/pages/PriceHistory"));
 const PortfolioManager = lazy(() => import("@/pages/PortfolioManager"));
-const ReferenceRegistration = lazy(() => import("@/pages/ReferenceRegistration"));
+const CotacoesReferencias = lazy(() => import("@/pages/CotacoesReferencias"));
 const TaxManagement = lazy(() => import("@/pages/TaxManagement"));
 const StationManagement = lazy(() => import("@/pages/StationManagement"));
 const ClientManagement = lazy(() => import("@/pages/ClientManagement"));
@@ -29,6 +29,7 @@ const MapaContatos = lazy(() => import("@/pages/MapaContatos"));
 const Variations = lazy(() => import("@/pages/Variations"));
 const ApprovalDetails = lazy(() => import("@/pages/ApprovalDetails"));
 const Quotations = lazy(() => import("@/pages/Quotations"));
+const PriceReferences = lazy(() => import("@/pages/PriceReferences"));
 const DocumentReview = lazy(() => import("@/pages/Financial/DocumentReview"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 
@@ -102,6 +103,7 @@ export function AppRoutes() {
     <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route
           path="/dashboard"
@@ -164,16 +166,8 @@ export function AppRoutes() {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="/map"
-          element={
-            <ProtectedRoute>
-              <AppRoute permission="map">
-                <MapView />
-              </AppRoute>
-            </ProtectedRoute>
-          }
-        />
+        {/* /map redirects to /cotacoes-referencias */}
+        <Route path="/map" element={<Navigate to="/cotacoes-referencias" replace />} />
         <Route
           path="/admin"
           element={
@@ -204,13 +198,23 @@ export function AppRoutes() {
             </ProtectedRoute>
           }
         />
+        {/* /reference-registration redirects to /cotacoes-referencias */}
+        <Route path="/reference-registration" element={<Navigate to="/cotacoes-referencias" replace />} />
         <Route
-          path="/reference-registration"
+          path="/cotacoes-referencias"
           element={
             <ProtectedRoute>
-              <AppRoute permission="reference_registration">
-                <ReferenceRegistration />
+              <AppRoute permission="price_request">
+                <CotacoesReferencias />
               </AppRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/referencias"
+          element={
+            <ProtectedRoute>
+              <PriceReferences />
             </ProtectedRoute>
           }
         />

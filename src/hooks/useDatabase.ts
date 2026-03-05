@@ -9,6 +9,9 @@ interface Station {
   address?: string;
   latitude?: number;
   longitude?: number;
+  bandeira?: string;
+  municipio?: string;
+  uf?: string;
   active: boolean;
 }
 

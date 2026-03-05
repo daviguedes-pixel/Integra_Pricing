@@ -34,6 +34,7 @@ import {
   FileQuestion,
   Check,
   RefreshCcw,
+  Receipt,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect, useCallback } from "react";
@@ -321,9 +322,7 @@ const Dashboard = () => {
   const quickActions = [
     { icon: DollarSign, title: "Nova Solicitação", href: "/solicitacao-preco", permission: "price_request" },
     { icon: BarChart3, title: "Aprovações", href: "/approvals", permission: "approvals" },
-    { icon: Map, title: "Mapa", href: "/map", permission: "map" },
-    { icon: History, title: "Histórico", href: "/price-history", permission: "price_history" },
-    { icon: FileText, title: "Referências", href: "/reference-registration", permission: "reference_registration" },
+    { icon: Receipt, title: "Cotações Ref.", href: "/cotacoes-referencias", permission: "price_request" },
     { icon: Users, title: "Gestão", href: "/gestao", permission: "admin" },
   ].filter(action => canAccess(action.permission));
 

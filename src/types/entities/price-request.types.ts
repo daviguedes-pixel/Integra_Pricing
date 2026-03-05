@@ -53,6 +53,7 @@ export interface AddedCard {
     costAnalysis?: CostAnalysis;
     attachments?: string[];
     clientName?: string;
+    ocrResults?: any[];
 }
 
 /** Análise de custo para exibição */

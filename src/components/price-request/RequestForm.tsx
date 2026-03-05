@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +20,8 @@ import {
 import { useDatabase } from "@/hooks/useDatabase";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { useOcrPriceExtractor } from "@/hooks/useOcrPriceExtractor";
+import type { OcrPriceResult } from "@/hooks/useOcrPriceExtractor";
 import { toast } from "sonner";
 import {
     Card,
@@ -45,7 +47,10 @@ import {
     ChevronDown,
     Trash2,
     CheckCircle,
-    AlertCircle
+    AlertCircle,
+    ScanLine,
+    Loader2,
+    BookmarkPlus
 } from "lucide-react";
 import { removeCache } from "@/lib/cache";
 import { formatPrice, formatPrice4Decimals, getProductName } from "@/lib/pricing-utils";
@@ -70,6 +75,17 @@ export function RequestForm({ onSuccess, initialData }: RequestFormProps) {
     const [stationPaymentMethods, setStationPaymentMethods] = useState<StationPaymentMethod[]>([]);
     const [attachments, setAttachments] = useState<string[]>([]);
     const [syncingN8N, setSyncingN8N] = useState(false);
+
+    // OCR Price Extraction
+    const { isProcessing: ocrProcessing, results: ocrResults, processImage: processOcr, clearResults: clearOcr } = useOcrPriceExtractor();
+    const [savingReference, setSavingReference] = useState(false);
+    const [savedOcrPrices, setSavedOcrPrices] = useState<string[]>([]); // track which products were saved
+    const prevAttachmentsRef = useRef<string[]>([]);
+
+    // Auto-fetched market price reference
+    const [marketRef, setMarketRef] = useState<{
+        preco: number; fonte: string; created_at: string; validade: string;
+    } | null>(null);
 
     // Cards adicionados (Lote)
     const [addedCards, setAddedCards] = useState<AddedCard[]>([]);
@@ -177,6 +193,38 @@ export function RequestForm({ onSuccess, initialData }: RequestFormProps) {
         const timeout = setTimeout(loadStationPaymentMethods, 300);
         return () => clearTimeout(timeout);
     }, [formData.station_id]);
+
+    // Auto-fetch market reference when station + product change
+    useEffect(() => {
+        const fetchMarketRef = async () => {
+            if (!formData.station_id || !formData.product) {
+                setMarketRef(null);
+                return;
+            }
+            const station = stations.find(s => s.id === formData.station_id);
+            const municipio = (station as any)?.municipio;
+            const uf = (station as any)?.uf;
+            if (!municipio || !uf) {
+                setMarketRef(null);
+                return;
+            }
+            try {
+                const { data, error } = await (supabase.rpc as any)('get_price_reference', {
+                    p_produto: mapProductToEnum(formData.product), // Canonical mapping
+                    p_municipio: municipio,
+                    p_uf: uf,
+                });
+                if (!error && data && data.length > 0) {
+                    setMarketRef(data[0]);
+                } else {
+                    setMarketRef(null);
+                }
+            } catch {
+                setMarketRef(null);
+            }
+        };
+        fetchMarketRef();
+    }, [formData.station_id, formData.product, stations]);
 
     // Função auxiliar para buscar custo de um único posto
     const fetchCostForStation = async (stationId: string, product: string, today: string) => {
@@ -353,8 +401,8 @@ export function RequestForm({ onSuccess, initialData }: RequestFormProps) {
         try {
             const currentPrice = (parsePriceToInteger(formData.current_price) / 100) || 0;
             const suggestedPrice = (parsePriceToInteger(formData.suggested_price) / 100) || 0;
-            const purchaseCost = parseFloat(formData.purchase_cost) || 0;
-            const freightCost = parseFloat(formData.freight_cost) || 0;
+            const purchaseCost = parseBrazilianDecimal(formData.purchase_cost) || 0;
+            const freightCost = parseBrazilianDecimal(formData.freight_cost) || 0;
             const baseCost = purchaseCost + freightCost;
 
             let feePercentage = 0;
@@ -387,11 +435,11 @@ export function RequestForm({ onSuccess, initialData }: RequestFormProps) {
 
     const calculateCosts = useCallback(() => {
         try {
-            const volumeProjected = parseFloat(formData.volume_projected) || 0;
+            const volumeProjected = parseBrazilianDecimal(formData.volume_projected) || 0;
             const volumeProjectedLiters = volumeProjected * 1000;
             const suggestedPrice = (parsePriceToInteger(formData.suggested_price) / 100) || 0;
-            const purchaseCost = parseFloat(formData.purchase_cost) || 0;
-            const freightCost = parseFloat(formData.freight_cost) || 0;
+            const purchaseCost = parseBrazilianDecimal(formData.purchase_cost) || 0;
+            const freightCost = parseBrazilianDecimal(formData.freight_cost) || 0;
             const baseCost = purchaseCost + freightCost;
 
             let feePercentage = 0;
@@ -563,7 +611,8 @@ export function RequestForm({ onSuccess, initialData }: RequestFormProps) {
                     freight_cost: fCost, // Corrected Cost
                     attachments: [...attachments],
                     priceOrigin: { ...priceOrigin }
-                }
+                },
+                ocrResults: ocrResults?.prices || []
             };
         });
 
@@ -594,24 +643,14 @@ export function RequestForm({ onSuccess, initialData }: RequestFormProps) {
         setLoading(true);
         try {
             const batchId = generateUUID();
-            // Name batch if multiple items, maybe use Client Name + Date
             const defaultBatchName = `Proposta ${addedCards[0]?.clientName} - ${new Date().toLocaleDateString()}`;
 
-            const promises = addedCards.map(async (card: any) => {
+            const requestPromises = addedCards.map(async (card: any) => {
                 const snap = card._formDataSnapshot;
                 const mappedProduct = mapProductToEnum(snap.product);
 
-                // Ensure strict number parsing for costs
-                // In handleAddToBatch we prioritized manual input. Here we use what was snapshotted.
-                // However, we should double check if the snapshot values are valid numbers.
                 const manualPurchase = parseBrazilianDecimal(snap.purchase_cost);
                 const manualFreight = parseBrazilianDecimal(snap.freight_cost);
-                const sCost = card.costAnalysis || {};
-                // Note: card.costAnalysis might be derived. 
-                // Better to trust the snapshot values as they were what the user "saw" when adding.
-
-                const pCost = manualPurchase; // Trust the snapshot (which already had fallback logic in handleAddToBatch)
-                const fCost = manualFreight;
 
                 const payload = {
                     station_id: snap.station_id,
@@ -625,38 +664,110 @@ export function RequestForm({ onSuccess, initialData }: RequestFormProps) {
                     created_by: user?.id,
                     status: status,
                     margin_cents: snap.margin_cents,
-                    purchase_cost: pCost,
-                    freight_cost: fCost,
-                    cost_price: (pCost + fCost),
+                    purchase_cost: manualPurchase,
+                    freight_cost: manualFreight,
+                    cost_price: (manualPurchase + manualFreight),
                     batch_id: batchId,
                     batch_name: snap.batch_name || defaultBatchName,
-
                     volume_made: parseBrazilianDecimal(snap.volume_made),
                     volume_projected: parseBrazilianDecimal(snap.volume_projected),
                     arla_purchase_price: parsePriceToInteger(snap.arla_purchase_price) / 100,
                     arla_cost_price: parseBrazilianDecimal(snap.arla_cost_price),
-
-                    price_origin_base: snap.priceOrigin?.base_nome || snap.price_origin_base, // fallback to flat property if nested obj missing
+                    price_origin_base: snap.priceOrigin?.base_nome || snap.price_origin_base,
                     price_origin_bandeira: snap.priceOrigin?.base_bandeira || snap.price_origin_bandeira,
                     price_origin_delivery: snap.priceOrigin?.forma_entrega || snap.price_origin_delivery,
-
                     attachments: snap.attachments && snap.attachments.length > 0 ? snap.attachments : null
                 };
-
-                console.log('📝 Submitting Request:', {
-                    station_id: snap.station_id,
-                    product: mappedProduct,
-                    suggested_price: parsePriceToInteger(snap.suggested_price) / 100,
-                    purchase_cost: pCost,
-                    freight_cost: fCost,
-                    raw_suggested: snap.suggested_price,
-                    raw_purchase: snap.purchase_cost
-                });
 
                 return createPriceRequest(payload as any);
             });
 
-            await Promise.all(promises);
+            // Auto-save OCR references from all cards in the batch
+            const referencePromises = addedCards.flatMap(async (card: any) => {
+                const snap = card._formDataSnapshot;
+                // manualPurchase might already be a number from handleAddToBatch snapshot
+                const manualPurchase = typeof snap.purchase_cost === 'number' ? snap.purchase_cost : parseBrazilianDecimal(snap.purchase_cost);
+
+                const allOcrResults: OcrPriceResult[] = card.ocrResults || [];
+
+                if (allOcrResults.length === 0 || manualPurchase <= 0) return [];
+
+                // Resolve station/concorrente location ONCE for all products in this card
+                let stationUf = 'SP';
+                let stationMunicipio = 'Não Identificado';
+                let stationLat: number | null = null;
+                let stationLng: number | null = null;
+
+                const station = stations.find(s => s.id?.toString() === snap.station_id || s.code === snap.station_id);
+                if (station) {
+                    stationUf = station.uf || 'SP';
+                    stationMunicipio = station.municipio || station.cidade || 'Não Identificado';
+                    stationLat = station.latitude || null;
+                    stationLng = station.longitude || null;
+                } else if (snap.station_id) {
+                    // Fallback: buscar dados do concorrente pelo id_posto
+                    try {
+                        const stationIdNum = Number(snap.station_id);
+                        if (!isNaN(stationIdNum)) {
+                            const { data: concData } = await supabase
+                                .from('concorrentes')
+                                .select('latitude, longitude, uf, municipio')
+                                .eq('id_posto', stationIdNum)
+                                .maybeSingle();
+                            if (concData) {
+                                stationUf = concData.uf || 'SP';
+                                stationMunicipio = concData.municipio || 'Não Identificado';
+                                stationLat = typeof concData.latitude === 'string' ? parseFloat(concData.latitude) : concData.latitude;
+                                stationLng = typeof concData.longitude === 'string' ? parseFloat(concData.longitude) : concData.longitude;
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('⚠️ Falha ao buscar concorrente para referência OCR:', e);
+                    }
+                }
+
+                // Insert one reference per OCR-detected product
+                const insertPromises = allOcrResults
+                    .filter(ocrResult => ocrResult.price > 0)
+                    .map(async (ocrResult) => {
+                        const mappedProduct = mapProductToEnum(ocrResult.product || snap.product);
+                        const anexoUrl = ocrResult.evidenceUrl || ocrResult.originalImage;
+
+                        // Deactivate existing references with same client + product + município
+                        if (snap.client_id && stationMunicipio && stationMunicipio !== 'Não Identificado') {
+                            await supabase
+                                .from('price_references')
+                                .update({ ativo: false } as any)
+                                .eq('cliente_id', snap.client_id)
+                                .eq('produto', mappedProduct)
+                                .ilike('municipio', stationMunicipio)
+                                .eq('ativo', true);
+                        }
+
+                        const referenceData = {
+                            produto: mappedProduct,
+                            preco: ocrResult.price,
+                            uf: stationUf,
+                            municipio: stationMunicipio,
+                            latitude: stationLat || ocrResult.latitude,
+                            longitude: stationLng || ocrResult.longitude,
+                            anexo_url: anexoUrl,
+                            posto_id: snap.station_id,
+                            cliente_id: snap.client_id,
+                            fonte: 'ocr',
+                            observacoes: `OCR Auto - ${ocrResult.productLabel || ocrResult.product} (conf: ${ocrResult.confidence})`,
+                            criado_por: user?.id,
+                            ativo: true,
+                            validade: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+                        };
+
+                        return supabase.from('price_references').insert([referenceData]);
+                    });
+
+                return Promise.all(insertPromises);
+            });
+
+            await Promise.all([...requestPromises, ...referencePromises]);
 
             toast.success(status === 'draft' ? "Rascunho salvo!" : "Solicitação enviada!");
 
@@ -889,32 +1000,90 @@ export function RequestForm({ onSuccess, initialData }: RequestFormProps) {
                             </div>
                         </div>
 
-                        {/* Seção 2: Informações Adicionais */}
+                        {/* Seção 2: Referência e Informações Adicionais */}
                         <div className="space-y-6">
                             <div className="flex items-center gap-3 pb-3 border-b border-slate-200 dark:border-border">
                                 <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center shadow-lg">
                                     <span className="text-white font-bold text-xs">2</span>
                                 </div>
                                 <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">
-                                    Informações Adicionais
+                                    Referência e Informações
                                 </h3>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {/* Documento de Referência */}
-                                <div className="space-y-2">
+                                {/* Documento de Referência + OCR */}
+                                <div className="space-y-3">
                                     <Label className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                                        </svg>
-                                        Documento de Referência (Opcional)
+                                        <ScanLine className="h-4 w-4" />
+                                        Documento de Referência (OCR)
                                     </Label>
                                     <FileUploader
-                                        onFilesUploaded={setAttachments}
+                                        onFilesUploaded={(urls) => {
+                                            // Detect new files
+                                            const newUrls = urls.filter(u => !prevAttachmentsRef.current.includes(u));
+                                            prevAttachmentsRef.current = urls;
+                                            setAttachments(urls);
+
+                                            // Auto-trigger OCR for new image uploads
+                                            if (newUrls.length > 0) {
+                                                const imageUrl = newUrls.find(u => /\.(jpg|jpeg|png|webp|bmp)/i.test(u));
+                                                if (imageUrl) {
+                                                    // Product from form is fallback — hook detects product from image text first
+                                                    processOcr(imageUrl, formData.product || '');
+                                                }
+                                            }
+                                        }}
                                         maxFiles={5}
                                         acceptedTypes="image/*,.pdf"
                                         currentFiles={attachments}
                                     />
+
+                                    {/* OCR Processing State */}
+                                    {ocrProcessing && (
+                                        <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                                            <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                                            <span className="text-xs text-blue-700 dark:text-blue-300 font-medium">
+                                                Processando OCR...
+                                            </span>
+                                        </div>
+                                    )}
+
+                                    {/* OCR Results */}
+                                    {ocrResults && ocrResults.prices.length > 0 && (
+                                        <div className="p-3 bg-slate-50 dark:bg-slate-800/30 rounded-lg border border-slate-200 dark:border-slate-700 space-y-2">
+                                            <div className="flex items-center gap-2">
+                                                <CheckCircle className="h-4 w-4 text-slate-600" />
+                                                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                                    Preço(s) Extraído(s)
+                                                </span>
+                                            </div>
+                                            {ocrResults.prices.map((p: OcrPriceResult, i: number) => (
+                                                <div key={i} className="flex items-center gap-2">
+                                                    <Badge variant="secondary" className="text-xs">
+                                                        {p.productLabel}
+                                                    </Badge>
+                                                    <span className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                                                        R$ {p.price.toFixed(4)}
+                                                    </span>
+                                                    {p.source === 'fallback' && (
+                                                        <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-600">
+                                                            produto do form
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {/* OCR no results */}
+                                    {ocrResults && ocrResults.prices.length === 0 && (
+                                        <div className="p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
+                                            <p className="text-xs text-amber-700 dark:text-amber-300">
+                                                ⚠️ OCR processou a imagem mas não encontrou preços válidos para o produto selecionado.
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Observações */}
@@ -1021,6 +1190,32 @@ export function RequestForm({ onSuccess, initialData }: RequestFormProps) {
                         )}
                     </CardContent>
                 </Card>
+
+                {/* Market Reference Card */}
+                {marketRef && (
+                    <Card className="shadow-sm border border-violet-200 dark:border-violet-800 bg-violet-50/50 dark:bg-violet-900/20 shrink-0">
+                        <CardContent className="px-4 py-3 space-y-1.5">
+                            <div className="flex items-center gap-2">
+                                <BookmarkPlus className="h-4 w-4 text-violet-600" />
+                                <span className="text-xs font-semibold text-violet-700 dark:text-violet-300">
+                                    Referência de Mercado
+                                </span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                                <span className="text-xs text-slate-600 dark:text-slate-400">Preço Referência:</span>
+                                <span className="text-sm font-bold text-violet-800 dark:text-violet-200">
+                                    R$ {Number(marketRef.preco).toFixed(4)}
+                                </span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                                <span className="text-[10px] text-slate-500">Fonte: {marketRef.fonte}</span>
+                                <span className="text-[10px] text-slate-500">
+                                    Até {new Date(marketRef.validade).toLocaleDateString('pt-BR')}
+                                </span>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
 
                 {/* Commercial Proposal Sidebar */}
                 <div className="flex-1 min-h-[400px]">

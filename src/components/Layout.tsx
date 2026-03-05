@@ -104,16 +104,14 @@ const menuStructure: MenuGroupWithIcon[] = [
       {
         label: "Estrategia",
         items: [
-          { icon: FileText, label: "Referencias", href: "/reference-registration", permission: "reference_registration" },
-          { icon: Map, label: "Mapa", href: "/map", permission: "map" },
-          { icon: History, label: "Historico", href: "/price-history", permission: "price_history" },
-          { icon: BarChart3, label: "Gestor de carteiras", href: "/portfolio-manager", permission: "price_history" },
+          { icon: Receipt, label: "Cotações Referências", href: "/cotacoes-referencias", permission: "price_request" },
         ]
       },
       {
         label: "Gestoria",
         items: [
           { icon: Users, label: "Gestão", href: "/gestao", permission: "gestao" },
+          { icon: Percent, label: "Taxas Acordadas (em desenvolvimento)", href: "/taxas-acordadas", permission: "price_request" },
         ]
       }
     ]
@@ -121,13 +119,22 @@ const menuStructure: MenuGroupWithIcon[] = [
   {
     label: "Pricing",
     icon: Gauge,
-    items: [
-      { icon: TrendingUp, label: "Variações", href: "/variations", permission: "price_request" },
-      { icon: Receipt, label: "Cotações", href: "/quotations", permission: "price_request" },
-      { icon: Map, label: "Mapa Contatos", href: "/mapa-contatos", permission: "price_request" },
-      { icon: Truck, label: "Cargas (Desenvolvimento)", href: "/cargas", permission: "price_request" },
-      { icon: FileCheck, label: "NFs Incorretas (Desenvolvimento)", href: "/nfs-incorretas", permission: "price_request" },
-      { icon: TrendingUp, label: "Paridade (Desenvolvimento)", href: "/paridade", permission: "price_request" },
+    subgroups: [
+      {
+        label: "Relatórios",
+        items: [
+          { icon: TrendingUp, label: "Variações", href: "/variations", permission: "price_request" },
+          { icon: Receipt, label: "Cotações", href: "/quotations", permission: "price_request" },
+          { icon: Map, label: "Mapa Contatos", href: "/mapa-contatos", permission: "price_request" },
+        ]
+      },
+      {
+        label: "Comercial",
+        items: [
+          { icon: Briefcase, label: "Acordos Vigentes (em desenvolvimento)", href: "/acordos-vigentes", permission: "price_request" },
+          { icon: FileCheck, label: "Liberações (em desenvolvimento)", href: "/liberacoes", permission: "price_request" }
+        ]
+      }
     ]
   },
   {
@@ -136,13 +143,6 @@ const menuStructure: MenuGroupWithIcon[] = [
     items: [
       { icon: Shield, label: "Administração", href: "/settings", permission: "settings" },
       { icon: Settings, label: "Configurações", href: "/profile-settings", permission: "dashboard" },
-    ]
-  },
-  {
-    label: "Financeiro",
-    icon: DollarSign,
-    items: [
-      { icon: FileText, label: "Revisão de Documentos", href: "/financial/review", permission: "price_request" }, // Reusing permission for simplicity
     ]
   }
 ];
@@ -167,7 +167,9 @@ function Layout({ children }: LayoutProps) {
   const [openSubGroups, setOpenSubGroups] = useState<Record<string, boolean>>({
     "Precificação": false,
     "Estrategia": false,
-    "Gestoria": false
+    "Gestoria": false,
+    "Comercial": false,
+    "Relatórios": false
   });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(256); // 64 * 4 = 256px (w-64)

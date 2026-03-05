@@ -93,9 +93,9 @@ export function mapProductToEnum(product: string | null | undefined): string | n
     // Etanol
     'etanol': 'etanol',
 
-    // ARLA - não existe no enum, retorna null
-    'arla32_granel': null, // ARLA não está no enum
-    'arla': null,
+    // ARLA
+    'arla32_granel': 'arla32_granel',
+    'arla': 'arla32_granel',
   };
 
   // Retorna o valor mapeado ou o próprio valor se já for válido

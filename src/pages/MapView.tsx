@@ -22,18 +22,18 @@ export default function MapView() {
   const { toast } = useToast();
   const { stations, suggestions, priceHistory } = useDatabase();
   const { researchData, stationStats, loading: researchLoading, refetch: refetchResearch } = useCompetitorResearch();
-  
+
   console.log('🔍 Dados dos hooks:');
   console.log('🔍 Stations:', stations?.length || 0, stations);
   console.log('🔍 Suggestions:', suggestions?.length || 0, suggestions);
   console.log('🔍 Price History:', priceHistory?.length || 0, priceHistory);
   console.log('🔍 Research Data:', researchData?.length || 0, researchData);
   console.log('🔍 Station Stats:', stationStats?.length || 0, stationStats);
-  
+
   // Buscar referências
   const [references, setReferences] = useState<any[]>([]);
   const [referencesLoading, setReferencesLoading] = useState(true);
-  
+
   // Buscar estações da tabela sis_empresa
   const [sisEmpresaStations, setSisEmpresaStations] = useState<any[]>([]);
   const [sisEmpresaLoading, setSisEmpresaLoading] = useState(true);
@@ -41,11 +41,12 @@ export default function MapView() {
   const fetchReferences = async () => {
     try {
       console.log('🔍 Buscando referências...');
-      
-      // Buscar referências sem depender de FKs/joins
+
+      // Buscar referências sem depender de FKs/joins - agora na nova tabela price_references
       const { data, error } = await supabase
-        .from('referencias')
-        .select('id, produto, preco_referencia, created_at, anexo, posto_id, latitude, longitude, uf, cidade, observacoes, cliente_id')
+        .from('price_references')
+        .select('id, produto, preco, created_at, anexo_url, posto_id, latitude, longitude, uf, municipio, observacoes, cliente_id')
+        .eq('ativo', true)
         .order('created_at', { ascending: false });
 
       console.log('🔍 Erro ao buscar referências:', error);
@@ -55,7 +56,12 @@ export default function MapView() {
         console.warn('⚠️ Tabela referencias não disponível ou erro. Tentando fallback em price_suggestions...');
       }
 
-      let normalized: any[] = data || [];
+      let normalized: any[] = (data || []).map(r => ({
+        ...r,
+        preco_referencia: r.preco, // Normaliza para o nome que o MapView espera
+        cidade: r.municipio,       // Normaliza para o nome que o MapView espera
+        anexo: r.anexo_url         // Normaliza para o nome que o MapView espera
+      }));
 
       // Enriquecer com dados de clientes (opcional) — tentar buscar nomes
       try {
@@ -73,7 +79,7 @@ export default function MapView() {
             }));
           }
         }
-      } catch {}
+      } catch { }
 
       // Fallback: buscar em price_suggestions referências (status='reference' ou is_reference=true) e normalizar quando não houver registros
       if (!normalized || normalized.length === 0) {
@@ -109,7 +115,7 @@ export default function MapView() {
                 postoId = match[1];
               }
             }
-            
+
             return {
               id: row.id,
               produto: row.product,
@@ -176,13 +182,13 @@ export default function MapView() {
   const fetchSisEmpresaStations = async () => {
     try {
       console.log('🔍 Buscando estações da tabela sis_empresa via RPC...');
-      
+
       // Usar função RPC para buscar empresas do schema cotacao
       const { data: rpcData, error: rpcError } = await supabase.rpc('get_sis_empresa_stations');
-      
+
       if (!rpcError && rpcData && rpcData.length > 0) {
         // Filtrar apenas estações com coordenadas
-        const stationsWithCoords = rpcData.filter((station: any) => 
+        const stationsWithCoords = rpcData.filter((station: any) =>
           station.latitude != null && station.longitude != null
         );
         console.log('✅ Estações encontradas via RPC:', stationsWithCoords.length, 'de', rpcData.length, 'total');
@@ -207,30 +213,30 @@ export default function MapView() {
     fetchReferences();
     fetchSisEmpresaStations();
   }, []);
-  
+
   const [selectedFilter, setSelectedFilter] = useState<string>("all");
   const [selectedRegion, setSelectedRegion] = useState<string>("all");
   const [activeTab, setActiveTab] = useState<"pesquisas" | "referencias">("referencias");
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [imageModalUrl, setImageModalUrl] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  
+
   // Estados para ordenação
   const [sortByPrice, setSortByPrice] = useState<'asc' | 'desc' | null>(null);
   const [sortByUF, setSortByUF] = useState<'asc' | 'desc' | null>(null);
-  
+
   // Estado para data/hora atual
   const [currentDateTime, setCurrentDateTime] = useState(new Date());
-  
+
   // Atualizar data/hora a cada minuto
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentDateTime(new Date());
     }, 60000); // Atualizar a cada minuto
-    
+
     return () => clearInterval(interval);
   }, []);
-  
+
   // Função para determinar região baseada nas coordenadas ou UF
   const getRegionFromCoordinates = (lat: number, lng: number, uf?: string): string => {
     // Se temos UF, usar diretamente (mais confiável)
@@ -266,34 +272,34 @@ export default function MapView() {
       };
       return ufMap[ufLower] || ufLower;
     }
-    
+
     // Fallback: calcular por coordenadas (menos preciso)
     // Minas Gerais: aproximadamente -14 a -22 lat, -39 a -51 lng
     if (lat >= -22 && lat <= -14 && lng >= -51 && lng <= -39) return "mg";
-    
+
     // Goiás: aproximadamente -13 a -19 lat, -50 a -46 lng  
     if (lat >= -19 && lat <= -13 && lng >= -50 && lng <= -46) return "go";
-    
+
     // Distrito Federal: aproximadamente -15.5 a -16 lat, -48 a -47 lng
     if (lat >= -16 && lat <= -15.5 && lng >= -48 && lng <= -47) return "df";
-    
+
     // São Paulo: aproximadamente -20 a -25 lat, -48 a -44 lng
     if (lat >= -25 && lat <= -20 && lng >= -48 && lng <= -44) return "sp";
-    
+
     // Bahia: aproximadamente -9 a -18 lat, -39 a -46 lng
     if (lat >= -18 && lat <= -9 && lng >= -46 && lng <= -39) return "ba";
-    
+
     return "other";
   };
-  
+
   // Convert database data to map markers
-  type MarkerStation = { 
-    id: string; 
-    name: string; 
-    lat: number; 
-    lng: number; 
-    price: string; 
-    type: 'nossa' | 'concorrente' | 'cliente' | 'pesquisa'; 
+  type MarkerStation = {
+    id: string;
+    name: string;
+    lat: number;
+    lng: number;
+    price: string;
+    type: 'nossa' | 'concorrente' | 'cliente' | 'pesquisa';
     product: string;
     date?: string;
     source?: string;
@@ -309,12 +315,12 @@ export default function MapView() {
       // Remover postos com coordenadas de São Paulo (ponto bugado)
       const lat = station.latitude || -23.5505;
       const lng = station.longitude || -46.6333;
-      
+
       // Se tem coordenadas de São Paulo, não mostrar
       if (lat === -23.5505 && lng === -46.6333) {
         return false;
       }
-      
+
       return true;
     })
     .map(station => {
@@ -329,7 +335,7 @@ export default function MapView() {
 
       // Find research stats for this station
       const stationStat = stationStats.find(s => s.station_id === station.id);
-      
+
       // Find latest research price for this station
       const latestResearch = researchData
         .filter(r => r.station_name === station.name || r.station_id === station.id)
@@ -340,13 +346,13 @@ export default function MapView() {
         name: station.name,
         lat: station.latitude || -23.5505,
         lng: station.longitude || -46.6333,
-        price: latestResearch ? 
-          formatBrazilianCurrency(latestResearch.price) : 
-          latestSuggestion ? 
-          formatBrazilianCurrency(latestSuggestion.final_price || 0) : 
-          latestHistory ? 
-          formatBrazilianCurrency(latestHistory.new_price || 0) : 
-          'R$ 0,00',
+        price: latestResearch ?
+          formatBrazilianCurrency(latestResearch.price) :
+          latestSuggestion ?
+            formatBrazilianCurrency(latestSuggestion.final_price || 0) :
+            latestHistory ?
+              formatBrazilianCurrency(latestHistory.new_price || 0) :
+              'R$ 0,00',
         type: 'nossa', // Postos nossos sempre são azuis, mesmo com pesquisa
         product: latestResearch?.product || latestSuggestion?.product || latestHistory?.product || 'Gasolina Comum',
         date: latestResearch?.date_observed || latestSuggestion?.created_at || latestHistory?.created_at,
@@ -363,12 +369,12 @@ export default function MapView() {
       // Remover pesquisas com coordenadas de São Paulo (ponto bugado)
       const lat = research.latitude || -23.5505;
       const lng = research.longitude || -46.6333;
-      
+
       // Se tem coordenadas de São Paulo, não mostrar
       if (lat === -23.5505 && lng === -46.6333) {
         return false;
       }
-      
+
       return true;
     })
     .map(research => ({
@@ -391,16 +397,16 @@ export default function MapView() {
       // Filtrar estações sem coordenadas válidas
       const lat = station.latitude;
       const lng = station.longitude;
-      
+
       if (!lat || !lng || isNaN(Number(lat)) || isNaN(Number(lng))) {
         return false;
       }
-      
+
       // Remover postos com coordenadas de São Paulo (ponto bugado)
       if (Number(lat) === -23.5505 && Number(lng) === -46.6333) {
         return false;
       }
-      
+
       return true;
     })
     .map(station => ({
@@ -450,13 +456,13 @@ export default function MapView() {
     })
     .map(({ reference, lat, lng }) => {
       // Tentar obter UF de várias fontes possíveis
-      const uf = reference.uf || 
-                 reference.concorrente?.uf || 
-                 reference.stations?.uf || 
-                 reference.estado ||
-                 reference.concorrente?.estado ||
-                 reference.stations?.estado;
-      
+      const uf = reference.uf ||
+        reference.concorrente?.uf ||
+        reference.stations?.uf ||
+        reference.estado ||
+        reference.concorrente?.estado ||
+        reference.stations?.estado;
+
       return {
         id: `reference-${reference.id}`,
         name: reference.concorrente?.razao_social || reference.stations?.name || reference.nome || 'Posto',
@@ -492,7 +498,7 @@ export default function MapView() {
   useEffect(() => {
     // no-op, apenas para observar references e referenceMarkers
   }, [references, referenceMarkers.length]);
-  
+
   const [selectedStation, setSelectedStation] = useState<MarkerStation | null>(null);
 
   const getStationColor = (type: string) => {
@@ -518,80 +524,80 @@ export default function MapView() {
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-4 sm:py-6 lg:py-8 space-y-4 sm:space-y-6">
-      {/* Header padrão com gradiente */}
-      <div className="relative overflow-hidden rounded-xl sm:rounded-2xl bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 p-4 sm:p-6 text-white shadow-2xl">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-2xl font-bold">
-              Mapa de Referências
-            </h1>
-            <p className="text-white/80">
-              Visualize referências de clientes
-            </p>
-            <div className="text-sm text-white/60 mt-1">
-              {currentDateTime.toLocaleString('pt-BR', {
-                day: '2-digit',
-                month: '2-digit', 
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-              })}
+        {/* Header padrão com gradiente */}
+        <div className="relative overflow-hidden rounded-xl sm:rounded-2xl bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 p-4 sm:p-6 text-white shadow-2xl">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <h1 className="text-2xl font-bold">
+                Mapa de Referências
+              </h1>
+              <p className="text-white/80">
+                Visualize referências de clientes
+              </p>
+              <div className="text-sm text-white/60 mt-1">
+                {currentDateTime.toLocaleString('pt-BR', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
+              </div>
             </div>
-          </div>
-          <div className="flex gap-3 w-full sm:w-auto">
-            <div className="relative flex-1 sm:flex-none">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-white/70" />
-              <Input
-                placeholder="Buscar postos, referências..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 pr-4 bg-white/10 border-white/20 text-white placeholder:text-white/70"
-              />
+            <div className="flex gap-3 w-full sm:w-auto">
+              <div className="relative flex-1 sm:flex-none">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-white/70" />
+                <Input
+                  placeholder="Buscar postos, referências..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 pr-4 bg-white/10 border-white/20 text-white placeholder:text-white/70"
+                />
+              </div>
+              <Button
+                variant="secondary"
+                size="icon"
+                onClick={() => { refetchResearch(); fetchReferences(); }}
+                disabled={researchLoading}
+                className="bg-white/20 hover:bg-white/30 text-white border-white/30 backdrop-blur-sm"
+              >
+                <RefreshCw className={`h-4 w-4 ${researchLoading ? 'animate-spin' : ''}`} />
+              </Button>
             </div>
-            <Button 
-              variant="secondary" 
-              size="icon"
-              onClick={() => { refetchResearch(); fetchReferences(); }}
-              disabled={researchLoading}
-              className="bg-white/20 hover:bg-white/30 text-white border-white/30 backdrop-blur-sm"
-            >
-              <RefreshCw className={`h-4 w-4 ${researchLoading ? 'animate-spin' : ''}`} />
-            </Button>
           </div>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 gap-6">
-        {/* Map Area */}
-        <div>
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MapPin className="h-5 w-5" />
-                Mapa Interativo
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Legenda acima do mapa */}
-              <div className="flex items-center gap-4 pb-3 border-b border-slate-200 dark:border-slate-700">
-                <div className="text-sm font-semibold text-slate-700 dark:text-slate-300">Legenda:</div>
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-blue-600"></div>
-                    <span className="text-sm text-slate-600 dark:text-slate-400">Nossa Rede</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-red-600"></div>
-                    <span className="text-sm text-slate-600 dark:text-slate-400">Concorrentes</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-green-600"></div>
-                    <span className="text-sm text-slate-600 dark:text-slate-400">Clientes (NF)</span>
+        <div className="grid grid-cols-1 gap-6">
+          {/* Map Area */}
+          <div>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MapPin className="h-5 w-5" />
+                  Mapa Interativo
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Legenda acima do mapa */}
+                <div className="flex items-center gap-4 pb-3 border-b border-slate-200 dark:border-slate-700">
+                  <div className="text-sm font-semibold text-slate-700 dark:text-slate-300">Legenda:</div>
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-blue-600"></div>
+                      <span className="text-sm text-slate-600 dark:text-slate-400">Nossa Rede</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-red-600"></div>
+                      <span className="text-sm text-slate-600 dark:text-slate-400">Concorrentes</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-green-600"></div>
+                      <span className="text-sm text-slate-600 dark:text-slate-400">Clientes (NF)</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-              
-              <LeafletMap
+
+                <LeafletMap
                   stations={allStations.map((station, index) => {
                     console.log('🗺️ Enviando estação para o mapa:', station);
                     // Criar ID único e válido: combinar hash do ID original com índice
@@ -606,9 +612,9 @@ export default function MapView() {
                       // Usar número positivo grande para evitar colisões
                       return Math.abs(hash) * 1000000 + idx;
                     };
-                    
+
                     const uniqueId = createUniqueId(station.id, index);
-                    
+
                     return {
                       id: uniqueId,
                       name: station.name,
@@ -640,9 +646,9 @@ export default function MapView() {
                     researchData: selectedStation.researchData
                   } : null}
                   onStationSelect={(station) => {
-                    const mappedStation = allStations.find(s => 
-                      s.name === station.name && 
-                      Math.abs(s.lat - station.lat) < 0.001 && 
+                    const mappedStation = allStations.find(s =>
+                      s.name === station.name &&
+                      Math.abs(s.lat - station.lat) < 0.001 &&
                       Math.abs(s.lng - station.lng) < 0.001
                     );
                     if (mappedStation) {
@@ -654,29 +660,29 @@ export default function MapView() {
                     }
                   }}
                 />
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
+
         </div>
 
-      </div>
+        {/* Tabela de Cotação */}
+        <div className="mt-6">
+          <QuotationTable
+            mode={activeTab}
+            sortByPrice={sortByPrice}
+            sortByUF={sortByUF}
+            onSortPrice={(order) => setSortByPrice(order)}
+            onSortUF={(order) => setSortByUF(order)}
+          />
+        </div>
 
-      {/* Tabela de Cotação */}
-      <div className="mt-6">
-        <QuotationTable 
-          mode={activeTab}
-          sortByPrice={sortByPrice}
-          sortByUF={sortByUF}
-          onSortPrice={(order) => setSortByPrice(order)}
-          onSortUF={(order) => setSortByUF(order)}
+        {/* Modal de visualização de imagens */}
+        <ImageViewerModal
+          isOpen={imageModalOpen}
+          onClose={() => { setImageModalOpen(false); setImageModalUrl(null); }}
+          imageUrl={imageModalUrl || ''}
         />
-      </div>
-
-      {/* Modal de visualização de imagens */}
-      <ImageViewerModal 
-        isOpen={imageModalOpen}
-        onClose={() => { setImageModalOpen(false); setImageModalUrl(null); }}
-        imageUrl={imageModalUrl || ''}
-      />
       </div>
     </div>
   );

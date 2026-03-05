@@ -29,11 +29,11 @@ export function CommercialProposalSidebar({
         <Card className="shadow-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-card h-full flex flex-col">
             <CardHeader className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 py-4">
                 <div className="flex items-center gap-2">
-                    <div className="bg-blue-600 rounded-md p-1.5 text-white">
+                    <div className="bg-slate-100 dark:bg-slate-800 rounded-md p-1.5 text-slate-500 dark:text-slate-400">
                         <FileText className="h-4 w-4" />
                     </div>
                     <div>
-                        <CardTitle className="text-sm font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wide">
+                        <CardTitle className="text-sm font-bold text-slate-800 dark:text-slate-100 tracking-wide">
                             Proposta Comercial
                         </CardTitle>
                         <p className="text-[10px] text-slate-500 font-medium">

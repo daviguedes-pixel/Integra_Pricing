@@ -5,12 +5,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Lock, Mail, Sparkles, Fuel, TrendingUp, Shield } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import Lottie from "lottie-react";
+import splashAnimation from "@/assets/splash.json";
 
 
 export default function Login() {
+  const [showSplash, setShowSplash] = useState(true);
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -21,11 +24,19 @@ export default function Login() {
   const { signIn, user } = useAuth();
   const navigate = useNavigate();
 
-  // Redirect if already logged in
+  // Redirect if already logged in and handle splash screen
   useEffect(() => {
     if (user) {
       navigate("/dashboard", { replace: true });
+      return;
     }
+
+    // Splash screen timer
+    const timer = setTimeout(() => {
+      setShowSplash(false);
+    }, 2800); // 2.8 seconds roughly before fading out
+
+    return () => clearTimeout(timer);
   }, [user, navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -65,6 +76,22 @@ export default function Login() {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden">
 
+      {/* Splash Screen */}
+      <AnimatePresence>
+        {showSplash && (
+          <motion.div
+            className="absolute inset-0 z-50 flex items-center justify-center bg-white/95 backdrop-blur-xl"
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.8, ease: "easeInOut" }}
+          >
+            <div className="w-full h-full max-w-[1000px] flex items-center justify-center">
+              <Lottie animationData={splashAnimation} loop={false} className="w-full h-full object-contain" />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Background Image com overlay animado - Reduced opacity */}
       <motion.div
         className="absolute inset-0 bg-cover bg-center opacity-30"
@@ -73,7 +100,7 @@ export default function Login() {
         }}
         initial={{ scale: 1.1 }}
         animate={{ scale: 1 }}
-        transition={{ duration: 1.5, ease: "easeOut" }}
+        transition={{ duration: 1.5, ease: "easeOut", delay: 2.8 }}
       />
 
       {/* Background simplificado sem bolas brilhantes */}
@@ -88,7 +115,7 @@ export default function Login() {
           className="text-center mb-8"
           initial={{ opacity: 0, y: -50 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, ease: "easeOut" }}
+          transition={{ duration: 0.8, ease: "easeOut", delay: 3.2 }}
         >
           <div className="mb-2 flex flex-col items-center justify-center relative">
             {/* Decorative glow behind logo - estático para melhor performance */}
@@ -108,7 +135,7 @@ export default function Login() {
                 className="h-[160px] drop-shadow-2xl"
                 initial={{ opacity: 0, scale: 0.8, rotateY: -15 }}
                 animate={{ opacity: 1, scale: 1, rotateY: 0 }}
-                transition={{ duration: 0.8, delay: 0.2 }}
+                transition={{ duration: 0.8, delay: 3.4 }}
                 onError={(e) => {
                   if (logoSrc.includes('integra-logo-login')) {
                     setLogoSrc('/lovable-uploads/integra-logo-symbol.png');
@@ -124,20 +151,12 @@ export default function Login() {
               className="text-4xl font-bold bg-gradient-to-r from-white via-blue-100 to-white bg-clip-text text-transparent drop-shadow-lg mt-2 font-righteous"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.4 }}
+              transition={{ duration: 0.5, delay: 3.6 }}
             >
               Integra
             </motion.h1>
 
-            {/* Subtítulo animado */}
-            <motion.p
-              className="text-white/70 text-sm mt-1 tracking-wider"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.5, delay: 0.6 }}
-            >
-              Gestão Inteligente de Preços
-            </motion.p>
+
           </div>
         </motion.div>
 
@@ -145,7 +164,7 @@ export default function Login() {
         <motion.div
           initial={{ opacity: 0, y: 50, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ duration: 0.6, delay: 0.3, ease: "easeOut" }}
+          transition={{ duration: 0.6, delay: 3.5, ease: "easeOut" }}
         >
           <Card className="shadow-2xl border border-white/20 bg-white/95 backdrop-blur-xl overflow-hidden relative">
             {/* Borda brilhante - estática para melhor performance */}
@@ -157,10 +176,9 @@ export default function Login() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.5 }}
               >
-                <CardTitle className="text-2xl text-center text-gray-800 font-bold flex items-center justify-center gap-2">
-                  <Sparkles className="w-5 h-5 text-blue-500" />
+                <h2 className="text-2xl font-bold text-slate-800 flex items-center justify-center gap-2">
                   Fazer Login
-                </CardTitle>
+                </h2>
               </motion.div>
               <motion.div
                 initial={{ opacity: 0 }}
@@ -272,6 +290,14 @@ export default function Login() {
                       )}
                     </AnimatePresence>
                   </motion.div>
+                  <div className="flex justify-end mt-1">
+                    <Link
+                      to="/forgot-password"
+                      className="text-sm font-medium text-slate-400 hover:text-white transition-colors"
+                    >
+                      Esqueci minha senha
+                    </Link>
+                  </div>
                 </motion.div>
 
                 {/* Botão com animação */}
@@ -330,14 +356,14 @@ export default function Login() {
         </motion.div>
 
         {/* Footer com animação */}
-        <motion.p
+        <motion.div
           className="text-center text-sm text-white/90 mt-8 drop-shadow-lg font-medium"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 1.2 }}
         >
-          © 2025 Rede São Roque. Todos os direitos reservados.
-        </motion.p>
+          <p>© 2026 Rede São Roque. Todos os direitos reservados.</p>
+        </motion.div>
       </div>
     </div>
   );

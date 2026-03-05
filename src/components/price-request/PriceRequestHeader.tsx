@@ -86,7 +86,6 @@ export function PriceRequestHeader({ onRefresh, isRefreshing }: PriceRequestHead
                         disabled={syncingN8N}
                         className="flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white border-white/30 backdrop-blur-sm h-8 text-xs sm:text-sm"
                     >
-                        <DollarSign className={`h-3.5 w-3.5 ${syncingN8N ? 'text-green-400' : 'text-green-500'}`} />
                         <span className="hidden sm:inline">{syncingN8N ? 'Sincronizando...' : 'Atualizar Custos'}</span>
                         <span className="sm:hidden">Custos</span>
                     </Button>
